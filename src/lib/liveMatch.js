@@ -449,3 +449,33 @@ export function partidoActivoDeStream(stream, partidosDisponibles) {
   const candidatos = ids.map(id => (partidosDisponibles || []).find(p => p.id === id)).filter(Boolean)
   return elegirPartidoActivo(candidatos)
 }
+
+// Lo que muestra el marcador del VIDEO de una transmisión, combinando la planilla del árbitro y lo que se suma desde el panel
+// de control — todo vive únicamente en site_config.en_vivo_control[streamId].marcador_ctrl y NO toca partidos, resultados,
+// goleadores ni tablas:
+//   · Si el árbitro está planillando (real = partido en vivo): sale el marcador REAL, automático. Si quien maneja el control
+//     sumó o quitó goles encima (ajusteLocal / ajusteVis) se le aplican, solo en el video.
+//   · Si nadie planilla pero se escogió un partido en el control (c.partido): sale ese partido con lo que se haya sumado.
+//   · Si el árbitro empieza la planilla, pasa a ser automático (primer caso).
+// `real` tiene el formato de MarcadorEnVivoOverlay ({ id, home, away, tournaments, vivo, colores, detalle }) o es null.
+// Devuelve el mismo formato, o null si no hay nada que mostrar.
+export function marcadorTransmision(real, control) {
+  const c = control?.marcador_ctrl || {}
+  const ajuste = id => (id && c.ajusteId === id ? { l: Number(c.ajusteLocal) || 0, v: Number(c.ajusteVis) || 0 } : { l: 0, v: 0 })
+  if (real?.vivo) {
+    const a = ajuste(real.id)
+    if (!a.l && !a.v) return real
+    return { ...real, vivo: { ...real.vivo, golesLocal: Math.max(0, (real.vivo.golesLocal || 0) + a.l), golesVis: Math.max(0, (real.vivo.golesVis || 0) + a.v) } }
+  }
+  const e = c.partido
+  if (!e?.id) return null
+  const a = ajuste(e.id)
+  return {
+    id: e.id, manual: true,
+    home: { name: e.local || 'Local', logo_url: e.logoLocal || null },
+    away: { name: e.visitante || 'Visitante', logo_url: e.logoVis || null },
+    tournaments: { name: e.torneoNombre || '', logo_url: e.torneoLogo || null },
+    vivo: { golesLocal: Math.max(0, a.l), golesVis: Math.max(0, a.v), extra: null, periodo: 1, descanso: false, corriendo: false, tiempoAgotado: false, reloj: 'EN VIVO' },
+    colores: {}, detalle: {},
+  }
+}

@@ -15,10 +15,11 @@ import PatrocinadorEnVivoOverlay from '../../components/PatrocinadorEnVivoOverla
 import PublicidadPatrocinadoresEnVivo from '../../components/PublicidadPatrocinadoresEnVivo'
 import JugadasDescansoEnVivo from '../../components/JugadasDescansoEnVivo'
 import PortadaYouTubeEnVivo from '../../components/PortadaYouTubeEnVivo'
+import AsistenteEnVivo from '../../components/AsistenteEnVivo'
 import { disparoDeControl, disparoEsExclusivo, cargaDisparo, apagarDisparo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../../components/PatrocinadoresTorneoOverlay'
 import EditorLogoPatrocinadorTorneo from '../../components/EditorLogoPatrocinadorTorneo'
-import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream } from '../../lib/liveMatch'
+import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, partidoActivoDeStream, marcadorTransmision } from '../../lib/liveMatch'
 import { tablasConVivo } from '../../lib/torneoTablas'
 import { useTablasBase } from '../../lib/useTablasBase'
 import { fmtHoraDate } from '../../lib/horaHelpers'
@@ -46,6 +47,7 @@ export default function AdminConfigSitioPage() {
   const colaControlRef = useRef(Promise.resolve())
   const idsTorneosRef = useRef(null)
   const [streams, setStreams] = useState([]) // [{id, url, titulo, match_id, activo}] — uno por transmisión
+  const [asistente, setAsistente] = useState(false) // ¿está abierto el asistente de 4 pasos para montar una transmisión?
   const [loading, setLoading] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -480,6 +482,25 @@ export default function AdminConfigSitioPage() {
   const basesTabla = useTablasBase(idsTabla, { intervalo: 15000, conVivo: true })
   const tablas = useMemo(() => tablasConVivo(basesTabla, []), [basesTabla])
 
+  // Crea la transmisión que arma el asistente de 4 pasos (ya con su link de control). SOLO AGREGA: lee lo que hay
+  // guardado y le suma la transmisión nueva al final, sin reescribir ni tocar ninguna de las que ya existen.
+  async function crearDesdeAsistente(datos) {
+    const nueva = { ...streamVacio(esOrganizador ? miId : null), url: datos.url || '', titulo: datos.titulo || '', torneo_auto: datos.torneo_auto || null, cancha_auto: datos.cancha_auto || null, control_token: crypto.randomUUID() }
+    const { data: fila, error: errLeer } = await supabase.from('site_config').select('en_vivo_streams').eq('id', true).maybeSingle()
+    if (errLeer) return { ok: false, error: 'No pudimos guardar la transmisión. Revisa tu internet e inténtalo de nuevo.' }
+    const enDb = Array.isArray(fila?.en_vivo_streams) ? fila.en_vivo_streams : []
+    const registro = {
+      id: nueva.id, owner_id: nueva.owner_id, url: (nueva.url || '').trim() || null, titulo: (nueva.titulo || '').trim() || null,
+      match_id: null, match_ids: null, torneo_auto: nueva.torneo_auto, cancha_auto: nueva.torneo_auto ? nueva.cancha_auto : null,
+      activo: true, repeticion_transmision: false, control_token: nueva.control_token,
+    }
+    const { error } = await supabase.from('site_config').upsert({ id: true, en_vivo_streams: [...enDb, registro], updated_at: new Date().toISOString() }, { onConflict: 'id' })
+    if (error) return { ok: false, error: 'No pudimos guardar la transmisión: ' + errorAmigable(error, 'error al guardar') }
+    idsCargadosRef.current = new Set([...idsCargadosRef.current, nueva.id])
+    setStreams(prev => [...prev, nueva])
+    return { ok: true, stream: nueva }
+  }
+
   function agregarStream() {
     // Si estás viendo la pestaña de un torneo, la transmisión nueva ya queda siguiendo ese torneo
     const nueva = streamVacio(esOrganizador ? miId : null)
@@ -542,17 +563,15 @@ export default function AdminConfigSitioPage() {
     const patrocinador = patrocinadorDeDisparo(patrocinadoresDeControl(c), disparo)
     // Los tableros grandes de abajo (goles) esconden el marcador de arriba para que la mirada se quede en ellos
     const tapaMarcador = overlayTapaMarcador(c?.overlay) && !!partidoSeleccionado && !(patrocinador && disparoEsExclusivo(disparo, !!vivo?.descanso))
+    // Planilla del árbitro (automático) + goles sumados desde el control, solo en el video
+    const marcador = marcadorTransmision(partidoSeleccionado && vivo ? {
+      id: partidoSeleccionado.id, home: partidoSeleccionado.home, away: partidoSeleccionado.away,
+      tournaments: partidoSeleccionado.tournaments, vivo,
+      colores: derivarColoresUniforme(partidoSeleccionado), detalle: derivarFaltasYTarjetas(partidoSeleccionado),
+    } : null, c)
     return (
       <>
-        {partidoSeleccionado && vivo && !tapaMarcador && (
-          <MarcadorEnVivoOverlay partido={{
-            home: partidoSeleccionado.home, away: partidoSeleccionado.away,
-            tournaments: partidoSeleccionado.tournaments,
-            vivo,
-            colores: derivarColoresUniforme(partidoSeleccionado),
-            detalle: derivarFaltasYTarjetas(partidoSeleccionado),
-          }}/>
-        )}
+        {marcador && !tapaMarcador && <MarcadorEnVivoOverlay partido={marcador}/>}
         {/* La publicidad de un patrocinador tapa, mientras dura, cualquier
             otra gráfica de abajo (tabla/goles/jugadores) — son mutuamente
             excluyentes en este mismo espacio para no amontonar texto. */}
@@ -586,6 +605,22 @@ export default function AdminConfigSitioPage() {
     <div style={{ maxWidth:'640px' }}>
       <h1 style={{ fontSize:'1.25rem', fontWeight:'600', color:'#202124', margin:'0 0 4px' }}>En vivo</h1>
       <p style={{ color:'#5f6368', margin:'0 0 24px', fontSize:'.875rem' }}>Lo que pongas acá se muestra en la página de inicio pública (golmebol.com).</p>
+
+      {asistente ? (
+        <AsistenteEnVivo torneos={torneos} canchasPorTorneo={canchasPorTorneo} cargarCanchas={cargarCanchas}
+          onCrear={crearDesdeAsistente} onCerrar={() => setAsistente(false)}/>
+      ) : (
+        <div style={{ background:'#e8f0fe', border:'1px solid #c6dafc', borderRadius:'14px', padding:'16px', marginBottom:'20px', display:'flex', flexDirection:'column', gap:'10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'8px', fontWeight:'800', color:'#174ea6', fontSize:'1rem' }}><Radio size={18} color={S.red}/> {streams.length === 0 ? 'Monta tu primera transmisión' : 'Montar otra transmisión'}</div>
+          <div style={{ fontSize:'.86rem', color:'#3c4043', lineHeight:1.5 }}>Te llevo paso a paso en 4 pasos: desde tu celular (Prism) o tu computador (OBS), con el marcador automático del árbitro.</div>
+          <button type="button" onClick={() => setAsistente(true)}
+            style={{ minHeight:'48px', borderRadius:'10px', border:'none', background:'#1a73e8', color:'#fff', fontSize:'.95rem', fontWeight:'700', cursor:'pointer' }}>
+            Empezar paso a paso
+          </button>
+        </div>
+      )}
+
+      <div style={asistente ? { display:'none' } : undefined}>
 
       {streams.length >= 2 && pestanas.length >= 1 && (
         <div role="tablist" aria-label="Transmisiones por torneo"
@@ -622,6 +657,7 @@ export default function AdminConfigSitioPage() {
           <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
             {streamsPreviewVista.map(s => {
               const partidoSeleccionado = partidoActivoDeStream(s, partidos)
+              const vivoReal = partidoSeleccionado ? derivarEnVivo(partidoSeleccionado) : null
               const c = control[s.id] || {}
               const torneoIdActual = partidoSeleccionado?.tournament_id || s.torneo_auto || null
               const tieneTorneo = !!torneoIdActual
@@ -701,6 +737,13 @@ export default function AdminConfigSitioPage() {
                     patrocinadores={patrocinadoresStream} activoPatrocinador={patrocinadorMostrando[s.id] || null}
                     repeticionEnTransmision={!!s.repeticion_transmision}
                     onRepeticion={lenta => dispararRepeticion(s, lenta)}
+                    marcadorCtrl={c.marcador_ctrl || null}
+                    partidoReal={partidoSeleccionado && vivoReal ? { id: partidoSeleccionado.id, local: partidoSeleccionado.home?.name, visitante: partidoSeleccionado.away?.name, golesLocal: vivoReal.golesLocal || 0, golesVis: vivoReal.golesVis || 0 } : null}
+                    partidosProgramados={partidos.filter(p => !p.enVivo && (s.torneo_auto
+                      ? p.tournament_id === s.torneo_auto && (!s.cancha_auto || String(p.cancha_id) === String(s.cancha_auto)) && (!p.played_at || new Date(p.played_at).getTime() >= Date.now() - 12 * 3600000)
+                      : (idsPartidosDeStream(s).length ? idsPartidosDeStream(s).includes(p.id) : true)))
+                      .sort((a, b) => new Date(a.played_at || 0) - new Date(b.played_at || 0)).slice(0, 20)}
+                    onMarcadorCtrl={mc => actualizarControl(s.id, { marcador_ctrl: mc })}
                     onOverlay={o => cambiarOverlay(s.id, o, o === 'tabla' ? torneoIdActual : null)}
                     onPagina={pag => actualizarControl(s.id, { tabla_pagina: pag })}
                     onMostrarPatrocinador={(pid, tipo, tamano) => mostrarPatrocinador(s.id, pid, tipo, tamano)}
@@ -1017,6 +1060,7 @@ export default function AdminConfigSitioPage() {
           apretar Repetición ese de acá no se movía, y daba la sensación de
           que no estaba funcionando. Un solo reproductor por transmisión, no
           dos. */}
+      </div>
     </div>
   )
 }

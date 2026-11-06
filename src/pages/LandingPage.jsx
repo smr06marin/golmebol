@@ -6,7 +6,7 @@ import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
 import { digitosWhatsapp } from '../lib/telefonoCo'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream, marcadorTransmision } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import { usePresenciaSitio } from '../lib/presenciaSitio'
 import { useIntervaloVisible } from '../lib/useIntervaloVisible'
@@ -1025,6 +1025,7 @@ export default function LandingPage({ modo = 'inicio' }) {
             {streamsVivos.map(s => {
               const partidoDeStream = partidoActivoDeStream(s, partidosVivo)
               const controlStream = siteConfig?.en_vivo_control?.[s.id]
+              const marcadorStream = marcadorTransmision(partidoDeStream, controlStream) // planilla del árbitro (automático) + goles sumados desde el control, solo en el video
               const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
               const sponsorMostrando = patrocinadorDeDisparo(patrocinadoresDeControl(controlStream), patrocinadorIdMostrando)
               const descansoStream = !!partidoDeStream?.vivo?.descanso
@@ -1037,7 +1038,7 @@ export default function LandingPage({ modo = 'inicio' }) {
                   <LiveEmbed url={s.url} titulo={s.titulo} S={S} onVerificado={() => setStreamsOk(o => (o[s.id] === s.url ? o : { ...o, [s.id]: s.url }))} onNoDisponible={() => setStreamsCaidos(c => (c[s.id] === s.url ? c : { ...c, [s.id]: s.url }))} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
                     overlay={(
                       <>
-                        {partidoDeStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={partidoDeStream}/>}
+                        {marcadorStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={marcadorStream}/>}
                         {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} {...propsAvisoGol(controlStream?.overlay, tapaMarcador)}/>}
                         {sponsorMostrando && <PatrocinadorEnVivoOverlay key={patrocinadorIdMostrando.clave} patrocinador={sponsorMostrando} tipo={patrocinadorIdMostrando.tipo} tamano={patrocinadorIdMostrando.tamano} descanso={descansoStream} onSonido={v => setVozPatrocinador(m => (!!m[s.id] === v ? m : { ...m, [s.id]: v }))} onTerminar={() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null }))}/>}
                         {!(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream)) && (

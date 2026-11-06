@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, duracionPeriodo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, duracionPeriodo, derivarColoresUniforme, derivarFaltasYTarjetas, buscarPartidoHermano, marcadorGlobal, partidoActivoDeStream, marcadorTransmision } from '../lib/liveMatch'
 import { tablasConVivo, gruposConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
 import { useLogosTorneos } from '../lib/useLogosTorneos'
@@ -456,6 +456,7 @@ export default function OverlayEnVivoPage() {
     setRepeticionDisparo(actual => { if (actual) anotar('clic ignorado: ya hay una repetición en curso'); return actual || { key: repeticionTs, camaraLenta: !!control?.repeticion_camara_lenta, imagenUrl } })
   }, [repeticionActiva, siteConfig, repeticionTs, streamEsYouTube]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const marcador = marcadorTransmision(partido, control) // planilla del árbitro (automático) + goles sumados desde el control, solo en el video
   const sponsor = patrocinadorDeDisparo(patrocinadoresDeControl(control), patrocinadorMostrando)
   // Con el tablero grande de abajo (goles / descanso / final) se esconde el marcador de arriba, para que la mirada se quede en el minuto a minuto
   const tapaMarcador = overlayTapaMarcador(overlayActivo) && (overlayActivo !== 'final' || !!partidoFinal) && !(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto))
@@ -473,8 +474,8 @@ export default function OverlayEnVivoPage() {
         background: modoPrueba ? 'linear-gradient(135deg,#1f6b2c,#2f8f3f 50%,#1f6b2c)' : 'transparent',
       }}>
         <div style={{ position: 'absolute', left: 0, top: 0, width: ANCHO_ESCENARIO, height: altoEscenario, transform: `scale(${escala})`, transformOrigin: 'top left' }}>
-          {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)} conMarcador={!!partido?.vivo && !tapaMarcador} anchoEscenario={ANCHO_ESCENARIO}/>}
-          {partido && <MarcadorEnVivoOverlay partido={partido} entrada oculto={tapaMarcador}/>}
+          {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)} conMarcador={!!marcador?.vivo && !tapaMarcador} anchoEscenario={ANCHO_ESCENARIO}/>}
+          {marcador && <MarcadorEnVivoOverlay partido={marcador} entrada oculto={tapaMarcador}/>}
           {partido && <GolAvisoEnVivoOverlay partido={partido} {...propsAvisoGol(overlayActivo, tapaMarcador)}/>}
           {sponsor && <PatrocinadorEnVivoOverlay key={patrocinadorMostrando.clave} patrocinador={sponsor} tipo={patrocinadorMostrando.tipo} tamano={patrocinadorMostrando.tamano} descanso={descansoAuto} onTerminar={() => setPatrocinadorMostrando(null)}/>}
           {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto)) && (

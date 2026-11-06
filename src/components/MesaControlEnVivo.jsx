@@ -19,6 +19,10 @@ import { ID_TODOS_BANNERS, todosLosBanners } from '../lib/patrocinadorDisparo'
 //   tablaTotal         cantidad de equipos de la tabla que se muestra (para las partes)
 //   patrocinadores     lista de la transmisión · activoPatrocinador: { id, tipo } o null
 //   repeticionEnTransmision  true si la repetición sale dentro del video (cambia el texto de ayuda)
+//   marcadorCtrl      control.marcador_ctrl: { partido, ajusteId, ajusteLocal, ajusteVis } — partido escogido acá + goles sumados SOLO para el video
+//   partidosProgramados  partidos programados del torneo para escoger cuál se transmite (cuando el árbitro no usa la planilla)
+//   partidoReal       partido que el árbitro está planillando ahora: { id, local, visitante, golesLocal, golesVis } o null
+//   onMarcadorCtrl(objeto)  guarda marcador_ctrl completo
 //   onRepeticion(false) · onOverlay(overlay | null) · onPagina(pag|null)
 //   onMostrarPatrocinador(id, tipo, tamano) · onApagarPatrocinador()
 
@@ -61,6 +65,7 @@ export default function MesaControlEnVivo({
   control = {}, tieneTorneo = false, puedeGraficaPartido = false, tablaTotal = 0,
   patrocinadores = [], activoPatrocinador = null, repeticionEnTransmision = false,
   onRepeticion, onOverlay, onPagina, onMostrarPatrocinador, onApagarPatrocinador,
+  marcadorCtrl = null, partidosProgramados = [], partidoReal = null, onMarcadorCtrl,
 }) {
   const [tamano, setTamano] = useState('auto')
   const [enviada, setEnviada] = useState(false) // el botón queda en "Enviada" unos segundos
@@ -72,6 +77,43 @@ export default function MesaControlEnVivo({
     onRepeticion?.(false)
     setEnviada(true)
     timerEnvio.current = setTimeout(() => setEnviada(false), 4000)
+  }
+
+  // Marcador de la transmisión. Con el árbitro planillando sale AUTOMÁTICO (el real). Los botones de gol suman o restan ENCIMA de
+  // lo que haya, solo en el video: nada se guarda en el partido, la planilla, los goleadores ni la tabla.
+  const mc = marcadorCtrl || {}
+  const elegido = mc.partido?.id ? mc.partido : null
+  const activoId = partidoReal?.id || elegido?.id || null
+  const base = partidoReal ? { l: partidoReal.golesLocal || 0, v: partidoReal.golesVis || 0 } : { l: 0, v: 0 }
+  const ajL = activoId && mc.ajusteId === activoId ? (Number(mc.ajusteLocal) || 0) : 0
+  const ajV = activoId && mc.ajusteId === activoId ? (Number(mc.ajusteVis) || 0) : 0
+  const golL = Math.max(0, base.l + ajL)
+  const golV = Math.max(0, base.v + ajV)
+  const nombreL = partidoReal?.local || elegido?.local || 'Local'
+  const nombreV = partidoReal?.visitante || elegido?.visitante || 'Visitante'
+  const guardarMC = cambios => onMarcadorCtrl?.({ ...mc, ...cambios })
+  // pone el marcador que se ve en `lado` en `nuevo` (guardando solo la diferencia con el real)
+  function fijarGoles(lado, nuevo) {
+    if (!activoId) return
+    const n = Math.max(0, nuevo)
+    guardarMC(lado === 'l'
+      ? { ajusteId: activoId, ajusteLocal: n - base.l, ajusteVis: ajV }
+      : { ajusteId: activoId, ajusteLocal: ajL, ajusteVis: n - base.v })
+  }
+  function elegirPartido(id) {
+    if (!id) { onMarcadorCtrl?.({ ...mc, partido: null, ajusteId: null, ajusteLocal: 0, ajusteVis: 0 }); return }
+    const p = partidosProgramados.find(x => x.id === id)
+    if (!p) return
+    onMarcadorCtrl?.({
+      ...mc, ajusteId: null, ajusteLocal: 0, ajusteVis: 0,
+      partido: { id: p.id, local: p.home?.name || 'Local', visitante: p.away?.name || 'Visitante', logoLocal: p.home?.logo_url || null, logoVis: p.away?.logo_url || null, torneoNombre: p.tournaments?.name || '', torneoLogo: p.tournaments?.logo_url || null },
+    })
+  }
+  const hayAjuste = ajL !== 0 || ajV !== 0
+  const etiquetaPartido = p => {
+    const dt = p.played_at ? new Date(p.played_at) : null
+    const cuando = dt && !Number.isNaN(dt.getTime()) ? ` · ${dt.toLocaleString('es-CO', { weekday: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''
+    return `${p.home?.name || '?'} vs ${p.away?.name || '?'}${cuando}`
   }
 
   const overlay = control.overlay || null
@@ -86,6 +128,8 @@ export default function MesaControlEnVivo({
   // Chips "EN PANTALLA"
   const NOMBRES_GRAFICA = { tabla: 'Tabla', goles: 'Goles', jugadores: 'Jugadores' }
   const chips = []
+  if (!partidoReal && elegido) chips.push({ clave: 'partido', texto: `${elegido.local} vs ${elegido.visitante}`, quitar: () => elegirPartido('') })
+  if (hayAjuste) chips.push({ clave: 'ajuste', texto: `Goles ajustados ${golL}-${golV}`, quitar: () => guardarMC({ ajusteId: null, ajusteLocal: 0, ajusteVis: 0 }) })
   if (overlay && NOMBRES_GRAFICA[overlay]) {
     const extra = overlay === 'tabla' && partes ? ` · ${pagina ? `parte ${pagina}/${partes}` : 'automática'}` : ''
     chips.push({ clave: 'overlay', texto: `${NOMBRES_GRAFICA[overlay]}${extra}`, quitar: () => onOverlay?.(null) })
@@ -107,6 +151,61 @@ export default function MesaControlEnVivo({
         {chips.map(c => (
           <span key={c.clave} className="mc-chip">{c.texto}<button type="button" onClick={c.quitar} aria-label={`Quitar ${c.texto}`}><X/></button></span>
         ))}
+      </div>
+
+      <div className="mc-bank">
+        <div className="mc-h">
+          <span className="mc-lbl">Marcador de la transmisión</span>
+          <span className="mc-lbl" style={{ letterSpacing: '.04em', textTransform: 'none', fontWeight: 600, fontSize: '.78rem' }}>los goles de acá solo se ven en el video</span>
+        </div>
+        {partidoReal ? (
+          <div style={{ background: '#1d1d1f', border: '1px solid #36363c', borderRadius: '12px', padding: '10px 12px', fontSize: '.95rem', fontWeight: 600 }}>
+            <span style={{ color: 'var(--g)' }}>AUTOMÁTICO · el árbitro está planillando</span><br/>
+            {partidoReal.local} {partidoReal.golesLocal} - {partidoReal.golesVis} {partidoReal.visitante}
+            <div style={{ fontSize: '.8rem', color: '#8b8f96', fontWeight: 500, marginTop: '4px' }}>El marcador sale solo. Si necesitas corregirlo en el video, usa los botones de abajo.</div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: '.85rem', color: '#8b8f96', fontWeight: 500, marginBottom: '6px' }}>
+              {partidosProgramados.length > 0
+                ? 'El árbitro todavía no empezó la planilla. Escoge qué partido vas a transmitir; si el árbitro lo empieza, el marcador real sale solo.'
+                : 'No hay partidos programados para mostrar. Cuando el árbitro empiece la planilla, el marcador saldrá solo.'}
+            </div>
+            {(partidosProgramados.length > 0 || elegido) && (
+              <select aria-label="Escoger partido a transmitir" value={elegido?.id || ''} onChange={e => elegirPartido(e.target.value)}
+                style={{ width: '100%', minHeight: '48px', borderRadius: '10px', border: '1px solid #36363c', background: '#1d1d1f', color: '#fff', padding: '0 10px', fontSize: '.95rem' }}>
+                <option value="">Escoger partido…</option>
+                {elegido && !partidosProgramados.some(p => p.id === elegido.id) && <option value={elegido.id}>{elegido.local} vs {elegido.visitante}</option>}
+                {partidosProgramados.map(p => <option key={p.id} value={p.id}>{etiquetaPartido(p)}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+        {activoId && (
+          <div style={{ marginTop: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {[['l', nombreL, golL], ['v', nombreV, golV]].map(([lado, nombre, goles]) => (
+                <div key={lado} style={{ background: '#1d1d1f', border: '1px solid #36363c', borderRadius: '12px', padding: '8px' }}>
+                  <div style={{ textAlign: 'center', fontWeight: 700, fontSize: '.95rem', padding: '2px 2px 6px', borderBottom: '1px solid #36363c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</div>
+                  <div style={{ textAlign: 'center', fontSize: '2.6rem', fontWeight: 800, lineHeight: 1.1, margin: '6px 0' }}>{goles}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '6px' }}>
+                    <button type="button" onClick={() => fijarGoles(lado, goles - 1)} disabled={goles <= 0} aria-label={`Quitar un gol a ${nombre}`}
+                      style={{ minHeight: '56px', borderRadius: '10px', border: '1px solid #36363c', background: '#26262a', color: '#fff', fontSize: '1.6rem', fontWeight: 800, cursor: goles <= 0 ? 'not-allowed' : 'pointer', opacity: goles <= 0 ? .4 : 1 }}>−</button>
+                    <button type="button" onClick={() => fijarGoles(lado, goles + 1)} aria-label={`Sumar un gol a ${nombre}`}
+                      style={{ minHeight: '56px', borderRadius: '10px', border: 'none', background: 'linear-gradient(180deg,#7ad84a,#4fae24)', color: '#08150a', fontSize: '1.2rem', fontWeight: 800, cursor: 'pointer' }}>+ GOL</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {hayAjuste && (
+              <button type="button" className="mc-pill" style={{ marginTop: '10px' }}
+                onClick={() => guardarMC({ ajusteId: null, ajusteLocal: 0, ajusteVis: 0 })}>
+                {partidoReal ? 'Quitar mis ajustes (volver al marcador real)' : 'Reiniciar a 0 - 0'}
+              </button>
+            )}
+            <div style={{ fontSize: '.8rem', color: '#6b6f76', marginTop: '8px', fontWeight: 500 }}>Estos goles solo aparecen en el marcador del video. No se guarda nada en el torneo: ni resultado, ni planilla, ni goleadores, ni tabla.</div>
+          </div>
+        )}
       </div>
 
       <div className="mc-bank">

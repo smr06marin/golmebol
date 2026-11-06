@@ -3,8 +3,9 @@
 // control") y queda guardado en ese stream dentro de site_config.en_vivo_streams
 // (campo control_token). Cualquiera con el link puede operar ESA transmisión
 // puntual: disparar repeticiones (con ajuste de cuánto rebobina), cámara
-// lenta, prender/apagar las gráficas de tabla/goles/jugadores, y mostrar
-// publicidad de un patrocinador — exactamente las mismas acciones que ya
+// lenta, prender/apagar las gráficas de tabla/goles/jugadores, mostrar
+// publicidad de un patrocinador, y sumar goles a un MARCADOR MANUAL que solo
+// se ve en el video (no toca el torneo) — exactamente las mismas acciones que ya
 // existen en el panel de /admin/config-sitio, reutilizando los mismos
 // componentes de gráfica.
 //
@@ -25,7 +26,7 @@ import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
 import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
 import { disparoDeControl, disparoEsExclusivo, cargaDisparo, apagarDisparo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
 import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
-import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo } from '../lib/liveMatch'
+import { derivarEnVivo, derivarColoresUniforme, derivarFaltasYTarjetas, idsPartidosDeStream, elegirPartidoActivo, partidoAutoDeTorneo, marcadorTransmision } from '../lib/liveMatch'
 import { tablasConVivo } from '../lib/torneoTablas'
 import { useTablasBase } from '../lib/useTablasBase'
 import { useLogosTorneos } from '../lib/useLogosTorneos'
@@ -44,6 +45,8 @@ export default function EnVivoControlLinkPage() {
   // Repetición/Cámara lenta, en qué segundo de la transmisión quedó después
   // de que quien opera se devolvió a mano con la barra nativa de YouTube.
   const liveEmbedRef = useRef(null)
+  // Partidos programados del torneo, para escoger desde acá cuál se transmite
+  const [partidosProgramados, setPartidosProgramados] = useState([])
 
   const stream = useMemo(() => (
     Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams.find(s => s.control_token && s.control_token === token) : null
@@ -108,6 +111,24 @@ export default function EnVivoControlLinkPage() {
     const t = setInterval(fetchPartidosStream, 4000)
     return () => clearInterval(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- streamIds es un arreglo nuevo en cada render (viene de stream, que se recalcula con cada refresco de siteConfig); el intervalo solo debe reiniciarse cuando cambian los ids (o el torneo/cancha que sigue) en sí, por eso la dependencia real es streamIdsKey
+  }, [streamIdsKey])
+  // Partidos programados que se pueden escoger para la transmisión (nombres y escudos). No escribe nada: únicamente lee.
+  async function cargarPartidosProgramados() {
+    if (!torneoAuto && streamIds.length === 0) { setPartidosProgramados([]); return }
+    const cols = 'id, tournament_id, cancha_id, played_at, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name, logo_url)'
+    const q = supabase.from('matches').select(cols).neq('status', 'finished')
+    const { data } = await (torneoAuto ? q.eq('tournament_id', torneoAuto) : q.in('id', streamIds)).order('played_at', { ascending: true }).limit(40)
+    const ahora = Date.now()
+    setPartidosProgramados((data || []).filter(m => !torneoAuto || (
+      (!canchaAuto || String(m.cancha_id) === String(canchaAuto))
+      && (!m.played_at || new Date(m.played_at).getTime() >= ahora - 12 * 3600000)
+    )).slice(0, 20))
+  }
+  useEffect(() => {
+    const t0 = setTimeout(cargarPartidosProgramados, 0)
+    const t = setInterval(cargarPartidosProgramados, 60000)
+    return () => { clearTimeout(t0); clearInterval(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mismo criterio que el refresco de arriba: solo cambia con la transmisión
   }, [streamIdsKey])
   const partido = torneoAuto ? partidoAutoDeTorneo(stream, partidosStream) : elegirPartidoActivo(partidosStream)
   // Torneo conocido aunque todavía no haya partido en vivo (transmisión que sigue un torneo)
@@ -193,6 +214,8 @@ export default function EnVivoControlLinkPage() {
     )
   }
 
+  // Planilla del árbitro (automático) + goles sumados desde acá, solo en el video
+  const marcador = marcadorTransmision(partido && vivo ? { id: partido.id, home: partido.home, away: partido.away, tournaments: partido.tournaments, vivo, colores: derivarColoresUniforme(partido), detalle: derivarFaltasYTarjetas(partido) } : null, control)
   const sponsor = patrocinadorDeDisparo(patrocinadoresBtn, patrocinadorMostrando)
   // El tablero de goles (abajo) esconde el marcador de arriba para que la mirada se quede en él
   const tapaMarcador = overlayTapaMarcador(control.overlay) && !(sponsor && disparoEsExclusivo(patrocinadorMostrando, !!vivo?.descanso))
@@ -213,12 +236,7 @@ export default function EnVivoControlLinkPage() {
         {urlVideo && <LiveEmbed ref={liveEmbedRef} url={urlVideo} titulo={stream.titulo} S={S} logoTorneo={logoTorneoActual}
           overlay={(
             <>
-              {partido && vivo && !tapaMarcador && (
-                <MarcadorEnVivoOverlay partido={{
-                  home: partido.home, away: partido.away, tournaments: partido.tournaments, vivo,
-                  colores: derivarColoresUniforme(partido), detalle: derivarFaltasYTarjetas(partido),
-                }}/>
-              )}
+              {marcador && !tapaMarcador && <MarcadorEnVivoOverlay partido={marcador}/>}
               {sponsor && <PatrocinadorEnVivoOverlay key={patrocinadorMostrando.clave} patrocinador={sponsor} tipo={patrocinadorMostrando.tipo} tamano={patrocinadorMostrando.tamano} descanso={!!vivo?.descanso} silencio onTerminar={() => setPatrocinadorMostrando(null)}/>}
               {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, !!vivo?.descanso)) && (
                 <>
@@ -247,6 +265,10 @@ export default function EnVivoControlLinkPage() {
             patrocinadores={patrocinadoresBtn} activoPatrocinador={patrocinadorMostrando}
             repeticionEnTransmision={!!stream.repeticion_transmision}
             onRepeticion={dispararRepeticion}
+            marcadorCtrl={control.marcador_ctrl || null}
+            partidoReal={partido && vivo ? { id: partido.id, local: partido.home?.name, visitante: partido.away?.name, golesLocal: vivo.golesLocal || 0, golesVis: vivo.golesVis || 0 } : null}
+            partidosProgramados={partidosProgramados}
+            onMarcadorCtrl={mc => actualizarControl({ marcador_ctrl: mc })}
             onOverlay={o => cambiarOverlay(o, o === 'tabla' ? torneoIdActual : null)}
             onPagina={pag => actualizarControl({ tabla_pagina: pag })}
             onMostrarPatrocinador={mostrarPatrocinador} onApagarPatrocinador={apagarPatrocinador}/>
