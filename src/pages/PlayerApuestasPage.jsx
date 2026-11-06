@@ -729,30 +729,15 @@ export default function PlayerApuestasPage() {
     const tope = disponible * 0.25
     if (monto > tope) { setMsgPostura({ tipo:'error', texto:`Máximo ${Math.floor(tope)} pts (25% de tu saldo disponible en modo ${modo}: ${Math.round(disponible)})` }); return }
     setGuardandoPostura(true)
-    const equipoRival = modalPostura.equipo === 'local' ? 'visitante' : 'local'
-
-    const { data: rivales } = await supabase.from('predix_posturas')
-      .select('*').eq('match_id', modalPostura.partido.id).eq('equipo', equipoRival).eq('estado', 'abierta').eq('modo', modo)
-      .order('created_at', { ascending: true })
-
-    const { data: nueva, error } = await supabase.from('predix_posturas')
-      .insert({ match_id: modalPostura.partido.id, tournament_id: modalPostura.partido.tournament_id, player_id: player.id, user_id: player.user_id, nombre: player.name, equipo: modalPostura.equipo, monto, monto_emparejado: 0, estado: 'abierta', modo })
-      .select().single()
-    if (error || !nueva) { setMsgPostura({ tipo:'error', texto:'No se pudo registrar la apuesta' }); setGuardandoPostura(false); return }
-
-    let restante = monto
-    for (const riv of (rivales || [])) {
-      if (restante <= 0) break
-      const capacidad = riv.monto - riv.monto_emparejado
-      if (capacidad <= 0) continue
-      const cruce = Math.min(restante, capacidad)
-      await supabase.from('predix_posturas_cruces').insert({ match_id: modalPostura.partido.id, postura_a_id: nueva.id, postura_b_id: riv.id, monto: cruce })
-      const nuevoEmp = riv.monto_emparejado + cruce
-      await supabase.from('predix_posturas').update({ monto_emparejado: nuevoEmp, estado: nuevoEmp >= riv.monto ? 'cerrada' : 'abierta' }).eq('id', riv.id)
-      restante -= cruce
-    }
-    const empPropio = monto - restante
-    await supabase.from('predix_posturas').update({ monto_emparejado: empPropio, estado: empPropio >= monto ? 'cerrada' : 'abierta' }).eq('id', nueva.id)
+    // El servidor crea la postura y la cruza con las posturas contrarias
+    // abiertas (ver predix_crear_postura en migracion_seguridad_paso8b2a.sql).
+    // El celular ya no modifica posturas de otros jugadores.
+    const { error } = await supabase.rpc('predix_crear_postura', {
+      p_match_id: modalPostura.partido.id,
+      p_equipo: modalPostura.equipo,
+      p_monto: monto,
+    })
+    if (error) { setMsgPostura({ tipo:'error', texto:'No se pudo registrar la apuesta' }); setGuardandoPostura(false); return }
 
     setGuardandoPostura(false)
     setModalPostura(null)
