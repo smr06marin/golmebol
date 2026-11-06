@@ -56,7 +56,8 @@ export default function ReservarEscenarioPage() {
     await asegurarReservasFijas(escenarioId)
     const [{ data: cs }, { data: rsvs }] = await Promise.all([
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
-      supabase.from('escenario_reservas').select('cancha, fecha, hora, duracion, estado, nombre, equipo').eq('escenario_id', escenarioId),
+      // La página pública no lee la tabla (tiene teléfonos): pide solo la ocupación a una función del servidor
+      supabase.rpc('escenario_ocupacion', { p_escenario_id: escenarioId }),
     ])
     setCanchas(cs || [])
     setReservas(rsvs || [])
@@ -96,9 +97,9 @@ export default function ReservarEscenarioPage() {
     // sola vez al entrar a la página, así que si la persona se demoró
     // llenando el formulario, alguien más pudo haber tomado ese mismo
     // horario mientras tanto.
-    const { data: actuales, error: errCheck } = await supabase.from('escenario_reservas')
-      .select('hora, duracion, estado')
-      .eq('escenario_id', escenario.id).eq('cancha', cancha).eq('fecha', fecha)
+    const { data: actuales, error: errCheck } = await supabase.rpc('escenario_ocupacion', {
+      p_escenario_id: escenario.id, p_cancha: cancha, p_fecha: fecha,
+    })
     if (errCheck) { setEstadoEnvio('timeout'); return }
     const chocaConOtra = (actuales || []).some(r =>
       (r.estado === 'aceptada' || r.estado === 'pendiente' || r.estado === 'mantenimiento') &&
