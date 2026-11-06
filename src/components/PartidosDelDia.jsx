@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, Star, MapPin } from 'lucide-react'
+import { ChevronRight, ChevronDown, Star, MapPin } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useFavoritos } from '../lib/favoritos'
@@ -12,7 +12,8 @@ import SeguirEquipos from './SeguirEquipos'
 // Lista de partidos del día de TODOS los torneos, agrupada por torneo, como
 // FotMob / Sofascore: es lo primero que alguien quiere ver al entrar ("¿a qué
 // hora juega mi equipo?"). Se puede cambiar de día con las flechas, filtrar
-// por estado y seguir equipos con la estrella (favoritos en el navegador).
+// por estado y seguir equipos (favoritos en el navegador: buscador en «Mis equipos» o estrella).
+// Arriba: título con la fecha, tira de días deslizable (HOY resaltado) y un selector simple Todos / En vivo / Mis equipos.
 //
 // partidosVivo: los partidos en juego que ya calcula la landing (con marcador
 // y reloj en vivo). Aquí solo se leen para pintar el marcador al instante.
@@ -32,13 +33,13 @@ function inicioDia(offset) {
   return d
 }
 
-function etiquetaDia(offset) {
-  if (offset === 0) return 'Hoy'
-  if (offset === -1) return 'Ayer'
-  if (offset === 1) return 'Mañana'
-  const t = inicioDia(offset).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' })
+function fechaLarga(offset) {
+  const t = inicioDia(offset).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
+const tituloDia = offset => (offset === 0 ? 'Partidos de hoy' : offset === 1 ? 'Partidos de mañana' : offset === -1 ? 'Partidos de ayer' : 'Partidos del día')
+// Días que se muestran en la tira: una semana atrás y dos adelante
+const DIAS_TIRA = Array.from({ length: 22 }, (_, i) => i - 7)
 
 function EscudoMini({ logo_url, name, size = 24 }) {
   const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
@@ -61,6 +62,14 @@ const ESTILO = `
 .gm-pd-local { justify-content: flex-end; text-align: right; }
 .gm-pd-nombre { font-size: .78rem; font-weight: 700; line-height: 1.15; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; min-width: 0; }
 .gm-pd-chips::-webkit-scrollbar { display: none }
+.gm-pd-tira { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.gm-pd-tira::-webkit-scrollbar { display: none }
+.gm-pd-dia { flex: 0 0 auto; width: 52px; min-height: 64px; border-radius: 14px; border: 1px solid #2a2a2a; background: #161616; color: #8a8a8a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; font-family: inherit; padding: 6px 0; -webkit-tap-highlight-color: transparent; }
+.gm-pd-dia .sem { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.gm-pd-dia .num { font-size: 1.25rem; font-weight: 900; line-height: 1.1; color: #fff; }
+.gm-pd-dia .sub { font-size: .55rem; font-weight: 900; letter-spacing: .06em; min-height: 11px; }
+.gm-pd-dia[aria-current="date"] { background: #6fcf3d; border-color: #6fcf3d; color: #0a1a05; }
+.gm-pd-dia[aria-current="date"] .num { color: #0a1a05; }
 .gm-pd-cab { display: flex; align-items: center; gap: 11px; width: 100%; box-sizing: border-box; padding: 13px 14px; background: transparent; border: none; color: #fff; cursor: pointer; text-align: left; font-family: inherit; -webkit-tap-highlight-color: transparent; }
 .gm-pd-cab:hover { background: #1b1b1b; }
 .gm-pd-tit { font-weight: 800; font-size: .86rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word; }
@@ -245,42 +254,76 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
     navigate('/t/' + m.tournament_id)
   }
 
-  const chips = [
-    ['todos', 'Todos'],
-    ['vivo', 'En vivo'],
-    ['proximos', 'Próximos'],
-    ['finales', 'Finalizados'],
-    ['favoritos', favoritos.length === 0 ? '★ Sigue tu equipo' : '★ Mis equipos'],
-  ].filter(([k]) => k === 'todos' || k === 'favoritos' || conteo[k] > 0)
+  const tiraRef = useRef(null)
+  useEffect(() => {
+    const c = tiraRef.current
+    const b = c?.querySelector('[aria-current="date"]')
+    if (c && b) c.scrollTo({ left: b.offsetLeft - c.clientWidth / 2 + b.clientWidth / 2, behavior: 'smooth' })
+  }, [offset])
+
+  const segmentos = [
+    ['todos', 'Todos', conteo.todos],
+    ...(conteo.vivo > 0 ? [['vivo', 'En vivo', conteo.vivo]] : []),
+    ['favoritos', favoritos.length === 0 ? '★ Sigue tu equipo' : '★ Mis equipos', favoritos.length === 0 ? null : conteo.favoritos],
+  ]
+  const verEstados = ['todos', 'proximos', 'finales'].includes(filtro) && conteo.proximos > 0 && conteo.finales > 0
 
   return (
     <div style={{ maxWidth: 1120, margin: '0 auto', padding: '44px 16px 8px' }}>
       <style>{ESTILO}</style>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
-        <h2 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: nVivos > 0 ? S.red : S.green, display: 'inline-block', animation: nVivos > 0 ? 'gmPdPulso 1.2s ease-in-out infinite' : 'none' }}/>
-          Partidos
+      <div style={{ marginBottom: 12 }}>
+        <h2 style={{ fontSize: '1.2rem', fontWeight: 900, margin: 0, display: 'flex', alignItems: 'center', gap: 8, lineHeight: 1.2 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: nVivos > 0 ? S.red : S.green, display: 'inline-block', animation: nVivos > 0 ? 'gmPdPulso 1.2s ease-in-out infinite' : 'none', flexShrink: 0 }}/>
+          {tituloDia(offset)}
         </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: S.card, border: `1px solid ${S.border}`, borderRadius: 999, padding: 3 }}>
-          <button onClick={() => setOffset(o => Math.max(-30, o - 1))} aria-label="Día anterior" style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'transparent', color: S.text, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><ChevronLeft size={18}/></button>
-          <button onClick={() => setOffset(0)} aria-label="Volver a hoy" style={{ minWidth: 86, border: 'none', background: 'transparent', color: offset === 0 ? S.green : S.text, fontWeight: 800, fontSize: '.8rem', cursor: 'pointer', padding: '0 4px' }}>{etiquetaDia(offset)}</button>
-          <button onClick={() => setOffset(o => Math.min(30, o + 1))} aria-label="Día siguiente" style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'transparent', color: S.text, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><ChevronRight size={18}/></button>
+        <div style={{ color: S.muted, fontSize: '.8rem', fontWeight: 600, marginTop: 3 }}>
+          {fechaLarga(offset)}{cargado || lista.length > 0 ? ` · ${conteo.todos} ${conteo.todos === 1 ? 'partido' : 'partidos'}` : ''}
         </div>
       </div>
 
-      <div className="gm-pd-chips" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12 }}>
-        {chips.map(([k, txt]) => {
-          const activo = filtro === k
-          const rojo = k === 'vivo'
-          const invita = k === 'favoritos' && favoritos.length === 0 && !activo // aún no sigue a nadie: el botón llama la atención
-          const color = activo ? (rojo ? S.red : S.green) : invita ? S.gold : S.muted
+      <div className="gm-pd-tira" ref={tiraRef} role="group" aria-label="Elegir día">
+        {DIAS_TIRA.map(o => {
+          const d = inicioDia(o)
+          const sel = o === offset
           return (
-            <button key={k} onClick={() => setFiltro(k)} style={{ flex: '0 0 auto', padding: '7px 14px', borderRadius: 999, border: `1px solid ${activo || invita ? color : S.border}`, background: activo ? (rojo ? 'rgba(229,67,61,.15)' : 'rgba(111,207,61,.15)') : invita ? 'rgba(245,166,35,.12)' : 'transparent', color, fontSize: '.74rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              {txt} {!(k === 'favoritos' && favoritos.length === 0) && <span style={{ opacity: .75 }}>{conteo[k]}</span>}
+            <button key={o} type="button" className="gm-pd-dia" aria-current={sel ? 'date' : undefined} onClick={() => setOffset(o)}
+              aria-label={`${o === 0 ? 'Hoy, ' : ''}${fechaLarga(o)}`}>
+              <span className="sem">{d.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '')}</span>
+              <span className="num">{d.getDate()}</span>
+              <span className="sub" style={{ color: sel ? '#0a1a05' : S.green }}>{o === 0 ? 'HOY' : ''}</span>
             </button>
           )
         })}
       </div>
+
+      <div role="tablist" aria-label="Qué partidos ver" style={{ display: 'grid', gridTemplateColumns: `repeat(${segmentos.length}, 1fr)`, gap: 4, background: S.card, border: `1px solid ${S.border}`, borderRadius: 14, padding: 4, marginBottom: verEstados ? 8 : 14 }}>
+        {segmentos.map(([k, txt, n]) => {
+          const activo = filtro === k || (k === 'todos' && (filtro === 'proximos' || filtro === 'finales'))
+          const rojo = k === 'vivo'
+          const invita = k === 'favoritos' && favoritos.length === 0 && !activo // aún no sigue a nadie: llama la atención
+          const color = activo ? (rojo ? S.red : S.green) : invita ? S.gold : S.muted
+          return (
+            <button key={k} type="button" role="tab" aria-selected={activo} onClick={() => setFiltro(k)}
+              style={{ minHeight: 42, borderRadius: 10, border: 'none', background: activo ? (rojo ? 'rgba(229,67,61,.16)' : 'rgba(111,207,61,.16)') : invita ? 'rgba(245,166,35,.1)' : 'transparent', color, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', padding: '0 6px', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, WebkitTapHighlightColor: 'transparent' }}>
+              {rojo && <span style={{ width: 6, height: 6, borderRadius: '50%', background: S.red, animation: 'gmPdPulso 1.2s ease-in-out infinite' }}/>}
+              {txt}{n != null && <span style={{ opacity: .75, fontWeight: 700 }}>{n}</span>}
+            </button>
+          )
+        })}
+      </div>
+      {verEstados && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {[['proximos', 'Próximos', conteo.proximos], ['finales', 'Finalizados', conteo.finales]].map(([k, txt, n]) => {
+            const activo = filtro === k
+            return (
+              <button key={k} type="button" aria-pressed={activo} onClick={() => setFiltro(activo ? 'todos' : k)}
+                style={{ minHeight: 36, padding: '0 14px', borderRadius: 999, border: `1px solid ${activo ? S.green : S.border}`, background: activo ? 'rgba(111,207,61,.14)' : 'transparent', color: activo ? S.green : S.muted, fontSize: '.74rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {txt} <span style={{ opacity: .75 }}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {filtro === 'favoritos' && <SeguirEquipos/>}
 
