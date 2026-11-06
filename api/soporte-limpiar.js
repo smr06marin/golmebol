@@ -36,6 +36,16 @@ export default async function handler(req, res) {
       mensajes += viejos.length
     }
 
+    // 1b) Chats públicos que se quedaron sin mensajes (visitantes que no volvieron): se borran con sus datos
+    const { data: publicos } = await admin.from('soporte_chats').select('id').eq('origen', 'publico').lt('created_at', limite.toISOString()).limit(500)
+    if (publicos?.length) {
+      const ids = publicos.map(c => c.id)
+      const { data: conMensajes } = await admin.from('soporte_mensajes').select('chat_id').in('chat_id', ids)
+      const vivos = new Set((conMensajes || []).map(m => m.chat_id))
+      const vacios = ids.filter(id => !vivos.has(id))
+      if (vacios.length) await admin.from('soporte_chats').delete().in('id', vacios)
+    }
+
     // 2) Archivos que se subieron pero nunca se enviaron en un mensaje (huérfanos) con más de 8 días
     const { data: carpetas } = await admin.storage.from(BUCKET).list('', { limit: 1000 })
     for (const c of carpetas || []) {

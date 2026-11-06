@@ -8,6 +8,7 @@ import SessionGuard from './components/SessionGuard'
 import CierreAutomaticoGlobal from './components/CierreAutomaticoGlobal'
 import InstalarApp from './components/InstalarApp'
 import MarcaGolmebol from './components/MarcaGolmebol'
+import ChatPublico from './components/ChatPublico'
 import EscuelaBottomNav from './components/EscuelaBottomNav'
 import DominioPersonalizadoGate from './components/DominioPersonalizadoGate'
 import { PantallaCargando } from './components/PantallaCargando'
@@ -618,6 +619,7 @@ export default function App() {
 
         </Routes>
       </Suspense>
+      <ChatPublico/>
     </BrowserRouter>
     </DominioPersonalizadoGate>
     </ErrorBoundary>

@@ -1245,6 +1245,30 @@ export default function LandingPage({ modo = 'inicio' }) {
         </div>
       )}
 
+      {/* ── Para organizadores y dueños de canchas: abre el chat con Golmebol ya con el tema elegido ── */}
+      <div style={{ maxWidth: '1120px', margin: '0 auto', padding: '44px 16px 8px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '18px' }}>
+          <div style={{ fontWeight: 900, fontSize: '1.25rem', marginBottom: '6px' }}>¿Quieres estar con Golmebol?</div>
+          <div style={{ fontSize: '.86rem', color: S.text2 }}>Cuéntanos y te respondemos por el chat, sin compromiso.</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+          {[
+            { tema: 'organizador', Icono: Trophy, titulo: 'Quiero organizar mi torneo con Golmebol', texto: 'Tabla de posiciones, resultados en vivo, carnets y todo lo que necesitas para tu torneo.', boton: 'ESCRIBIRNOS' },
+            { tema: 'escenario', Icono: Building2, titulo: 'Tengo una cancha o escenario', texto: 'Dale a tus clientes un sistema de reservas desde el celular, con tu propio calendario.', boton: 'QUIERO MI SISTEMA DE RESERVAS' },
+          ].map(c => (
+            <div key={c.tema} style={{ borderRadius: '18px', border: `1px solid ${S.green}`, background: `linear-gradient(160deg, ${S.card}, ${S.bg2})`, padding: '22px', display: 'flex', flexDirection: 'column' }}>
+              <c.Icono size={24} color={S.green} style={{ marginBottom: '10px' }}/>
+              <div style={{ fontWeight: 900, fontSize: '1.05rem', marginBottom: '6px' }}>{c.titulo}</div>
+              <div style={{ fontSize: '.82rem', color: S.text2, marginBottom: '16px', lineHeight: 1.45 }}>{c.texto}</div>
+              <button onClick={() => window.dispatchEvent(new CustomEvent('gm-abrir-chat-publico', { detail: { tema: c.tema } }))}
+                style={{ marginTop: 'auto', alignSelf: 'flex-start', minHeight: '46px', padding: '0 20px', borderRadius: '23px', border: 'none', background: S.green, color: '#0a0a0a', fontSize: '.82rem', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {c.boton} <ArrowRight size={16}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* ── Patrocinadores oficiales: franja discreta con logo y número de contacto (se gestionan en /admin/patrocinadores) ── */}
       <PatrocinadoresFranja patrocinadores={patrocinadores} onSelect={setPatroDetalle} S={S}/>
 
