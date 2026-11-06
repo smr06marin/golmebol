@@ -4,14 +4,14 @@ import { supabase } from '../../lib/supabase'
 import { errorAmigable, avisoMigracion } from '../../lib/mensajesError'
 import { useAuthStore } from '../../store/authStore'
 import { useIsMobile } from '../../hooks/useIsMobile'
-import { Plus, Pencil, Trash2, Trophy, Eye, Star, X, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, Pencil, Trash2, Trophy, Eye, X, Archive, ArchiveRestore } from 'lucide-react'
 import SelectorUbicacion from '../../components/SelectorUbicacion'
 import { ubicacionDeTorneo } from '../../lib/ubicaciones'
 import { reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import { confirmar } from '../../lib/confirmar'
 
 
-const EMPTY = { name: '', season: '', city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '' }
+const EMPTY = { name: '', season: String(new Date().getFullYear()), city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '' }
 // Solo estas cuentas pueden asignar/cambiar el organizador de un torneo ya
 // creado (mismo criterio que en AdminEquiposPage.jsx / AdminJugadorDetallePage.jsx
 // para "cambiar dueño" — respaldo por si la tabla de roles falla).
@@ -103,17 +103,6 @@ export default function AdminTorneosPage() {
     }
   }
 
-  async function handleTogglePremium(t) {
-    if (!esAdmin) return
-    if (!(await confirmar(t.premium
-      ? `¿Quitar Premium a "${t.name}"? El organizador perderá noticias, cuentas de dinero y ediciones.`
-      : `¿Marcar "${t.name}" como Premium (pago recibido)? Habilita noticias, cuentas de dinero, ediciones y le permite al organizador crear otro torneo.`))) return
-    const { error } = await supabase.from('tournaments').update({ premium: !t.premium }).eq('id', t.id)
-    if (error) return showMsg(error.message?.includes('premium') ? avisoMigracion('migracion_roles.sql') : 'Error al actualizar', 'error')
-    showMsg(t.premium ? 'Premium desactivado' : 'Torneo marcado como Premium ⭐')
-    fetchTorneos()
-  }
-
   // Archivar/desarchivar: saca (o vuelve a poner) un torneo de la lista
   // principal SIN borrar ni tocar ningún dato — se puede deshacer cuando
   // sea. Pensado para ediciones ya cerradas (ver "Crear siguiente edición"
@@ -165,11 +154,6 @@ export default function AdminTorneosPage() {
     if (!form.categoria) return showMsg('La categoría es obligatoria (ej: Senior, Sub-20)', 'error')
     if (!form.formato) return showMsg('El formato es obligatorio', 'error')
     if (!form.fecha_inicio) return showMsg('La fecha de inicio es obligatoria', 'error')
-    // Plan gratuito de organizador: 1 torneo (cada torneo Premium pagado libera otro cupo)
-    if (!editId && esOrganizador) {
-      const sinPremium = torneos.filter(t => !t.premium).length
-      if (sinPremium >= 1) return showMsg('Tu plan gratuito permite 1 torneo. Para crear otro, contacta a Golmebol y activa el plan Premium 💎', 'error')
-    }
     setLoading(true)
     const num = v => (v === '' || v === null || v === undefined) ? 0 : (parseFloat(v) || 0)
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
@@ -487,8 +471,8 @@ export default function AdminTorneosPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: cols2, gap: '16px' }}>
               <div>
-                <label style={label}>Temporada</label>
-                <input value={form.season} onChange={e => setForm(f => ({ ...f, season: e.target.value }))} style={input} placeholder="2025"/>
+                <label style={label}>Temporada *</label>
+                <input value={form.season} onChange={e => setForm(f => ({ ...f, season: e.target.value }))} style={input} placeholder="Ej: 2026"/>
               </div>
             </div>
             <SelectorUbicacion
@@ -512,8 +496,8 @@ export default function AdminTorneosPage() {
                 </select>
               </div>
               <div>
-                <label style={label}>Categoría</label>
-                <input value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))} style={input} placeholder="Sub-20, Senior..."/>
+                <label style={label}>Categoría *</label>
+                <input value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))} style={input} placeholder="Ej: Senior, Sub-15, Libre"/>
               </div>
             </div>
             <div>
@@ -754,7 +738,6 @@ export default function AdminTorneosPage() {
                       {t.modalidad && <span style={{ fontSize: '.7rem', color: '#202124', background: '#f1f3f4', border: '1px solid #e8eaed', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{t.modalidad}</span>}
                       <span style={{ fontSize: '.7rem', color: estado.color, background: estado.bg, borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{estado.label}</span>
                       {t.genero && <span style={{ fontSize: '.7rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>{t.genero}</span>}
-                      {t.premium && <span style={{ fontSize: '.7rem', color: '#e8710a', background: '#fff4e5', borderRadius: '5px', padding: '2px 8px', fontWeight: '700' }}>⭐ Premium</span>}
                       {t.archivado && <span style={{ fontSize: '.7rem', color: '#5f6368', background: '#f1f3f4', borderRadius: '5px', padding: '2px 8px', fontWeight: '700' }}>🗄️ Archivado</span>}
                       {esAdmin && t.organizador_id && (
                         <span style={{ fontSize: '.7rem', color: '#6c35de', background: '#f3e8fd', borderRadius: '5px', padding: '2px 8px', fontWeight: '600' }}>
@@ -778,12 +761,6 @@ export default function AdminTorneosPage() {
                       style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', fontWeight: '600' }}>
                       <Pencil size={14}/> Editar
                     </button>
-                    {esAdmin && (
-                      <button onClick={() => { setMenuTorneo(null); handleTogglePremium(t) }}
-                        style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: t.premium ? '#fff4e5' : '#fff', border: `1px solid ${t.premium ? '#ffd8a8' : '#dadce0'}`, borderRadius: '8px', cursor: 'pointer', color: '#e8710a', fontSize: '.78rem', fontWeight: '600' }}>
-                        <Star size={14} fill={t.premium ? '#e8710a' : 'none'}/> {t.premium ? 'Quitar Premium' : 'Premium'}
-                      </button>
-                    )}
                     <button onClick={() => { setMenuTorneo(null); handleToggleArchivado(t) }}
                       style={{ flex: 1, minWidth: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', fontWeight: '600' }}>
                       {t.archivado ? <><ArchiveRestore size={14}/> Desarchivar</> : <><Archive size={14}/> Archivar</>}

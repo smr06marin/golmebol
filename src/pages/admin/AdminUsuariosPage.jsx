@@ -13,7 +13,7 @@ const label = { fontSize: '.75rem', fontWeight: '500', color: '#5f6368', display
 
 const ROL_INFO = {
   admin:       { label: '👑 Admin principal', color: '#6c35de', bg: '#f3e8fd', desc: 'Acceso a todo' },
-  organizador: { label: '🏆 Organizador',     color: '#1a73e8', bg: '#e8f0fe', desc: 'Sus torneos: partidos, fases, tablas. Premium (por torneo): noticias, cuentas y ediciones' },
+  organizador: { label: '🏆 Organizador',     color: '#1a73e8', bg: '#e8f0fe', desc: 'Sus torneos: equipos, partidos, fases, tablas, noticias, cuentas y ediciones' },
   arbitro:     { label: '🧑‍⚖️ Árbitro',        color: '#1e8e3e', bg: '#e6f4ea', desc: 'Portal de árbitros: elige torneo, cancha y sus partidos con planillas' },
 }
 
@@ -161,7 +161,7 @@ export default function AdminUsuariosPage() {
           </button>
         </div>
         <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '10px' }}>
-          {ROL_INFO[form.rol]?.desc}. Los organizadores gratis pueden crear 1 torneo; para más torneos o funciones premium, marca el torneo como Premium ⭐ en la lista de Torneos después del pago.
+          {ROL_INFO[form.rol]?.desc}. Los organizadores pueden crear todos los torneos que quieran. Lo único que tú controlas es el cupo de equipos de cada torneo (desde «Editar torneo»).
         </div>
       </div>
 

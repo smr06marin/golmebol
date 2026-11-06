@@ -4861,11 +4861,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   const partidosPendientes = partidos.filter(p => p.status !== 'finished')
 
   const fcTorneo           = torneo.finanzas_config || {}
-  // La pestaña de cuentas es del admin principal o de torneos Premium
-  // El admin SIEMPRE ve la pestaña de finanzas (para poder configurar los
-  // precios por primera vez o cambiarlos cuando quiera). El organizador la ve
-  // solo si está configurada y su torneo es premium (igual que antes).
-  const finanzasActivas    = esAdminRol || ((!!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0) && !!torneo.premium)
+  // La pestaña de cuentas la ve el admin principal siempre, y el organizador
+  // cuando marcó «llevar las cuentas» al crear el torneo (o puso precios).
+  // Ya no depende de ningún plan: todos los torneos tienen las mismas funciones.
+  const finanzasActivas    = esAdminRol || !!fcTorneo.llevar_cuentas || ((fcTorneo.precio_amarilla || 0) + (fcTorneo.precio_azul || 0) + (fcTorneo.precio_roja || 0)) > 0
   function toggleJornada(key) { setAbiertosJornada(prev => ({ ...prev, [key]: !prev[key] })) }
 
   function agruparPartidosPorJornada(lista) {
@@ -5377,7 +5376,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         <a href={`/admin/jugadores/${personaCedulaNuevoEquipo.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '.72rem', color: '#1a73e8', fontWeight: '700', textDecoration: 'none', marginLeft: 'auto', whiteSpace: 'nowrap' }}>Ver perfil →</a>
                       </div>
                     ) : (
-                      <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Si esta cédula ya está registrada en Golmebol (jugador, árbitro o dueño de otro equipo), se completan el nombre y teléfono solos</div>
+                      <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Es la cédula de quien responde por el equipo. Si ya está registrada en Golmebol (jugador, árbitro o dueño de otro equipo), se completan el nombre y teléfono solos</div>
                     )}
                   </div>
                   <div>
@@ -6652,6 +6651,19 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         </div>
       ) : (
         <div>
+          {esOrganizador && (torneo?.equipos_permitidos || 0) === 0 && (
+            <div style={{ background: '#fff8e1', border: '1px solid #ffe08a', borderRadius: '12px', padding: '14px 16px', marginBottom: '14px' }}>
+              <div style={{ fontWeight: '700', color: '#7a5600', fontSize: '.9rem', marginBottom: '4px' }}>Tu torneo aún no tiene cupo de equipos</div>
+              <div style={{ fontSize: '.82rem', color: '#7a5600', lineHeight: 1.5, marginBottom: '10px' }}>
+                Para inscribir equipos, Golmebol debe habilitarte el cupo de este torneo. Escríbenos por WhatsApp y te lo activamos.
+              </div>
+              <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola Golmebol! Soy organizador del torneo "${torneo?.name || ''}" y quiero que me habiliten el cupo de equipos.`)}`}
+                target="_blank" rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: '#25d366', color: '#fff', borderRadius: '10px', fontWeight: '700', fontSize: '.85rem', textDecoration: 'none' }}>
+                Pedir cupo por WhatsApp
+              </a>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ fontSize: '.8rem', color: '#9aa0a6' }}>
               {equipos.length} equipo{equipos.length!==1?'s':''} activos
@@ -7624,7 +7636,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                           💾 {guardandoLogros ? 'Guardando...' : 'Guardar logros en la hoja de vida de equipos y jugadores'}
                         </button>
                       )}
-                      {(esAdminRol || torneo.premium) && (() => {
+                      {(() => {
                         // Si ya se creó una edición siguiente de este torneo, no se
                         // vuelve a mostrar el botón de crear otra (evita duplicados
                         // por error) — en su lugar, un acceso directo a la que ya existe.
