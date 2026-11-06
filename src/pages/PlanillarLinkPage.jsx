@@ -98,6 +98,15 @@ export default function PlanillarLinkPage() {
         if (errAnon) throw new Error('No se pudo entrar: ' + errAnon.message)
       }
 
+      // Registra en el servidor que ESTA sesión entró con el link de este partido
+      // (ver migracion_seguridad_paso10a.sql): sin eso no se puede guardar la planilla.
+      const { error: errEntrada } = await supabase.rpc('entrar_planilla_por_link', { p_token: token })
+      if (errEntrada) {
+        throw new Error(/venci|inv[aá]lido/i.test(errEntrada.message || '')
+          ? 'Este link ya venció o no es válido.'
+          : 'No se pudo entrar: ' + (errEntrada.message || 'intenta de nuevo'))
+      }
+
       const { data: match, error: errMatch } = await supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
         .eq('id', matchId).single()
