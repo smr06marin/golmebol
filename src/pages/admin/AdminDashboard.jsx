@@ -11,6 +11,7 @@ const PAGINAS_LABEL = { inicio: 'Página de inicio', tabla_torneo: 'Tabla de tor
 function AnaliticasSitio() {
   const { user } = useAuthStore()
   const [an, setAn] = useState(null)
+  const [inst, setInst] = useState(undefined) // undefined = cargando · null = falta correr migracion_instalaciones_app.sql · objeto = datos
   const esPrincipal = ADMINS_PRINCIPALES.includes((user?.email || '').toLowerCase())
 
   useEffect(() => { if (esPrincipal) cargar() }, [esPrincipal])
@@ -54,6 +55,10 @@ function AnaliticasSitio() {
       const conectados = new Set((recientes || []).map(c => c.session_id)).size
       setAn({ total: total || 0, mes: mes || 0, semana: semana || 0, hoy: hoyC || 0, disp, topPag, topTorNombre, promSeg, conectados, visitantes30: Object.keys(ses).length })
     } catch (e) { console.error('Analíticas:', e) }
+    try {
+      const { data, error } = await supabase.rpc('app_instalaciones_resumen')
+      setInst(error ? null : data)
+    } catch { setInst(null) }
   }
 
   if (!esPrincipal || !an) return null
@@ -86,6 +91,38 @@ function AnaliticasSitio() {
         {an.topPag && <span>⭐ Página más visitada: <b style={{ color: '#202124' }}>{PAGINAS_LABEL[an.topPag[0]] || an.topPag[0]} ({an.topPag[1]})</b></span>}
         {an.promSeg > 0 && <span>⏱️ Tiempo promedio: <b style={{ color: '#202124' }}>{fmtDur(an.promSeg)}</b></span>}
       </div>
+
+      <div style={{ fontSize: '.95rem', fontWeight: '700', color: '#202124', margin: '22px 0 4px' }}>📲 Instalaciones de la app</div>
+      <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '12px' }}>Celulares que tienen Golmebol en su pantalla de inicio — conteo anónimo, solo tú lo ves</div>
+      {inst === undefined && <div style={{ fontSize: '.8rem', color: '#9aa0a6' }}>Cargando…</div>}
+      {inst === null && (
+        <div style={{ background: '#fef7e0', color: '#8a5a00', borderRadius: '12px', padding: '12px 14px', fontSize: '.8rem', lineHeight: 1.5 }}>
+          Todavía no está activado el conteo. Corre el archivo <b>migracion_instalaciones_app.sql</b> en Supabase → SQL Editor y vuelve a entrar.
+        </div>
+      )}
+      {inst && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+            {[
+              { l: '📲 Celulares con la app', v: inst.instalados, c: '#1e8e3e' },
+              { l: '🆕 Nuevos hoy',           v: inst.nuevos_hoy, c: '#1a73e8' },
+              { l: '📅 Nuevos (7 días)',      v: inst.nuevos_7d,  c: '#6c35de' },
+              { l: '🔥 La abrieron (7 días)', v: inst.activos_7d, c: '#e8710a' },
+            ].map(c => (
+              <div key={c.l} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                <div style={{ fontSize: '.65rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>{c.l}</div>
+                <div style={{ fontSize: '1.35rem', fontWeight: '800', color: c.c }}>{c.v ?? 0}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,.06)', fontSize: '.78rem', color: '#5f6368', lineHeight: 1.7 }}>
+            <div>🍎 iPhone: <b style={{ color: '#202124' }}>{inst.ios ?? 0}</b> · 🤖 Android: <b style={{ color: '#202124' }}>{inst.android ?? 0}</b></div>
+            <div style={{ marginTop: '6px', fontWeight: 700, color: '#3c4043' }}>Últimos 30 días, personas que:</div>
+            <div>👀 Vieron el aviso: <b style={{ color: '#202124' }}>{inst.embudo?.banner_visto ?? 0}</b> · 👆 Tocaron instalar o «cómo instalar»: <b style={{ color: '#202124' }}>{(inst.embudo?.instalar_toque ?? 0) + (inst.embudo?.ver_como ?? 0)}</b> · ✅ Instalaron (aviso del navegador): <b style={{ color: '#202124' }}>{inst.embudo?.instalada ?? 0}</b> · ✖️ Cerraron el aviso: <b style={{ color: '#202124' }}>{inst.embudo?.ahora_no ?? 0}</b></div>
+            <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '6px' }}>Se cuenta cada celular la primera vez que abre Golmebol desde el ícono de su pantalla. Si alguien la desinstala y la vuelve a instalar, o borra los datos del navegador, puede contarse dos veces. Los iPhone no avisan al instalar, por eso el «Instalaron» de arriba es solo de Android.</div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

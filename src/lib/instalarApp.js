@@ -1,6 +1,7 @@
 // Guía para instalar Golmebol en el celular (web instalable / PWA).
 // Sabe qué celular y qué navegador es, si ya está instalada y si el navegador permite instalar con un solo toque.
 import { Capacitor } from '@capacitor/core'
+import { supabase } from './supabase'
 
 const K_CERRADO = 'gm_instalar_cerrado_visita'  // cerró el aviso: no vuelve a salir en ESTA visita (al volver a entrar sale otra vez)
 const VIEJAS = ['gm_app_instalada', 'gm_instalar_cerrado']  // claves de la versión anterior, ya no se usan
@@ -20,7 +21,40 @@ export function iniciarInstalacion() {
   iniciado = true
   try { VIEJAS.forEach(k => localStorage.removeItem(k)) } catch { /* nada */ }
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptDiferido = e; avisar() })
-  window.addEventListener('appinstalled', () => { promptDiferido = null; avisar() })
+  window.addEventListener('appinstalled', () => { promptDiferido = null; registrarEvento('instalada'); avisar() })
+  // Abrió Golmebol desde el ícono de su pantalla: así se cuentan los celulares con la app instalada (también los iPhone)
+  if (estaInstalada()) registrarEvento('abre_app', { unaVezPor: 'dia' })
+}
+
+// ── Conteo de instalaciones ─────────────────────────────────────────────────
+// Guarda eventos anónimos en app_instalaciones (ver migracion_instalaciones_app.sql). Cada celular lleva un código al azar.
+// Nunca bloquea ni rompe la app si falla, ni si la tabla todavía no existe.
+function idDispositivo() {
+  const nuevo = () => (globalThis.crypto?.randomUUID?.() || (Math.random().toString(36).slice(2) + Date.now().toString(36)))
+  try {
+    let id = localStorage.getItem('gm_device_id')
+    if (!id) { id = nuevo(); localStorage.setItem('gm_device_id', id) }
+    return id
+  } catch { return leerVisita('gm_device_id') || nuevo() }
+}
+
+// unaVezPor: 'visita' (1 vez por visita) · 'dia' (1 vez por día en ese celular) · null (siempre)
+export function registrarEvento(evento, { unaVezPor = null } = {}) {
+  try {
+    if (unaVezPor === 'visita') {
+      if (leerVisita(`gm_ev_${evento}`)) return
+      guardarVisita(`gm_ev_${evento}`, '1')
+    } else if (unaVezPor === 'dia') {
+      const hoy = new Date().toISOString().slice(0, 10)
+      try { if (localStorage.getItem(`gm_ev_${evento}`) === hoy) return; localStorage.setItem(`gm_ev_${evento}`, hoy) } catch { /* sin almacenamiento: se anota igual */ }
+    }
+    const d = detectarDispositivo()
+    let nativa = false
+    try { nativa = Capacitor.isNativePlatform() } catch { /* nada */ }
+    supabase.from('app_instalaciones')
+      .insert({ device_id: idDispositivo(), evento, sistema: d.esIOS ? 'ios' : d.esAndroid ? 'android' : 'otro', navegador: nativa ? 'app-nativa' : d.navegador })
+      .then(() => {}, () => {})
+  } catch { /* nunca romper la app por un conteo */ }
 }
 
 export function alCambiar(fn) { escuchas.add(fn); return () => escuchas.delete(fn) }
@@ -38,7 +72,7 @@ export async function instalarDirecto() {
   return false
 }
 
-export function posponer() { guardarVisita(K_CERRADO, '1'); avisar() }
+export function posponer(conEvento = true) { guardarVisita(K_CERRADO, '1'); if (conEvento) registrarEvento('ahora_no', { unaVezPor: 'visita' }); avisar() }
 export const fuePospuesta = () => leerVisita(K_CERRADO) === '1'
 
 // "Instalada" = se está abriendo DESDE la app (pantalla de inicio / app nativa). Abierta en el navegador, el aviso siempre sale.

@@ -1,13 +1,15 @@
 // Aviso + guía paso a paso para instalar Golmebol en el celular.
 // Cada paso trae un dibujo de la pantalla con una flecha que rebota y un círculo que late sobre el botón que hay que tocar.
 // Solo sale en celulares, en el inicio de cada portal, y desaparece cuando ya está instalada.
+// El aviso va EN el flujo de la página (arriba de todo, empuja el contenido hacia abajo): no tapa nada y se va al hacer scroll.
+// Quien no quiere instalar lo cierra con la X y no vuelve a salir en esa visita. Todo se cuenta de forma anónima (lib/instalarApp.js).
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Share, MoreVertical, MoreHorizontal, Menu, ExternalLink, Smartphone, Copy, Compass, X, Lock,
   ChevronLeft, ChevronRight, BookOpen, Copy as Pestanas, Home, Plus, ArrowDown, ArrowUp, ArrowRight, Check,
 } from 'lucide-react'
-import { iniciarInstalacion, alCambiar, puedeInstalarDirecto, instalarDirecto, copiarEnlace, posponer, estaInstalada, fuePospuesta, detectarDispositivo, pasosParaInstalar } from '../lib/instalarApp'
+import { iniciarInstalacion, alCambiar, puedeInstalarDirecto, instalarDirecto, copiarEnlace, posponer, estaInstalada, fuePospuesta, detectarDispositivo, pasosParaInstalar, registrarEvento } from '../lib/instalarApp'
 
 const RUTAS = ['/', '/torneos', '/jugador/login', '/jugador', '/arbitro']
 const ROJO = '#ff2d55'
@@ -24,10 +26,16 @@ const CSS = `
 @keyframes gmReboteYArriba { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
 @keyframes gmReboteX { 0%,100% { transform: translateX(0); } 50% { transform: translateX(9px); } }
 .gm-late { animation: gmLate 1.3s ease-out infinite; }
+@keyframes gmBotonLate { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.85), 0 4px 12px rgba(0,0,0,.35); transform: scale(1); } 50% { transform: scale(1.05); } 70% { box-shadow: 0 0 0 12px rgba(255,255,255,0), 0 4px 12px rgba(0,0,0,.35); } 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0), 0 4px 12px rgba(0,0,0,.35); transform: scale(1); } }
+@keyframes gmBrillo { 0% { transform: translateX(-130%) skewX(-20deg); } 55%,100% { transform: translateX(330%) skewX(-20deg); } }
+@keyframes gmEntra { from { max-height: 0; opacity: 0; } to { max-height: 200px; opacity: 1; } }
+.gm-boton-late { animation: gmBotonLate 1.6s ease-out infinite; }
+.gm-brillo::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 38%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent); animation: gmBrillo 2.6s ease-in-out infinite; pointer-events: none; }
+.gm-aviso { animation: gmEntra .45s ease-out both; overflow: hidden; }
 .gm-flecha-abajo { animation: gmReboteY .8s ease-in-out infinite; }
 .gm-flecha-arriba { animation: gmReboteYArriba .8s ease-in-out infinite; }
 .gm-flecha-der { animation: gmReboteX .8s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .gm-late, .gm-flecha-abajo, .gm-flecha-arriba, .gm-flecha-der { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .gm-late, .gm-flecha-abajo, .gm-flecha-arriba, .gm-flecha-der, .gm-boton-late, .gm-aviso { animation: none; } .gm-brillo::after { display: none; } }
 `
 
 // Flecha grande con la palabra AQUÍ
@@ -334,21 +342,16 @@ function Escena({ e }) {
 export default function InstalarApp() {
   const { pathname } = useLocation()
   const [, forzar] = useState(0)
-  const [visible, setVisible] = useState(false)
   const [abierta, setAbierta] = useState(false)
   const [paso, setPaso] = useState(0)
   const [copiado, setCopiado] = useState(false)
 
   useEffect(() => { iniciarInstalacion(); return alCambiar(() => forzar(n => n + 1)) }, [])
-  // Sale unos segundos después de entrar, para no tapar la carga de la pantalla
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 3500)
-    return () => clearTimeout(t)
-  }, [])
-
   const d = detectarDispositivo()
+  const hayAviso = d.movil && RUTAS.includes(pathname) && !estaInstalada() && !abierta && !fuePospuesta()
+  useEffect(() => { if (hayAviso) registrarEvento('banner_visto', { unaVezPor: 'visita' }) }, [hayAviso])
   if (!d.movil || !RUTAS.includes(pathname) || estaInstalada()) return null
-  if (!abierta && (!visible || fuePospuesta())) return null
+  if (!abierta && fuePospuesta()) return null
 
   const directo = puedeInstalarDirecto()
   const guia = pasosParaInstalar(d, directo)
@@ -358,20 +361,31 @@ export default function InstalarApp() {
   const cerrar = () => { setAbierta(false); setPaso(0) }
 
   if (!abierta) {
+    // Con Chrome de Android el botón instala de una vez; en los demás abre la guía paso a paso
+    const alInstalar = async () => {
+      if (directo && !d.enApp) {
+        registrarEvento('instalar_toque')
+        const ok = await instalarDirecto()
+        if (ok) return
+      }
+      registrarEvento('ver_como')
+      setPaso(0); setAbierta(true)
+    }
     return (
-      <div role="dialog" aria-label="Instalar Golmebol" style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))', zIndex: 9000, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
-        <div style={{ pointerEvents: 'auto', width: '100%', maxWidth: 440, background: '#10141f', border: '1px solid rgba(0,221,208,.35)', borderRadius: 16, padding: '12px 12px 12px 14px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 10px 30px rgba(0,0,0,.55)', fontFamily: "'Barlow Condensed', system-ui, sans-serif" }}>
-          <img src="/icon-192.png" alt="" width={44} height={44} style={{ borderRadius: 10, flexShrink: 0 }}/>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: '#fff', fontWeight: 700, fontSize: '1.05rem', lineHeight: 1.1 }}>Instala Golmebol</div>
-            <div style={{ color: '#9aa6bd', fontSize: '.86rem', lineHeight: 1.2, marginTop: 2 }}>Entra directo desde tu pantalla.</div>
+      <div className="gm-aviso" role="region" aria-label="Instalar Golmebol" style={{ position: 'relative', width: '100%', boxSizing: 'border-box', fontFamily: "'Barlow Condensed', system-ui, sans-serif" }}>
+        <style>{CSS}</style>
+        <div style={{ background: 'linear-gradient(100deg, #00c9bd 0%, #12e08a 100%)', borderBottom: '3px solid #04211f', padding: '10px 6px 10px 12px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 4px 14px rgba(0,0,0,.25)' }}>
+          <img src="/icon-192.png" alt="" width={44} height={44} style={{ borderRadius: 11, flexShrink: 0, border: '2px solid #04211f', boxShadow: '0 2px 6px rgba(0,0,0,.3)' }}/>
+          <div style={{ flex: 1, minWidth: 0, color: '#04211f' }}>
+            <div style={{ fontWeight: 900, fontSize: '1.2rem', lineHeight: 1.1, letterSpacing: '.01em' }}>Instala Golmebol gratis</div>
           </div>
-          <button onClick={() => { setPaso(0); setAbierta(true) }}
-            style={{ flexShrink: 0, background: '#00ddd0', color: '#04211f', border: 'none', borderRadius: 10, padding: '11px 14px', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }}>
-            Ver cómo
+          <button onClick={alInstalar} className="gm-boton-late gm-brillo"
+            style={{ position: 'relative', overflow: 'hidden', flexShrink: 0, background: '#04211f', color: '#fff', border: '2px solid #fff', borderRadius: 12, padding: '0 16px', fontWeight: 900, fontSize: '1.05rem', letterSpacing: '.04em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48 }}>
+            Instalar
           </button>
-          <button onClick={posponer} aria-label="Cerrar" style={{ flexShrink: 0, background: 'none', border: 'none', color: '#7c879d', cursor: 'pointer', width: 36, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-            <X size={18}/>
+          <button onClick={() => posponer()} aria-label="Cerrar aviso de instalar"
+            style={{ flexShrink: 0, background: 'none', border: 'none', color: '#04211f', cursor: 'pointer', width: 40, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+            <X size={22} strokeWidth={3}/>
           </button>
         </div>
       </div>
@@ -393,7 +407,7 @@ export default function InstalarApp() {
         </div>
 
         {directo && !d.enApp && (
-          <button onClick={async () => { const ok = await instalarDirecto(); if (ok) cerrar() }}
+          <button onClick={async () => { registrarEvento('instalar_toque'); const ok = await instalarDirecto(); if (ok) cerrar() }}
             style={{ width: '100%', marginTop: 12, background: '#00ddd0', color: '#04211f', border: 'none', borderRadius: 12, padding: '14px', fontWeight: 800, fontSize: '1.05rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 50 }}>
             Instalar ahora con un toque
           </button>
@@ -431,7 +445,7 @@ export default function InstalarApp() {
               Siguiente
             </button>
           ) : (
-            <button onClick={() => { posponer(); cerrar() }}
+            <button onClick={() => { posponer(false); cerrar() }}
               style={{ flex: 2, background: '#00ddd0', color: '#04211f', border: 'none', borderRadius: 12, padding: '13px', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer', fontFamily: 'inherit', minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Check size={20}/> Listo
             </button>
