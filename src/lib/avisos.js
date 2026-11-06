@@ -13,7 +13,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { supabase } from './supabase'
 import { notify } from './notify'
-import { leerFavoritosIds, EVENTO_FAVORITOS } from './favoritos'
+import { leerFavoritosIds, EVENTO_FAVORITOS, EVENTO_EQUIPO_SEGUIDO } from './favoritos'
+import { EVENTO_TORNEO_SEGUIDO } from './favoritosTorneos'
+import { mensajeMotivo } from './avisosTextos'
 import { estaInstalada } from './instalarApp'
 
 const K_ACTIVO = 'gm_avisos_activo'
@@ -116,11 +118,40 @@ let iniciado = false
 let temporizador = null
 const sincronizarPronto = () => { clearTimeout(temporizador); temporizador = setTimeout(sincronizarAvisos, 800) }
 
+// Al tocar «Seguir» en un equipo o un torneo, los avisos se activan solos para ese equipo / torneo: si el celular
+// todavía no los tenía, se pide el permiso en ese mismo toque. Si no se puede (permiso bloqueado, iPhone sin instalar
+// la app, navegador sin soporte) el seguimiento queda igual y se explica por qué, una sola vez por visita.
+let motivoYaMostrado = false
+async function asegurarAvisos() {
+  if (avisosActivos()) return true
+  const r = await activarAvisos()
+  if (r.ok) return true
+  if (!motivoYaMostrado) { motivoYaMostrado = true; notify(mensajeMotivo(r.motivo, plataformaAvisos()), 'error') }
+  return false
+}
+async function alSeguirEquipo() {
+  const eraActivo = avisosActivos()
+  if (!(await asegurarAvisos())) return
+  sincronizarAvisos()
+  notify(eraActivo ? 'Listo: te avisaremos de los partidos de este equipo.' : 'Avisos activados: te avisaremos de los partidos de este equipo.')
+}
+async function alSeguirTorneo(ev) {
+  const { id, seguido } = ev.detail || {}
+  if (!id) return
+  if (!seguido) { if (torneosConAviso().includes(id)) alternarTorneoAviso(id); return }
+  const eraActivo = avisosActivos()
+  if (!(await asegurarAvisos())) return
+  if (!torneosConAviso().includes(id)) alternarTorneoAviso(id)
+  notify(eraActivo ? 'Listo: te avisaremos de lo que pase en este torneo.' : 'Avisos activados: te avisaremos de lo que pase en este torneo.')
+}
+
 // Se llama una vez al abrir la app (main.jsx). Deja listos los oyentes y, si ya
 // estaban activados, renueva el token (Firebase puede cambiarlo).
 export async function iniciarAvisos() {
   if (iniciado) return
   iniciado = true
+  window.addEventListener(EVENTO_EQUIPO_SEGUIDO, alSeguirEquipo)
+  window.addEventListener(EVENTO_TORNEO_SEGUIDO, alSeguirTorneo)
   if (!esNativo()) {
     // Navegador / app instalada: deja lista la sincronización y, si ya estaban activados, renueva la suscripción en silencio
     window.addEventListener(EVENTO_FAVORITOS, sincronizarPronto)

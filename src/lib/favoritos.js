@@ -27,6 +27,8 @@ function escribir(ids) {
 // Para código fuera de React (p. ej. avisos push). Devuelve los ids de equipos seguidos.
 export function leerFavoritosIds() { return leer() }
 export const EVENTO_FAVORITOS = EVENTO
+// Se dispara solo cuando la persona EMPIEZA a seguir un equipo (no al dejar de seguirlo): lib/avisos.js lo usa para activarle los avisos de ese equipo.
+export const EVENTO_EQUIPO_SEGUIDO = 'gm-equipo-seguido'
 
 export function useFavoritos() {
   const [ids, setIds] = useState(leer)
@@ -45,7 +47,9 @@ export function useFavoritos() {
   const alternar = useCallback(id => {
     if (!id) return
     const actual = leer()
-    escribir(actual.includes(id) ? actual.filter(x => x !== id) : [...actual, id])
+    const agrega = !actual.includes(id)
+    escribir(agrega ? [...actual, id] : actual.filter(x => x !== id))
+    if (agrega) { try { window.dispatchEvent(new CustomEvent(EVENTO_EQUIPO_SEGUIDO, { detail: { id } })) } catch { /* ignorar */ } }
   }, [])
 
   return { ids, esFavorito, alternar }
