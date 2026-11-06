@@ -1212,11 +1212,19 @@ export default function LandingPage({ modo = 'inicio' }) {
                     backgroundImage: actual ? `linear-gradient(180deg, rgba(10,10,10,.2), rgba(10,10,10,.92)), url(${actual.imagen_fondo_url})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
                     backgroundSize: 'cover', backgroundPosition: 'center' }}/>
                 <div style={{ position: 'relative', zIndex: 1 }}>
-                  <Building2 size={20} color={S.green} style={{ marginBottom: '8px' }}/>
-                  <div style={{ fontWeight: 900, fontSize: '1.02rem', marginBottom: '4px' }}>Escenarios{actual?.name ? ` · ${actual.name}` : ''}</div>
-                  <div style={{ fontSize: '.78rem', color: S.text2, marginBottom: '14px' }}>Los mejores escenarios deportivos para que vivas tu pasión.</div>
-                  <button className="gm-hover" onClick={() => navigate('/escenarios')} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: S.green, fontSize: '.8rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}>
-                    VER ESCENARIOS <ArrowRight size={14}/>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: S.green, color: '#0a0a0a', fontSize: '.68rem', fontWeight: 900, letterSpacing: '.06em', padding: '5px 11px', borderRadius: '999px', marginBottom: '10px' }}>
+                    <Building2 size={13}/> RESERVAS EN LÍNEA
+                  </div>
+                  <div style={{ fontWeight: 900, fontSize: '1.3rem', lineHeight: 1.15, marginBottom: '4px' }}>Reserva tu cancha</div>
+                  {actual?.name && <div style={{ fontWeight: 800, fontSize: '.88rem', color: S.green, marginBottom: '6px' }}>{actual.name}</div>}
+                  <div style={{ fontSize: '.84rem', color: '#fff', marginBottom: '12px', lineHeight: 1.4, textShadow: '0 1px 6px rgba(0,0,0,.8)' }}>Elige la cancha, el día y la hora, y reserva desde tu celular en menos de un minuto.</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                    {['1 · Elige la cancha', '2 · Día y hora', '3 · Reserva'].map(t => (
+                      <span key={t} style={{ fontSize: '.7rem', fontWeight: 800, color: '#fff', background: 'rgba(0,0,0,.55)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '999px', padding: '4px 10px' }}>{t}</span>
+                    ))}
+                  </div>
+                  <button className="gm-hover" onClick={() => navigate('/escenarios')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', minHeight: '50px', background: S.green, border: 'none', borderRadius: '25px', color: '#0a0a0a', fontSize: '.92rem', fontWeight: 900, cursor: 'pointer', padding: '0 20px', boxShadow: '0 6px 20px rgba(111,207,61,.35)' }}>
+                    RESERVAR CANCHA <ArrowRight size={18}/>
                   </button>
                   {fotos.length > 1 && (
                     <div style={{ display: 'flex', gap: '5px', marginTop: '12px' }}>
