@@ -81,12 +81,24 @@ function atributosTorneo(t) {
   }
 }
 
-function Escudo({ logo_url, name, size = 40, radius = 10 }) {
+// Baja los escudos en segundo plano para que, al abrir /torneos, ya estén en el navegador y salgan al instante
+const escudosPrecargados = new Set()
+function precargarEscudos(urls) {
+  for (const u of urls) {
+    if (!u || escudosPrecargados.has(u) || escudosPrecargados.size >= 120) continue
+    escudosPrecargados.add(u)
+    const img = new Image()
+    img.decoding = 'async'
+    img.src = u
+  }
+}
+
+function Escudo({ logo_url, name, size = 40, radius = 10, urgente = false }) {
   const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   return (
     <div style={{ width: size, height: size, borderRadius: radius, background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {logo_url
-        ? <img src={logo_url} alt={name || ''} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 30 ? '4px' : '2px' }}/>
+        ? <img src={logo_url} alt={name || ''} loading={urgente ? 'eager' : 'lazy'} fetchPriority={urgente ? 'high' : undefined} decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 30 ? '4px' : '2px' }}/>
         : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
     </div>
   )
@@ -378,6 +390,9 @@ export default function LandingPage({ modo = 'inicio' }) {
     }, () => { cargandoEquiposRef.current = false })
   }
 
+  // En cuanto se conocen los torneos (del caché o de la base), sus escudos se van bajando solos
+  useEffect(() => { precargarEscudos(torneos.map(t => t.logo_url)) }, [torneos])
+
   useEffect(() => {
     if (soloTorneos) {
       // /torneos: solo hace falta lo de los torneos (y los partidos en vivo para marcar "EN VIVO")
@@ -614,8 +629,15 @@ export default function LandingPage({ modo = 'inicio' }) {
   // por torneo activo, se cae a la consulta de antes.
   async function fetchTorneosActivosInterno() {
     const COLS_PARTIDO = 'tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
+    // Los torneos con su escudo salen apenas llega la primera consulta (liviana); partidos y equipos llegan detrás y completan las tarjetas.
+    const pTors = Promise.resolve(supabase.from('tournaments').select('id, name, logo_url, modalidad, city, pais, departamento, municipio_codigo, vereda, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'))
+    pTors.then(r => {
+      if (r.error || !r.data) return
+      const provisional = r.data.filter(t => !t.archivado).map(t => ({ ...t, equipos: 0, estado: '', finalizado: false, campeon: null, pendiente: true }))
+      setTorneos(prev => (prev.length ? prev : provisional))
+    })
     const [torsRes00, ttsF, msF] = await Promise.all([
-      supabase.from('tournaments').select('id, name, logo_url, modalidad, city, pais, departamento, municipio_codigo, vereda, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'),
+      pTors,
       supabase.from('tournament_teams').select('tournament_id, tournaments!inner(status)').eq('tournaments.status', 'active'),
       supabase.from('matches').select(`${COLS_PARTIDO}, tournaments!inner(status)`).eq('tournaments.status', 'active'),
     ])
@@ -1059,7 +1081,7 @@ export default function LandingPage({ modo = 'inicio' }) {
               return (porNombre || equipo) ? { t, equipo } : null
             }).filter(Boolean)
           : torneosFiltrados.map(t => ({ t, equipo: null }))
-        const LIMITE = 8
+        const LIMITE = 200
         const recortado = !buscando && !verTodosTorneos && resultados.length > LIMITE
         const visibles = recortado ? resultados.slice(0, LIMITE) : resultados
         const nFiltrosAttr = Object.values(filtrosAttr).filter(Boolean).length
@@ -1091,7 +1113,7 @@ export default function LandingPage({ modo = 'inicio' }) {
             </div>
 
             {/* Estado + botón de filtros */}
-            {!buscando && torneosOrdenados.length > 0 && (
+            {!buscando && torneosOrdenados.length > 0 && !torneos.some(t => t.pendiente) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                 <div className="gm-scrollx" style={{ display: 'flex', gap: '8px', overflowX: 'auto', flex: 1, minWidth: 0 }}>
                   {[['todos', 'Todos'], ['juego', 'En juego'], ['comenzar', 'Por comenzar'], ['finalizados', 'Finalizados']]
@@ -1154,7 +1176,7 @@ export default function LandingPage({ modo = 'inicio' }) {
             ) : (
               <>
                 <div className="gm-tg">
-                  {visibles.map(({ t, equipo }) => {
+                  {visibles.map(({ t, equipo }, idx) => {
                     const enVivo = partidosVivo.some(m => m.tournament_id === t.id)
                     const badge = t.finalizado ? { txt: 'FINALIZADO', color: S.muted }
                       : enVivo ? { txt: 'EN VIVO', color: S.red }
@@ -1164,13 +1186,17 @@ export default function LandingPage({ modo = 'inicio' }) {
                       : [`${t.equipos} equipos`, (!t.finalizado && !esPorComenzar(t)) ? t.estado : null].filter(Boolean).join(' · ')
                     return (
                       <button key={t.id} className="gm-tcard" {...propsPrefetchTorneo(t.id)} onClick={() => { prefetchTorneoPublico(t.id); navigate('/t/' + t.id) }} style={{ opacity: t.finalizado ? .85 : 1 }}>
-                        <Escudo logo_url={t.logo_url} name={t.name} size={64} radius={16}/>
+                        <Escudo logo_url={t.logo_url} name={t.name} size={64} radius={16} urgente={idx < 12}/>
                         <div className="gm-tnom">{t.name}</div>
                         {equipo && <div style={{ fontSize: '.68rem', fontWeight: 700, color: S.green, marginTop: '4px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Equipo: {equipo}</div>}
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '8px', fontSize: '.6rem', fontWeight: 900, letterSpacing: '.04em', color: badge.color }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.color, flexShrink: 0 }}/>{badge.txt}
-                        </div>
-                        <div style={{ fontSize: '.68rem', color: S.muted, fontWeight: 600, marginTop: '4px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta}</div>
+                        {t.pendiente ? (
+                          <div aria-hidden="true" style={{ width: '56%', height: '10px', borderRadius: '5px', background: S.border, marginTop: '12px', opacity: .7 }}/>
+                        ) : (<>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '8px', fontSize: '.6rem', fontWeight: 900, letterSpacing: '.04em', color: badge.color }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.color, flexShrink: 0 }}/>{badge.txt}
+                          </div>
+                          <div style={{ fontSize: '.68rem', color: S.muted, fontWeight: 600, marginTop: '4px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta}</div>
+                        </>)}
                       </button>
                     )
                   })}
