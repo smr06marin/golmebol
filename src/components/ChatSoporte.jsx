@@ -127,7 +127,7 @@ function ChatInterno() {
   const limite = useRef(null)
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState('')
-  const [vv, setVv] = useState(null) // área visible real (con teclado abierto en el celular)
+  const panelRef = useRef(null) // el panel del chat: en el celular se acomoda al área que deja libre el teclado
   const fin = useRef(null)
   const secuencia = useRef(0)
 
@@ -230,27 +230,43 @@ function ChatInterno() {
     supabase.rpc('soporte_marcar_leido').then(() => setChat(c => (c ? { ...c, leido_usuario_at: new Date().toISOString() } : c)), () => {})
   }, [abierto, mensajes, chat?.id, chat?.leido_usuario_at])
 
-  useEffect(() => { if (abierto) fin.current?.scrollIntoView({ block: 'end' }) }, [mensajes, abierto, vv?.h])
+  useEffect(() => { if (abierto) fin.current?.scrollIntoView({ block: 'end' }) }, [mensajes, abierto])
 
-  // En el celular, el chat usa el área que deja libre el teclado
+  // En el celular, el chat usa el área que deja libre el teclado. Se mueve directamente (sin pasar por React)
+  // y con "transform": así no vibra ni se desprende mientras se escribe o se sube a leer mensajes viejos.
   useEffect(() => {
     if (!abierto || !isMobile || !window.visualViewport) return
     const vp = window.visualViewport
-    const medir = () => {
-      const tecladoAbierto = window.innerHeight - vp.height > 120
-      setVv(tecladoAbierto ? { h: vp.height, top: vp.offsetTop } : null)
+    let cuadro = 0
+    let tecladoAntes = false
+    const aplicar = () => {
+      cuadro = 0
+      const el = panelRef.current
+      if (!el) return
+      const teclado = window.innerHeight - vp.height > 120
+      if (teclado) {
+        el.style.bottom = 'auto'
+        el.style.height = `${Math.round(vp.height)}px`
+        el.style.transform = `translate3d(0, ${Math.round(vp.offsetTop)}px, 0)`
+      } else {
+        el.style.bottom = '0px'
+        el.style.height = ''
+        el.style.transform = ''
+      }
+      if (teclado !== tecladoAntes) { tecladoAntes = teclado; fin.current?.scrollIntoView({ block: 'end' }) }
     }
+    const medir = () => { if (!cuadro) cuadro = requestAnimationFrame(aplicar) }
     // Al cerrar el teclado el iPhone a veces no avisa el cambio: se vuelve a medir un instante después
-    const medirTarde = () => { medir(); setTimeout(medir, 120); setTimeout(medir, 400) }
+    const medirTarde = () => { medir(); setTimeout(medir, 150); setTimeout(medir, 450) }
     medir()
     vp.addEventListener('resize', medir); vp.addEventListener('scroll', medir)
     window.addEventListener('orientationchange', medirTarde)
     document.addEventListener('focusout', medirTarde)
     return () => {
+      if (cuadro) cancelAnimationFrame(cuadro)
       vp.removeEventListener('resize', medir); vp.removeEventListener('scroll', medir)
       window.removeEventListener('orientationchange', medirTarde)
       document.removeEventListener('focusout', medirTarde)
-      setVv(null)
     }
   }, [abierto, isMobile])
 
@@ -263,9 +279,12 @@ function ChatInterno() {
 
   useEffect(() => {
     if (!abierto || !isMobile) return
-    const antes = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = antes }
+    // Bloquea la página de atrás de verdad (en el iPhone "overflow: hidden" no basta y la página se mueve al subir mensajes)
+    const y = window.scrollY
+    const b = document.body.style
+    const antes = { position: b.position, top: b.top, left: b.left, right: b.right, width: b.width, overflow: b.overflow }
+    b.position = 'fixed'; b.top = `-${y}px`; b.left = '0'; b.right = '0'; b.width = '100%'; b.overflow = 'hidden'
+    return () => { Object.assign(b, antes); window.scrollTo(0, y) }
   }, [abierto, isMobile])
 
   async function guardarNombre() {
@@ -384,7 +403,7 @@ function ChatInterno() {
 
   const bottomFab = isMobile ? 'calc(84px + env(safe-area-inset-bottom) + 10px)' : '24px'
   const panelStyle = isMobile
-    ? { position: 'fixed', left: 0, right: 0, top: vv ? vv.top : 0, ...(vv ? { height: vv.h } : { bottom: 0 }), zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column' }
+    ? { position: 'fixed', left: 0, right: 0, top: 0, bottom: 0, zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column', overscrollBehavior: 'none', willChange: 'transform' }
     : { position: 'fixed', right: '24px', bottom: '24px', width: '380px', height: 'min(560px, calc(100vh - 48px))', zIndex: 300, background: '#fff', display: 'flex', flexDirection: 'column', borderRadius: '16px', boxShadow: '0 12px 40px rgba(0,0,0,.22)', overflow: 'hidden', border: '1px solid #e8eaed' }
 
   return (
@@ -399,7 +418,7 @@ function ChatInterno() {
       )}
 
       {abierto && (
-        <div style={panelStyle} role="dialog" aria-label="Chat de ayuda">
+        <div ref={panelRef} style={panelStyle} role="dialog" aria-label="Chat de ayuda">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderBottom: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
             <button onClick={() => setAbierto(false)} aria-label="Volver"
               style={{ display: 'flex', alignItems: 'center', gap: '2px', minHeight: '44px', padding: '0 10px 0 4px', background: 'none', border: 'none', cursor: 'pointer', color: '#1a73e8', fontSize: '.86rem', fontWeight: '700' }}>
