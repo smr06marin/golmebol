@@ -1,7 +1,7 @@
 -- ============================================================
 -- NOTIFICACIONES PUSH — paso 2: que el envío corra solo cada 5 minutos
 -- Cómo ejecutar: Supabase → SQL Editor → pegar → CAMBIAR el texto
--- CAMBIA_ESTE_SECRETO por el mismo valor que pusiste en Vercel como
+-- CAMBIA_ESTE_SECRETO (queda entre comillas, SIN la palabra Bearer) por el mismo valor que pusiste en Vercel como
 -- PUSH_CRON_SECRET → RUN.
 --
 -- Antes, en Supabase → Database → Extensions, activar "pg_cron" y "pg_net".
@@ -23,7 +23,7 @@ select cron.schedule(
   $cron$
     select net.http_post(
       url := 'https://golmebol.com/api/push-enviar',
-      headers := jsonb_build_object('Authorization', 'Bearer CAMBIA_ESTE_SECRETO', 'Content-Type', 'application/json'),
+      headers := jsonb_build_object('x-cron-secret', 'CAMBIA_ESTE_SECRETO', 'Content-Type', 'application/json'),
       body := '{}'::jsonb,
       timeout_milliseconds := 20000
     );

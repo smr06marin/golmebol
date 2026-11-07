@@ -207,7 +207,8 @@ export default async function handler(req, res) {
 
 async function enviarCola(req, res) {
   const secreto = (process.env.PUSH_CRON_SECRET || '').trim() // un espacio o salto de línea pegado de más no debe romper el cron
-  const recibido = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  // El cron manda el secreto en x-cron-secret (Authorization se pierde si el dominio redirige, p. ej. golmebol.com -> www)
+  const recibido = String(req.headers['x-cron-secret'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')).trim()
   if (!secreto || recibido !== secreto) {
     // Pista para el administrador (solo largos, nunca el secreto): dice qué lado falla
     const motivo = !secreto ? 'vercel_sin_variable' : !recibido ? 'supabase_no_mando_secreto' : 'no_coinciden'
