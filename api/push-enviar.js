@@ -111,7 +111,7 @@ export async function enviarWeb(disp, aviso) {
   try {
     await wp.sendNotification(
       { endpoint: disp.token, keys: { p256dh: disp.suscripcion.p256dh, auth: disp.suscripcion.auth } },
-      JSON.stringify({ titulo: aviso.titulo, cuerpo: aviso.cuerpo, ruta: aviso.ruta || '/', tag: aviso.tag || 'torneo', tipo: aviso.tipo || '' }),
+      JSON.stringify({ titulo: aviso.titulo, cuerpo: aviso.cuerpo, ruta: aviso.ruta || '/', tag: aviso.tag || 'torneo', tipo: aviso.tipo || '', icono: aviso.icono || '' }),
       { TTL: 86400, urgency: 'normal', timeout: 8000 })
     return 'ok'
   } catch (e) {
@@ -179,13 +179,68 @@ const RESUMEN = {
   recordatorio: { titulo: 'Tus partidos empiezan pronto', texto: n => `${n} de tus partidos empiezan en la próxima hora.` },
 }
 
-export function avisosParaDispositivo(items) {
+// ── Aviso ordenado: título corto + líneas (equipos / cuándo y dónde / torneo) ──
+const DIAS_ES = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
+const MESES_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+function partesBogota(iso) {
+  const f = new Date(new Date(iso).getTime() - 5 * 3600 * 1000) // Colombia es UTC-5 todo el año
+  const h = f.getUTCHours(), m = f.getUTCMinutes()
+  return {
+    dia: `${DIAS_ES[f.getUTCDay()]} ${f.getUTCDate()} ${MESES_ES[f.getUTCMonth()]}`,
+    hora: `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`,
+  }
+}
+const mayus1 = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+const urlLogo = u => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : '')
+
+// Devuelve { titulo, cuerpo, icono } o null (si faltan datos: se usa el texto que ya traía la cola)
+export function armarAvisoPartido(it, m, disp) {
+  if (!m || !m.home || !m.away) return null
+  const local = m.home.name || 'Local', visit = m.away.name || 'Visitante'
+  const torneo = m.tournaments?.name || ''
+  const lugar = (m.location || '').trim()
+  const lineas = []
+  let titulo
+  if (it.tipo === 'resultado') {
+    titulo = 'Resultado final'
+    const pen = (m.penales_local ?? '') !== '' && (m.penales_visitante ?? '') !== '' && m.penales_local != null && m.penales_visitante != null
+      ? ` (pen. ${m.penales_local}-${m.penales_visitante})` : ''
+    lineas.push(`${local} ${m.home_score ?? 0} – ${m.away_score ?? 0} ${visit}${pen}`)
+    if (torneo) lineas.push(torneo)
+    lineas.push('Toca para ver el minuto a minuto')
+  } else {
+    const c = m.played_at ? partesBogota(m.played_at) : null
+    if (it.tipo === 'recordatorio') titulo = 'Tu partido empieza en 1 hora'
+    else if (it.tipo === 'cambio') titulo = 'Cambio en el partido'
+    else titulo = 'Nuevo partido programado'
+    lineas.push(`${local} vs ${visit}`)
+    if (c) {
+      const cuando = it.tipo === 'recordatorio' ? c.hora : `${mayus1(c.dia)} · ${c.hora}`
+      lineas.push((it.tipo === 'cambio' ? 'Ahora: ' : '') + cuando + (lugar ? ` · ${lugar}` : ''))
+    } else if (lugar) lineas.push(lugar)
+    if (torneo) lineas.push(torneo)
+  }
+  // Logo (solo lo muestran Android/Chrome): el del equipo que la persona sigue; si no, el del torneo
+  const sigueLocal = disp?.equipos?.includes(m.home_team_id), sigueVisit = disp?.equipos?.includes(m.away_team_id)
+  const icono = urlLogo(sigueLocal ? m.home.logo_url : sigueVisit ? m.away.logo_url : (m.tournaments?.logo_url || m.home.logo_url))
+  return { titulo, cuerpo: lineas.join('\n'), icono }
+}
+
+export function avisosParaDispositivo(items, detalles = {}, disp = null) {
   const porTipo = {}
   for (const it of items) (porTipo[it.tipo] ||= []).push(it)
   const avisos = []
   for (const [tipo, lista] of Object.entries(porTipo)) {
     if (lista.length <= MAX_AGRUPAR) {
-      for (const it of lista) avisos.push({ tipo, titulo: it.titulo, cuerpo: it.cuerpo, ruta: it.torneo_id ? `/t/${it.torneo_id}` : '/', tag: `${tipo}:${it.match_id}` })
+      for (const it of lista) {
+        const rico = armarAvisoPartido(it, detalles[it.match_id], disp)
+        avisos.push({
+          tipo, titulo: rico?.titulo || it.titulo, cuerpo: rico?.cuerpo || it.cuerpo, icono: rico?.icono || '',
+          // Al tocarlo abre el partido: el resultado abre el minuto a minuto; lo demás, la programación
+          ruta: it.torneo_id ? `/t/${it.torneo_id}${it.match_id ? `?partido=${it.match_id}` : ''}` : '/',
+          tag: `${tipo}:${it.match_id}`,
+        })
+      }
     } else {
       avisos.push({ tipo, titulo: RESUMEN[tipo].titulo, cuerpo: RESUMEN[tipo].texto(lista.length), ruta: '/', tag: `resumen:${tipo}` })
     }
@@ -242,11 +297,23 @@ async function enviarCola(req, res) {
     const items = cola.filter(it => vigentes.includes(it.id))
     if (!items.length) return res.status(200).json({ enviados: 0, descartados: descartados.length })
 
+    // Datos reales de cada partido (equipos, escudos, torneo, lugar) para armar avisos ordenados
+    let detalles = {}
+    try {
+      const ids = [...new Set(items.map(i => i.match_id).filter(Boolean))]
+      if (ids.length) {
+        const { data: ms } = await db.from('matches')
+          .select('*, home:home_team_id(name, logo_url), away:away_team_id(name, logo_url), tournaments(name, logo_url)')
+          .in('id', ids)
+        for (const m of ms || []) detalles[m.id] = m
+      }
+    } catch { detalles = {} } // si falla, salen con el texto de siempre
+
     const dispositivos = await cargarDispositivos(db)
     const tareas = []
     for (const d of dispositivos) {
       const suyos = items.filter(it => leAplica(d, it))
-      for (const aviso of avisosParaDispositivo(suyos)) tareas.push(async () => ({ token: d.token, r: d.plataforma === 'web' ? await enviarWeb(d, aviso) : await enviarUno(d.token, aviso) }))
+      for (const aviso of avisosParaDispositivo(suyos, detalles, d)) tareas.push(async () => ({ token: d.token, r: d.plataforma === 'web' ? await enviarWeb(d, aviso) : await enviarUno(d.token, aviso) }))
     }
     const resultados = await enParalelo(tareas, CONCURRENCIA)
 

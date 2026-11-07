@@ -184,7 +184,7 @@ export async function iniciarAvisos() {
     try {
       navigator.serviceWorker?.addEventListener('message', ev => {
         const m = ev.data
-        if (m?.tipo === 'aviso-torneo') notify([m.titulo, m.cuerpo].filter(Boolean).join(' — '))
+        if (m?.tipo === 'aviso-torneo') notify([m.titulo, m.cuerpo].filter(Boolean).join(' — ').replace(/\s*\n+\s*/g, ' · '))
       })
     } catch { /* ignorar */ }
     if (avisosActivos() && webSoportado()) {
@@ -207,7 +207,7 @@ export async function iniciarAvisos() {
     })
     // App abierta: Android no muestra la notificación sola, se muestra adentro
     await PushNotifications.addListener('pushNotificationReceived', n => {
-      notify([n.title, n.body].filter(Boolean).join(' — '))
+      notify([n.title, n.body].filter(Boolean).join(' — ').replace(/\s*\n+\s*/g, ' · '))
     })
     // Tocó la notificación: abre el torneo
     await PushNotifications.addListener('pushNotificationActionPerformed', a => {

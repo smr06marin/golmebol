@@ -17,8 +17,9 @@ self.addEventListener('push', e => {
     }
     await self.registration.showNotification(d.titulo || 'Javier Gonzales · Golmebol', {
       body: d.cuerpo || 'Tienes un mensaje nuevo',
-      icon: '/icon-192.png',
+      icon: d.icono || '/icon-192.png', // Android/Chrome: escudo del equipo o logo del torneo (iPhone siempre muestra el ícono de Golmebol)
       badge: '/icon-192.png',
+      lang: 'es',
       tag: d.tag || 'soporte',
       renotify: true,
       data: { ruta: d.ruta || '/admin?ayuda=1' },

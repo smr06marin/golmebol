@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Trophy, MapPin, Calendar, ChevronDown, Shield, X, Radio, ArrowLeft } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
@@ -581,6 +581,22 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   const [partidoDetalle, setPartidoDetalle] = useState(null) // partido (de Resultados) del que se está viendo el resumen (goles/tarjetas)
 
   useEffect(() => { registrarVisita('torneo_publico', id) }, [id])
+
+  // Entró desde un aviso (/t/<torneo>?partido=<id>): abre directo lo que el aviso anunciaba.
+  // Resultado final -> el resumen minuto a minuto (goles y tarjetas); en vivo -> el detalle en vivo;
+  // partido nuevo / cambio / recordatorio -> la pestaña de próximos partidos.
+  const ubicacion = useLocation()
+  const partidoDelAviso = new URLSearchParams(ubicacion.search).get('partido')
+  const avisoAtendido = useRef(null)
+  useEffect(() => {
+    if (!partidoDelAviso || avisoAtendido.current === partidoDelAviso || !partidos.length) return
+    const m = partidos.find(p => String(p.id) === partidoDelAviso)
+    if (!m) return
+    avisoAtendido.current = partidoDelAviso
+    if (m.status === 'finished') { setTab('resultados'); setPartidoDetalle(m) }
+    else if (derivarEnVivo(m)) setDetalleVivoId(m.id)
+    else setTab('proximos')
+  }, [partidoDelAviso, partidos])
 
   // Favicon dinámico del torneo (no se revierte al salir)
   // En un dominio propio (ej. centegol.com) el título y el ícono son SIEMPRE los del
