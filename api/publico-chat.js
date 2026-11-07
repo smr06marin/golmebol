@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto'
 import { enviarTelegram, telegramConfigurado } from './_telegram.js'
 import { responderAuto } from './_asistente.js'
 import { lineaPrioridad } from './_prioridadSoporte.js'
+import { describirRuta } from './_dondeEstaba.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -108,8 +109,9 @@ export default async function handler(req, res) {
       }
     }
     let waId = null, estado = 'enviado'
+    const dondeTxt = (await describirRuta(admin, ruta)) || 'página pública'
     try {
-      waId = await enviarTelegram(`${auto ? '' : lineaPrioridad(c, { pidioPersona })}💬 Soporte #${c.codigo} · 🌐 Público${auto ? ' · 🤖 respondió el asistente' : ''}\n🙋 ${c.nombre}${c.contacto ? `\n📱 ${c.contacto}` : ''}\n🎯 ${TEMAS[c.tema] || TEMAS.otro}${torneoTxt}\n📍 ${ruta || 'página pública'}\n\n${texto}${auto ? `\n\n🤖 Respuesta automática:\n${auto.texto}` : ''}${pidioPersona ? `\n\n🙋 Pidió hablar con una persona${previo ? `\nSu pregunta anterior: ${previo}` : ''}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`, undefined, undefined, !!auto)
+      waId = await enviarTelegram(`${auto ? '' : lineaPrioridad(c, { pidioPersona })}💬 Soporte #${c.codigo} · 🌐 Público${auto ? ' · 🤖 respondió el asistente' : ''}\n🙋 ${c.nombre}${c.contacto ? `\n📱 ${c.contacto}` : ''}\n🎯 ${TEMAS[c.tema] || TEMAS.otro}${torneoTxt}\n📍 ${dondeTxt}\n\n${texto}${auto ? `\n\n🤖 Respuesta automática:\n${auto.texto}` : ''}${pidioPersona ? `\n\n🙋 Pidió hablar con una persona${previo ? `\nSu pregunta anterior: ${previo}` : ''}` : ''}\n\n↩️ Responde a ESTE mensaje para contestarle.`, undefined, undefined, !!auto)
     } catch (e) { estado = 'error'; console.error('publico-chat telegram:', e.message) }
     await admin.from('soporte_mensajes').update({ wa_id: waId, wa_estado: estado }).eq('id', msg.id)
     return res.status(200).json({ ok: true, id: msg.id, auto: !!auto, wa_estado: estado })

@@ -8,6 +8,7 @@ import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado } from './_t
 import { aOggOpus } from './_audio.js'
 import { responderAuto } from './_asistente.js'
 import { lineaPrioridad, usuariosConPartidosHoy } from './_prioridadSoporte.js'
+import { describirRuta } from './_dondeEstaba.js'
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -89,12 +90,9 @@ export default async function handler(req, res) {
 
     if (!telegramConfigurado() && !waConfigurado()) return res.status(200).json({ ok: true, id: msg.id, auto: !!auto, wa_estado: 'sin_configurar' })
 
-    // Nombre del torneo si estaba dentro de uno
-    let torneo = ''
-    const uuid = contexto.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0]
-    if (uuid) { const { data: t } = await admin.from('tournaments').select('name').eq('id', uuid).maybeSingle(); torneo = t?.name || '' }
+    // Dónde estaba: el nombre del equipo, jugador o torneo (no la dirección con el código largo)
     const quien = user.email || chat.email || 'usuario'
-    const donde = torneo ? `Torneo ${torneo}` : (contexto || 'sin pantalla')
+    const donde = (await describirRuta(admin, contexto)) || 'sin pantalla'
 
     // Quién es: nombre del organizador (su perfil público), rol si no es organizador y los torneos que organiza
     const lineaNombre = chat.nombre ? [`🙋 ${chat.nombre}`] : [] // el nombre que dijo la primera vez
