@@ -206,9 +206,13 @@ export default async function handler(req, res) {
 }
 
 async function enviarCola(req, res) {
-  const secreto = process.env.PUSH_CRON_SECRET
-  const recibido = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-  if (!secreto || recibido !== secreto) return res.status(401).json({ error: 'No autorizado' })
+  const secreto = (process.env.PUSH_CRON_SECRET || '').trim() // un espacio o salto de línea pegado de más no debe romper el cron
+  const recibido = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  if (!secreto || recibido !== secreto) {
+    // Pista para el administrador (solo largos, nunca el secreto): dice qué lado falla
+    const motivo = !secreto ? 'vercel_sin_variable' : !recibido ? 'supabase_no_mando_secreto' : 'no_coinciden'
+    return res.status(401).json({ error: 'No autorizado', motivo, largo_vercel: secreto.length, largo_supabase: recibido.length })
+  }
   if (!SUPABASE_URL || !SERVICE_KEY) return res.status(500).json({ error: 'Falta SUPABASE_SERVICE_ROLE_KEY' })
 
   const ahora = new Date()
