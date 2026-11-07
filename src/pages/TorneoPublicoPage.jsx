@@ -186,7 +186,7 @@ function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, cla
 // Modal con foto grande + nombre de cada jugador REGISTRADO de un equipo en
 // este torneo — para que cualquiera pueda verificar en cancha quién sí está
 // inscrito.
-function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJugador }) {
+function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJugador, porJugador = false }) {
   // Bloquear el scroll del fondo mientras el modal está abierto: si no, en
   // Android el gesto de scroll dentro del modal se "escapa" hacia la página
   // de atrás apenas llega al borde (scroll chaining) y rebota, dando la
@@ -201,6 +201,11 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
   if (!rosterModal) return null
   const { team, jugadores, loading, stats } = rosterModal
   const infoTeam = [team.city, team.categoria, team.modalidad, team.genero].filter(Boolean).join(' · ')
+  // Inscripción POR JUGADOR: cada uno paga lo suyo, así que se ve quién ya pagó y quién debe. Solo si la marca llegó
+  // (si no, no se muestra nada raro). Los que deben salen primero.
+  const mostrarPago = !!porJugador && (jugadores || []).some(j => typeof j.inscripcion_pagada === 'boolean')
+  const nDeben = mostrarPago ? jugadores.filter(j => j.inscripcion_pagada !== true).length : 0
+  const listaJug = mostrarPago ? [...jugadores].sort((a, b) => (a.inscripcion_pagada === true) - (b.inscripcion_pagada === true) || (a.name || '').localeCompare(b.name || '')) : jugadores
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 500, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: '720px', maxHeight: '88vh', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
@@ -242,6 +247,12 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
         <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '18px', lineHeight: 1.5 }}>
           Jugadores registrados de <b>{team.name}</b> en <b>{torneoNombre}</b>.
         </div>
+        {mostrarPago && !loading && !rosterModal.error && jugadores.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '-6px 0 16px' }}>
+            <span style={{ fontSize: '.74rem', fontWeight: '800', color: '#137333', background: '#e6f4ea', borderRadius: '8px', padding: '4px 10px' }}>✓ Pagaron: {jugadores.length - nDeben}</span>
+            <span style={{ fontSize: '.74rem', fontWeight: '800', color: nDeben ? '#b3261e' : '#5f6368', background: nDeben ? '#fce8e6' : '#f1f3f4', borderRadius: '8px', padding: '4px 10px' }}>Deben: {nDeben}</span>
+          </div>
+        )}
 
         {loading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Cargando jugadores...</div>
@@ -251,7 +262,7 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
           <div style={{ padding: '40px', textAlign: 'center', color: '#9aa0a6', fontSize: '.85rem' }}>Este equipo aún no tiene jugadores registrados en este torneo</div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '16px' }}>
-            {jugadores.map(j => {
+            {listaJug.map(j => {
               const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
               return (
               <div key={j.id} role={onVerJugador ? 'link' : undefined} tabIndex={onVerJugador ? 0 : undefined} onClick={onVerJugador ? () => onVerJugador(j.id) : undefined}
@@ -267,6 +278,9 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
                   </div>
                 </div>
                 <div style={{ marginTop: '8px', fontWeight: '700', color: '#202124', fontSize: '.82rem', lineHeight: 1.25 }}>{j.name}</div>
+                {mostrarPago && (j.inscripcion_pagada === true
+                  ? <div style={{ marginTop: '4px' }}><span style={{ fontSize: '.62rem', color: '#137333', background: '#e6f4ea', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>✓ Pagó</span></div>
+                  : <div style={{ marginTop: '4px' }}><span style={{ fontSize: '.64rem', color: '#fff', background: '#d93025', borderRadius: '8px', padding: '1px 8px', fontWeight: '800', letterSpacing: '.03em' }}>DEBE</span></div>)}
                 {tieneTag && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '5px', alignItems: 'center' }}>
                     {j.es_elite && <span style={{ fontSize: '.62rem', color: '#1a1305', background: '#f5c542', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>💎 Élite</span>}
@@ -1303,7 +1317,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         </div>
       </div>
 
-      <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo.name}
+      <RosterModal rosterModal={rosterModal} onClose={() => setRosterModal(null)} torneoNombre={torneo.name} porJugador={torneo.finanzas_config?.inscripcion_modo === 'jugador'}
         onVerEquipo={eid => { setRosterModal(null); navigate(`/e/${eid}`) }}
         onVerJugador={jid => { setRosterModal(null); navigate(`/j/${jid}`) }}/>
       <PartidoDetalleModal key={partidoDetalle?.id || 'cerrado'} partido={partidoDetalle} torneo={torneo} onClose={() => setPartidoDetalle(null)}/>
