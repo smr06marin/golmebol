@@ -2,27 +2,17 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import PortalBanner from '../components/PortalBanner'
-import { fmtMoney, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijasThrottled, obtenerAccesoEscenario, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
+import { fmtMoney, fmtDate, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijasThrottled, obtenerAccesoEscenario, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowLeftRight, Repeat, History, AlertTriangle, Pencil } from 'lucide-react'
+import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowLeftRight, Repeat, History, Bell, ChevronRight, ChevronDown } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
-import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
 
 const S = {
   navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
   border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
   gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
-  green: '#22c55e', loss: '#d93025',
+  green: '#22c55e', loss: '#d93025', warn: '#e8710a',
 }
-
-// Mismas fotos de fondo (tenues, solo de ambiente) que ya se usan en el
-// portal de escuela — así las tarjetas de Escenario quedan con el mismo
-// look sin depender de subir imágenes nuevas.
-const IMG_CANCHA      = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
-const IMG_TIENDA      = 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60'
-const IMG_EQUIPO      = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60'
-const IMG_CLIPBOARD   = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
-const IMG_TROFEO      = 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60'
 
 export default function EscenarioDashboardPage() {
   const navigate = useNavigate()
@@ -40,7 +30,7 @@ export default function EscenarioDashboardPage() {
   const [subiendoLogo, setSubiendoLogo] = useState(false)
   const [actividadReciente, setActividadReciente] = useState([])
   const [mostrarAviso, setMostrarAviso] = useState(false)
-  const [expandirActividad, setExpandirActividad] = useState(false)
+  const [mostrarMas, setMostrarMas] = useState(false)
   const [soloLectura, setSoloLectura] = useState(false)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
@@ -90,16 +80,6 @@ export default function EscenarioDashboardPage() {
   function cerrarAviso() {
     localStorage.setItem(`escenario_aviso_${escenarioId}_${encargado.id}_${todayStr()}`, '1')
     setMostrarAviso(false)
-  }
-
-  function toggleActividad() {
-    setExpandirActividad(v => {
-      const abriendo = !v
-      if (abriendo && actividadReciente[0]) {
-        localStorage.setItem(`escenario_actividad_visto_${escenarioId}_${encargado.id}`, actividadReciente[0].created_at)
-      }
-      return abriendo
-    })
   }
 
   async function handleLogout() {
@@ -160,19 +140,33 @@ export default function EscenarioDashboardPage() {
   const hayActividadNueva = actividadReciente.some(a => !ultimoVisto || a.created_at > ultimoVisto)
 
   const B = escenarioId
-  const NAV = [
-    { to: `/escenario/${B}/canchas`,    icon: GiSoccerBall,   label: 'Canchas',        desc: 'Ver horarios y reservar internamente', bg: IMG_CANCHA },
-    { to: `/escenario/${B}/fijas`,      icon: Repeat,         label: 'Reservas fijas', desc: 'Clientes que juegan el mismo día y hora', bg: IMG_CLIPBOARD },
-    { to: `/escenario/${B}/ventas`,     icon: ShoppingCart,   label: 'Ventas',         desc: 'Punto de venta de la tienda', bg: IMG_TIENDA },
-    { to: `/escenario/${B}/pedido`,     icon: Smartphone,     label: 'Pedido remoto',  desc: 'Pedidos por WhatsApp desde la cancha', bg: IMG_EQUIPO, badge: pedidosPend, warn: pedidosPend > 0 },
-    { to: `/escenario/${B}/inventario`, icon: Package,        label: 'Inventario',     desc: 'Productos, precios y stock', bg: IMG_TIENDA, badge: bajoStock.length, warn: bajoStock.length > 0 },
-    { to: `/escenario/${B}/compras`,    icon: Truck,          label: 'Compras',        desc: 'Registro de compras a proveedores', bg: IMG_CLIPBOARD },
-    { to: `/escenario/${B}/gastos`,     icon: Wallet,         label: 'Gastos',         desc: 'Arriendo, servicios, nómina y otros gastos', bg: IMG_TROFEO },
-    { to: `/escenario/${B}/cierre`,     icon: Receipt,        label: 'Informe diario', desc: 'Canchas, ventas, compras, deudas y stock — imprimir PDF', bg: IMG_EQUIPO },
-    { to: `/escenario/${B}/reportes`,   icon: BarChart3,      label: 'Reportes',       desc: 'Más vendidos, ganancia por producto', bg: IMG_TROFEO },
-    { to: `/escenario/${B}/actividad`,  icon: History,        label: 'Actividad',      desc: 'Quién cambió precios, agregó o eliminó algo', bg: IMG_CANCHA },
-    { to: `/escenario/${B}/config`,     icon: Settings,       label: 'Configuración',  desc: 'Datos, WhatsApp, horarios, precios, fondo', bg: IMG_CLIPBOARD },
+  const nombrePila = encargado.name?.split(' ')[0] || ''
+  // Lo de todos los días va grande arriba; el resto queda agrupado y explicado en "Más opciones".
+  const GRUPOS = [
+    { titulo: 'Tu tienda', items: [
+      { to: `/escenario/${B}/inventario`, icon: Package,  label: 'Productos y precios', desc: 'Cuánto hay y cuánto cuesta cada cosa', badge: bajoStock.length, badgeTxt: 'poco stock' },
+      { to: `/escenario/${B}/compras`,    icon: Truck,    label: 'Compras', desc: 'Lo que le compras a los proveedores' },
+      { to: `/escenario/${B}/gastos`,     icon: Wallet,   label: 'Gastos', desc: 'Arriendo, servicios, nómina y otros' },
+    ] },
+    { titulo: 'Informes', items: [
+      { to: `/escenario/${B}/cierre`,   icon: Receipt,   label: 'Informe del día', desc: 'Todo el resumen del día, para imprimir o guardar en PDF' },
+      { to: `/escenario/${B}/reportes`, icon: BarChart3, label: 'Lo más vendido', desc: 'Qué productos dejan más ganancia' },
+    ] },
+    { titulo: 'Otras cosas', items: [
+      { to: `/escenario/${B}/fijas`,     icon: Repeat,     label: 'Clientes de todas las semanas', desc: 'Los que juegan siempre el mismo día y hora' },
+      { to: `/escenario/${B}/pedido`,    icon: Smartphone, label: 'Pedidos desde la cancha', desc: 'Los que llegan por WhatsApp', badge: pedidosPend, badgeTxt: 'por atender' },
+      { to: `/escenario/${B}/actividad`, icon: History,    label: 'Quién hizo qué', desc: 'Cambios de precios, ventas y cancelaciones', badge: hayActividadNueva ? 1 : 0, badgeTxt: 'nuevo' },
+      { to: `/escenario/${B}/config`,    icon: Settings,   label: 'Ajustes del escenario', desc: 'Horarios, precios, datos y página pública' },
+    ] },
   ]
+  function abrirOpcion(to) {
+    if (to.endsWith('/actividad') && actividadReciente[0]) {
+      try { localStorage.setItem(`escenario_actividad_visto_${escenarioId}_${encargado.id}`, actividadReciente[0].created_at) } catch { /* sin almacenamiento: no pasa nada */ }
+    }
+    navigate(to)
+  }
+  const avisosMas = bajoStock.length + pedidosPend + (hayActividadNueva ? 1 : 0)
+  const BOTON_GRANDE = { boxSizing:'border-box', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', width:'100%', minHeight:'56px', border:'none', borderRadius:'14px', cursor:'pointer', fontWeight:900, fontSize:'1rem', fontFamily:'inherit' }
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
@@ -181,10 +175,10 @@ export default function EscenarioDashboardPage() {
           <div style={{ background:S.card, border:`1px solid ${S.gold}`, borderRadius:'16px', padding:'24px', maxWidth:'360px', textAlign:'center' }}>
             <div style={{ fontSize:'2rem', marginBottom:'10px' }}>⚠️</div>
             <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'8px' }}>Recordatorio</div>
-            <div style={{ fontSize:'.82rem', color:S.text2, lineHeight:1.5, marginBottom:'18px' }}>
-              Recuerda que cualquier modificación que hagas acá — ventas, precios, cancelaciones, pagos, lo que sea — queda registrada con tu nombre, la fecha y la hora. Todos los que tienen acceso a este escenario van a poder ver que fuiste tú quien lo hizo.
+            <div style={{ fontSize:'.86rem', color:S.text2, lineHeight:1.5, marginBottom:'18px' }}>
+              Todo lo que cambies aquí (ventas, precios, cancelaciones, pagos) queda anotado con tu nombre, la fecha y la hora. Los demás encargados del escenario pueden verlo.
             </div>
-            <button onClick={cerrarAviso} style={{ width:'100%', padding:'11px', background:S.cyan, border:'none', borderRadius:'10px', cursor:'pointer', color:'#000', fontWeight:800, fontSize:'.85rem' }}>Entendido</button>
+            <button onClick={cerrarAviso} style={{ ...BOTON_GRANDE, background:S.cyan, color:'#000', minHeight:'48px', fontSize:'.9rem' }}>Entendido</button>
           </div>
         </div>
       )}
@@ -193,92 +187,118 @@ export default function EscenarioDashboardPage() {
         avatarUrl={escenario.logo_url} avatarEmoji={<Building2 size={22}/>} avatarShape="rounded"
         onAvatarUpload={soloLectura ? undefined : handleLogo} uploadingAvatar={subiendoLogo}
         kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Building2 size={11}/> Escenario deportivo</span>} title={escenario.name}
-        subtitle={<span>🏟️ {soloLectura ? '👁️ Solo lectura' : 'Encargado'} · {encargado.name?.split(' ')[0]}</span>}
+        subtitle={<span>🏟️ {soloLectura ? '👁️ Solo lectura' : 'Encargado'} · {nombrePila}</span>}
         subtitleColor={S.gold}
         usuario={encargado} actual="escenario" onLogout={handleLogout}
       />
 
       <div style={{ maxWidth:'640px', margin:'0 auto', padding:'20px 16px' }}>
 
-        {otros.length > 1 && (
-          <button onClick={()=>navigate('/escenario')}
-            style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'7px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', marginBottom:'14px' }}>
-            <ArrowLeftRight size={12}/> Cambiar de escenario ({otros.length})
-          </button>
-        )}
-
-        {!soloLectura && (
-          <button onClick={()=>navigate(`/escenario/${B}/config`)}
-            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', width:'100%', padding:'10px', marginBottom:'14px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontSize:'.8rem', fontWeight:'700' }}>
-            <Pencil size={13}/> Editar escenario y página pública
-          </button>
-        )}
-
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'16px' }}>
-          <div style={{ background:S.card, border:`1px solid ${S.cyan}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><ShoppingCart size={18} color={S.cyan}/></div>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.cyan, lineHeight:1 }}>{fmtMoney(totalVentasHoy)}</div>
-            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Ventas hoy</div>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'16px' }}>
+          <div>
+            <div style={{ fontSize:'1.25rem', fontWeight:900, lineHeight:1.2 }}>Hola, {nombrePila} 👋</div>
+            <div style={{ fontSize:'.84rem', color:S.muted, marginTop:'2px' }}>¿Qué quieres hacer hoy?</div>
           </div>
-          <div style={{ background:S.card, border:`1px solid ${S.gold}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><Wallet size={18} color={S.gold}/></div>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{fmtMoney(gananciaHoy)}</div>
-            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Ganancia hoy</div>
-          </div>
-          <div style={{ background:S.card, border:`1px solid ${S.green}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><GiSoccerBall size={18} color={S.green}/></div>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.green, lineHeight:1 }}>{libres}</div>
-            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Horarios libres</div>
-            <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>Hoy</div>
-          </div>
-          <div style={{ background:S.card, border:`1px solid ${S.loss}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-            <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><GiSoccerBall size={18} color={S.loss}/></div>
-            <div style={{ fontSize:'1.4rem', fontWeight:'900', color:S.loss, lineHeight:1 }}>{ocupados}</div>
-            <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Horarios ocupados</div>
-            <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>Hoy</div>
-          </div>
-        </div>
-
-        {(bajoStock.length > 0 || pedidosPend > 0 || reservasPendientes.length > 0) && (
-          <div style={{ background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'12px', padding:'12px 14px', marginBottom:'16px', fontSize:'.78rem', color:S.cyan, display:'flex', flexDirection:'column', gap:'4px' }}>
-            {bajoStock.length > 0 && <div>📦 {bajoStock.length} producto{bajoStock.length===1?'':'s'} con poco stock</div>}
-            {pedidosPend > 0 && <div>📱 {pedidosPend} pedido{pedidosPend===1?'':'s'} remoto{pedidosPend===1?'':'s'} pendiente{pedidosPend===1?'':'s'}</div>}
-            {reservasPendientes.length > 0 && (
-              <div onClick={() => navigate(`/escenario/${escenarioId}/canchas`)} style={{ cursor:'pointer', textDecoration:'underline' }}>
-                🏟️ {reservasPendientes.length} solicitud{reservasPendientes.length===1?'':'es'} de reserva pendiente{reservasPendientes.length===1?'':'s'} de confirmar (aunque no haya llegado el WhatsApp) — toca para revisar
-              </div>
-            )}
-          </div>
-        )}
-
-        {actividadReciente.length > 0 && (
-          <div style={{ marginBottom:'16px' }}>
-            <button onClick={toggleActividad}
-              style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', background: hayActividadNueva ? 'rgba(249,168,37,.1)' : S.card, border:`1px solid ${hayActividadNueva ? S.gold : S.border}`, borderRadius:'12px', padding:'12px 14px', cursor:'pointer', color: hayActividadNueva ? S.gold : S.text2, fontWeight:700, fontSize:'.8rem' }}>
-              <span style={{ display:'flex', alignItems:'center', gap:'7px' }}><AlertTriangle size={14}/> {hayActividadNueva ? 'Hay movimientos nuevos en el sistema' : 'Actividad reciente'}</span>
-              <span style={{ fontSize:'.7rem' }}>{expandirActividad ? 'Ocultar' : 'Ver'}</span>
+          {otros.length > 1 && (
+            <button onClick={()=>navigate('/escenario')}
+              style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', padding:'0 12px', minHeight:'40px', cursor:'pointer', color:S.text2, fontSize:'.76rem', fontWeight:700, flexShrink:0, fontFamily:'inherit' }}>
+              <ArrowLeftRight size={13}/> Cambiar
             </button>
-            {expandirActividad && (
-              <div style={{ marginTop:'8px', display:'flex', flexDirection:'column', gap:'6px' }}>
-                {actividadReciente.map(a => (
-                  <div key={a.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'10px 12px' }}>
-                    <div style={{ fontSize:'.8rem' }}>{a.descripcion}</div>
-                    <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'2px' }}>{a.player_nombre || 'Alguien'} · {fmtHoraDate(a.created_at)}</div>
-                  </div>
-                ))}
-                <button onClick={()=>navigate(`/escenario/${escenarioId}/actividad`)} style={{ background:'none', border:'none', color:S.cyan, fontSize:'.76rem', cursor:'pointer', padding:'6px 0', textAlign:'left' }}>Ver todo el historial →</button>
-              </div>
-            )}
-          </div>
+          )}
+        </div>
+
+        {/* Solicitudes de reserva esperando respuesta: lo más urgente va primero */}
+        {reservasPendientes.length > 0 && (
+          <button onClick={() => navigate(`/escenario/${B}/canchas`)}
+            style={{ ...BOTON_GRANDE, justifyContent:'space-between', padding:'12px 16px', marginBottom:'14px', background:'rgba(232,113,14,.14)', border:`1.5px solid ${S.warn}`, color:S.text, textAlign:'left', fontWeight:700, fontSize:'.9rem' }}>
+            <span style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+              <Bell size={20} color={S.warn}/>
+              <span><b style={{ color:S.warn }}>{reservasPendientes.length} {reservasPendientes.length === 1 ? 'cliente quiere' : 'clientes quieren'} reservar.</b><br/><span style={{ fontSize:'.78rem', color:S.text2, fontWeight:500 }}>Toca para aceptar o rechazar</span></span>
+            </span>
+            <ChevronRight size={20} color={S.warn}/>
+          </button>
         )}
 
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'10px' }}>
-          {NAV.map(n => (
-            <EscuelaFeatureCard key={n.to} onClick={() => navigate(n.to)} bg={n.bg}
-              icon={<n.icon size={24} color={S.green}/>} title={n.label} desc={n.desc}
-              badge={n.badge} warn={n.warn}/>
-          ))}
+        {/* 1 · Reservas: lo principal de todos los días */}
+        <div style={{ background:`linear-gradient(160deg, ${S.card}, ${S.card2})`, border:`1.5px solid ${S.cyan}66`, borderRadius:'18px', padding:'16px', marginBottom:'14px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+            <GiSoccerBall size={22} color={S.cyan}/>
+            <div>
+              <div style={{ fontWeight:900, fontSize:'1.02rem' }}>Reservas de hoy</div>
+              <div style={{ fontSize:'.74rem', color:S.muted }}>{fmtDate(todayStr())}</div>
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'14px' }}>
+            <div style={{ background:'rgba(34,197,94,.1)', border:`1px solid ${S.green}55`, borderRadius:'12px', padding:'10px', textAlign:'center' }}>
+              <div style={{ fontSize:'1.7rem', fontWeight:900, color:S.green, lineHeight:1 }}>{libres}</div>
+              <div style={{ fontSize:'.76rem', color:S.text2, marginTop:'4px', fontWeight:700 }}>Horarios libres</div>
+            </div>
+            <div style={{ background:'rgba(217,48,37,.1)', border:`1px solid ${S.loss}55`, borderRadius:'12px', padding:'10px', textAlign:'center' }}>
+              <div style={{ fontSize:'1.7rem', fontWeight:900, color:'#ff7b72', lineHeight:1 }}>{ocupados}</div>
+              <div style={{ fontSize:'.76rem', color:S.text2, marginTop:'4px', fontWeight:700 }}>Ya reservados</div>
+            </div>
+          </div>
+          <button onClick={() => navigate(`/escenario/${B}/canchas`)} style={{ ...BOTON_GRANDE, background:S.cyan, color:'#000' }}>
+            <GiSoccerBall size={20}/> {soloLectura ? 'Ver los horarios' : 'Ver horarios y reservar'}
+          </button>
         </div>
+
+        {/* 2 · Tienda */}
+        <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'18px', padding:'16px', marginBottom:'14px' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'12px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <ShoppingCart size={22} color={S.gold}/>
+              <div style={{ fontWeight:900, fontSize:'1.02rem' }}>Tienda</div>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:'1.25rem', fontWeight:900, color:S.gold, lineHeight:1 }}>{fmtMoney(totalVentasHoy)}</div>
+              <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'3px' }}>vendido hoy</div>
+            </div>
+          </div>
+          {bajoStock.length > 0 && (
+            <button onClick={() => navigate(`/escenario/${B}/inventario`)}
+              style={{ display:'block', width:'100%', textAlign:'left', background:'rgba(249,168,37,.1)', border:`1px solid ${S.gold}66`, borderRadius:'10px', padding:'9px 12px', marginBottom:'10px', color:S.gold, fontSize:'.8rem', fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+              📦 {bajoStock.length} {bajoStock.length === 1 ? 'producto con poco stock' : 'productos con poco stock'} — toca para verlos
+            </button>
+          )}
+          <button onClick={() => navigate(`/escenario/${B}/ventas`)} style={{ ...BOTON_GRANDE, background:S.gold, color:'#1a1200' }}>
+            <ShoppingCart size={20}/> {soloLectura ? 'Ver las ventas' : 'Hacer una venta'}
+          </button>
+        </div>
+
+        {/* Más opciones: cerradas para no abrumar */}
+        <button onClick={() => setMostrarMas(v => !v)} aria-expanded={mostrarMas}
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', minHeight:'54px', padding:'0 16px', background:S.surface, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, fontWeight:800, fontSize:'.92rem', fontFamily:'inherit' }}>
+          <span style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+            Más opciones
+            {!mostrarMas && avisosMas > 0 && <span style={{ background:S.warn, color:'#fff', borderRadius:'999px', fontSize:'.68rem', fontWeight:900, padding:'2px 8px' }}>{avisosMas}</span>}
+          </span>
+          {mostrarMas ? <ChevronDown size={20} color={S.muted}/> : <ChevronRight size={20} color={S.muted}/>}
+        </button>
+
+        {mostrarMas && (
+          <div style={{ marginTop:'12px', display:'flex', flexDirection:'column', gap:'16px' }}>
+            {GRUPOS.map(g => (
+              <div key={g.titulo}>
+                <div style={{ fontSize:'.7rem', fontWeight:800, letterSpacing:'.08em', textTransform:'uppercase', color:S.muted, margin:'0 4px 8px' }}>{g.titulo}</div>
+                <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', overflow:'hidden' }}>
+                  {g.items.map((n, i) => (
+                    <button key={n.to} onClick={() => { abrirOpcion(n.to) }}
+                      style={{ display:'flex', alignItems:'center', gap:'12px', width:'100%', minHeight:'62px', padding:'10px 14px', background:'none', border:'none', borderTop: i > 0 ? `1px solid ${S.border}` : 'none', cursor:'pointer', color:S.text, textAlign:'left', fontFamily:'inherit' }}>
+                      <span style={{ width:'38px', height:'38px', borderRadius:'10px', background:S.cyanDim, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><n.icon size={19} color={S.cyan}/></span>
+                      <span style={{ flex:1, minWidth:0 }}>
+                        <span style={{ display:'block', fontWeight:800, fontSize:'.9rem' }}>{n.label}</span>
+                        <span style={{ display:'block', fontSize:'.74rem', color:S.muted, lineHeight:1.35, marginTop:'1px' }}>{n.desc}</span>
+                      </span>
+                      {n.badge > 0 && <span style={{ background:S.warn, color:'#fff', borderRadius:'999px', fontSize:'.66rem', fontWeight:900, padding:'3px 8px', flexShrink:0 }}>{n.badge === 1 && n.badgeTxt === 'nuevo' ? 'nuevo' : `${n.badge} ${n.badgeTxt}`}</span>}
+                      <ChevronRight size={18} color={S.muted} style={{ flexShrink:0 }}/>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

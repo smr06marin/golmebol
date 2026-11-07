@@ -286,11 +286,11 @@ export default function EscenarioVentasPage() {
               <ShoppingCart size={19} color={S.cyan}/>
             </div>
             <div>
-              <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>Punto de venta</div>
+              <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>Hacer una venta</div>
               <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
             </div>
           </div>
-          <button onClick={() => navigate('/escenario/'+escenarioId)} style={{ background:'none', border:`1px solid ${S.border}`, borderRadius:'8px', padding:'6px 12px', cursor:'pointer', color:S.muted, fontSize:'.75rem', flexShrink:0 }}>← Escenario</button>
+          <button onClick={() => navigate('/escenario/'+escenarioId)} style={{ background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'0 14px', minHeight:'44px', cursor:'pointer', color:S.text, fontSize:'.84rem', fontWeight:800, flexShrink:0, fontFamily:'inherit' }}>‹ Volver al inicio</button>
         </div>
       </div>
 
