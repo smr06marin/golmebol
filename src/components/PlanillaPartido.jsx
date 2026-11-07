@@ -8,6 +8,7 @@ import { X, Printer, Play, Pause, RotateCcw, Minimize2, Maximize2, Move, Edit2 }
 import { PLANILLA_ABIERTA_KEY } from '../lib/planillaRecovery'
 import { construirDeudaTarjetas, fetchMatchesInfo } from '../lib/tarjetasDeuda'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { errorAmigable } from '../lib/mensajesError'
 import { comprimirImagen } from '../lib/imageCompress'
 import { limpiarStatsObsoletas, borrarStatsDePartido } from '../lib/statsPartido'
 import PlanillaPenales, { PreguntaPenales } from './PlanillaPenales'
@@ -213,13 +214,25 @@ function ModalInscripcionJugador({ jugador, tarifa, onClose }) {
 // click en el aviso "⚠️ DEBE TARJETA" o en la casilla bloqueada del número
 // de camiseta. Se actualiza solo (y se cierra solo si ya pagó) por la
 // suscripción en tiempo real a player_match_stats.
-function ModalDeudaTarjeta({ jugador, items, equiposNombre, onClose }) {
+function ModalDeudaTarjeta({ jugador, items, equiposNombre, onClose, onDesbloquear }) {
   const total = items.reduce((sum, it) => sum + (it.monto || 0), 0)
+  // Paso 1: botón «Ya pagó — desbloquear». Paso 2: confirmar que el dinero sí se recibió.
+  const [confirmando, setConfirmando] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState('')
+  async function desbloquear() {
+    if (enviando) return
+    setEnviando(true); setError('')
+    const r = await onDesbloquear(jugador)
+    setEnviando(false)
+    if (!r?.ok) { setError(r?.error || 'No se pudo desbloquear. Intenta de nuevo.'); setConfirmando(false) }
+    // Si salió bien, la planilla se actualiza sola y este cuadro se cierra
+  }
   const iconoTipo = { Amarilla: '🟨', Azul: '🟦', Roja: '🟥' }
   const colorTipo = { Amarilla: '#c46200', Azul: '#1a56c7', Roja: '#d93025' }
   return (
     <div className="no-print" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '380px', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '380px', maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }} onClick={e => e.stopPropagation()}>
         <div style={{ fontSize: '1.6rem', marginBottom: '4px' }}>⚠️</div>
         <div style={{ fontWeight: '800', color: '#202124', fontSize: '1.05rem', marginBottom: '4px' }}>{jugador?.nombre || 'Jugador'}</div>
         <div style={{ fontSize: '.82rem', color: '#5f6368', marginBottom: '14px' }}>
@@ -251,7 +264,33 @@ function ModalDeudaTarjeta({ jugador, items, equiposNombre, onClose }) {
             <span>Total a pagar</span><span>${total.toLocaleString('es-CO')}</span>
           </div>
         )}
-        <button onClick={onClose} style={{ marginTop: '18px', width: '100%', padding: '11px', background: '#1a3a8a', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '.9rem', cursor: 'pointer' }}>
+        {onDesbloquear && items.length > 0 && (
+          <div style={{ marginTop: '16px' }}>
+            {error && <div style={{ background: '#fce8e6', color: '#b3261e', borderRadius: '8px', padding: '9px 11px', fontSize: '.8rem', fontWeight: '600', marginBottom: '10px' }}>{error}</div>}
+            {!confirmando ? (
+              <button onClick={() => { setError(''); setConfirmando(true) }}
+                style={{ width: '100%', padding: '14px', background: '#188038', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '.98rem', cursor: 'pointer' }}>
+                Ya pagó — desbloquear
+              </button>
+            ) : (
+              <div style={{ background: '#e6f4ea', border: '1px solid #a8dab5', borderRadius: '10px', padding: '12px' }}>
+                <div style={{ fontWeight: '800', color: '#0d652d', fontSize: '.9rem', marginBottom: '4px' }}>
+                  ¿Ya recibiste {total > 0 ? '$' + total.toLocaleString('es-CO') : 'el pago'} de {jugador?.nombre || 'este jugador'}?
+                </div>
+                <div style={{ fontSize: '.75rem', color: '#3c4043', marginBottom: '10px' }}>Se anota el pago en Finanzas del torneo y el jugador queda desbloqueado.</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button disabled={enviando} onClick={() => setConfirmando(false)}
+                    style={{ flex: 1, padding: '12px', background: '#fff', color: '#3c4043', border: '1px solid #dadce0', borderRadius: '9px', fontWeight: '700', fontSize: '.85rem', cursor: 'pointer' }}>No, volver</button>
+                  <button disabled={enviando} onClick={desbloquear}
+                    style={{ flex: 1.4, padding: '12px', background: '#188038', color: '#fff', border: 'none', borderRadius: '9px', fontWeight: '800', fontSize: '.85rem', cursor: enviando ? 'wait' : 'pointer', opacity: enviando ? .7 : 1 }}>
+                    {enviando ? 'Guardando…' : 'Sí, ya me pagó'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <button onClick={onClose} style={{ marginTop: '12px', width: '100%', padding: '11px', background: '#1a3a8a', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '.9rem', cursor: 'pointer' }}>
           Entendido
         </button>
       </div>
@@ -1027,6 +1066,19 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
     // Si el jugador que estaba viendo el modal de deuda ya pagó, cerrarlo solo.
     setModalDeudaJugador(prev => (prev && !idsDebenTarjeta.has(prev.id)) ? null : prev)
   }, [partido?.tournament_id, torneo?.finanzas_config])
+
+  // El árbitro cobró la tarjeta en la cancha: marca las tarjetas como pagadas y anota el pago en Finanzas
+  // (función segura en Supabase: migracion_arbitro_desbloquea_tarjetas.sql). Devuelve { ok } o { ok:false, error }.
+  async function desbloquearTarjetaJugador(jug) {
+    if (!jug?.id || !partido?.id) return { ok: false, error: 'No se pudo identificar al jugador.' }
+    const { error } = await supabase.rpc('desbloquear_tarjetas_en_planilla', { p_match_id: partido.id, p_player_id: jug.id })
+    if (error) {
+      if (/ya no tiene tarjetas pendientes/i.test(error.message || '')) { await refetchDeudaTarjetas(); return { ok: true } }
+      return { ok: false, error: errorAmigable(error, 'No se pudo desbloquear al jugador') }
+    }
+    await refetchDeudaTarjetas()
+    return { ok: true }
+  }
 
   useEffect(() => {
     if (!partido?.tournament_id) return
@@ -2360,7 +2412,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
         return <ModalInscripcionJugador jugador={actual} tarifa={torneo?.finanzas_config?.inscripcion_jugador || 0} onClose={() => setModalInscripcionJugador(null)}/>
       })()}
       {modalDeudaJugador && (
-        <ModalDeudaTarjeta jugador={modalDeudaJugador} items={deudaDetalle[modalDeudaJugador.id] || []} equiposNombre={equiposNombre} onClose={() => setModalDeudaJugador(null)}/>
+        <ModalDeudaTarjeta jugador={modalDeudaJugador} items={deudaDetalle[modalDeudaJugador.id] || []} equiposNombre={equiposNombre} onClose={() => setModalDeudaJugador(null)} onDesbloquear={desbloquearTarjetaJugador}/>
       )}
 
       {/* Aviso: faltan firmas de los árbitros para poder cerrar/guardar */}
