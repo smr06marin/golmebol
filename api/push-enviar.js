@@ -12,6 +12,9 @@
 //      El recordatorio solo les llega a quienes siguen alguno de los dos equipos.
 //   4. Si a un celular le toca más de 3 avisos del mismo tipo, recibe uno solo
 //      resumido, para no llenarlo de notificaciones.
+//   5. ORGANIZADORES: las tarjetas rojas en vivo y los informes de los árbitros (tipos 'roja' e 'informe' de la cola)
+//      van solo al celular del dueño del torneo (push_dispositivos.usuario_id) y salen a cualquier hora, en la
+//      siguiente vuelta del cron (cada minuto).
 //
 // Variables de entorno en Vercel (servidor, NUNCA con prefijo VITE_):
 //   SUPABASE_SERVICE_ROLE_KEY   clave "service_role" de Supabase
@@ -30,6 +33,10 @@ const MAX_AGRUPAR = 3          // más de 3 avisos del mismo tipo para un celula
 const MAX_POR_VUELTA = 300     // avisos de la cola que se procesan por vuelta
 const EDAD_MAXIMA_H = 72       // un aviso con más de 3 días ya no sirve
 const CONCURRENCIA = 20
+// Avisos para ORGANIZADORES (tarjeta roja en vivo e informe del árbitro): salen de inmediato, a cualquier hora,
+// y solo a quien es dueño del torneo (o administrador de Golmebol si el torneo no tiene organizador).
+const URGENTES = ['roja', 'informe']
+const EDAD_URGENTE_H = 6       // una roja o un informe de hace más de 6 horas ya no es "de inmediato"
 
 // ── Firebase (HTTP v1) ────────────────────────────────────────
 let cuenta = null
@@ -158,7 +165,7 @@ async function crearRecordatorios(db, ahora) {
 async function cargarDispositivos(db) {
   const todos = []
   for (let desde = 0; ; desde += 1000) {
-    const { data, error } = await db.from('push_dispositivos').select('token, plataforma, suscripcion, equipos, torneos').eq('activo', true).range(desde, desde + 999)
+    const { data, error } = await db.from('push_dispositivos').select('token, plataforma, suscripcion, equipos, torneos, usuario_id').eq('activo', true).range(desde, desde + 999)
     if (error) throw new Error(error.message)
     todos.push(...(data || []))
     if (!data || data.length < 1000) break
@@ -166,7 +173,29 @@ async function cargarDispositivos(db) {
   return todos
 }
 
-export function leAplica(disp, item) {
+// Quién recibe las rojas / informes de cada torneo: su organizador; si el torneo es de Golmebol (sin organizador), los administradores
+async function cargarDuenos(db, items) {
+  const ids = [...new Set(items.map(i => i.torneo_id).filter(Boolean))]
+  const duenos = {}
+  if (!ids.length) return duenos
+  try {
+    const { data: ts } = await db.from('tournaments').select('id, organizador_id').in('id', ids)
+    let admins = null
+    for (const t of ts || []) {
+      if (t.organizador_id) { duenos[t.id] = new Set([t.organizador_id]); continue }
+      if (admins === null) {
+        const { data: rs } = await db.from('roles_plataforma').select('user_id').eq('rol', 'admin').neq('activo', false).not('user_id', 'is', null)
+        admins = new Set((rs || []).map(r => r.user_id))
+      }
+      duenos[t.id] = admins
+    }
+  } catch { /* sin datos de dueños no se manda a nadie: el aviso se da por enviado igual */ }
+  return duenos
+}
+
+export function leAplica(disp, item, duenos = {}) {
+  // roja / informe: solo el organizador del torneo (nunca a los hinchas que siguen el torneo o el equipo)
+  if (URGENTES.includes(item.tipo)) return !!disp.usuario_id && !!duenos[item.torneo_id]?.has(disp.usuario_id)
   const siguePorEquipo = item.equipos?.some(e => disp.equipos?.includes(e))
   if (item.tipo === 'recordatorio') return !!siguePorEquipo      // el recordatorio solo por equipo
   return !!siguePorEquipo || (!!item.torneo_id && !!disp.torneos?.includes(item.torneo_id))
@@ -177,6 +206,8 @@ const RESUMEN = {
   cambio:    { titulo: 'Cambios en tus partidos',     texto: n => `${n} partidos cambiaron de fecha, hora o cancha. Abre Golmebol para verlos.` },
   resultado: { titulo: 'Nuevos resultados',           texto: n => `Terminaron ${n} partidos de tus equipos y torneos. Abre Golmebol para verlos.` },
   recordatorio: { titulo: 'Tus partidos empiezan pronto', texto: n => `${n} de tus partidos empiezan en la próxima hora.` },
+  roja:    { titulo: 'Tarjetas rojas en tus partidos', texto: n => `Hubo ${n} tarjetas rojas en tus torneos. Abre Golmebol para verlas.` },
+  informe: { titulo: 'Informes de los árbitros',        texto: n => `Los árbitros escribieron ${n} informes en tus torneos. Abre Golmebol para leerlos.` },
 }
 
 // ── Aviso ordenado: título corto + líneas (equipos / cuándo y dónde / torneo) ──
@@ -201,6 +232,15 @@ export function armarAvisoPartido(it, m, disp) {
   const lugar = (m.location || '').trim()
   const lineas = []
   let titulo
+  if (URGENTES.includes(it.tipo)) {
+    titulo = it.titulo
+    lineas.push(it.cuerpo)
+    const jugado = m.home_score != null && m.away_score != null
+    lineas.push(`${local}${jugado ? ` ${m.home_score} – ${m.away_score} ` : ' vs '}${visit}`)
+    if (torneo) lineas.push(torneo)
+    lineas.push(it.tipo === 'informe' ? 'Toca para leer el informe' : 'Toca para ver el partido')
+    return { titulo, cuerpo: lineas.join('\n'), icono: urlLogo(m.tournaments?.logo_url || m.home.logo_url) }
+  }
   if (it.tipo === 'resultado') {
     titulo = 'Resultado final'
     const pen = (m.penales_local ?? '') !== '' && (m.penales_visitante ?? '') !== '' && m.penales_local != null && m.penales_visitante != null
@@ -237,12 +277,14 @@ export function avisosParaDispositivo(items, detalles = {}, disp = null) {
         avisos.push({
           tipo, titulo: rico?.titulo || it.titulo, cuerpo: rico?.cuerpo || it.cuerpo, icono: rico?.icono || '',
           // Al tocarlo abre el partido: el resultado abre el minuto a minuto; lo demás, la programación
-          ruta: it.torneo_id ? `/t/${it.torneo_id}${it.match_id ? `?partido=${it.match_id}` : ''}` : '/',
-          tag: `${tipo}:${it.match_id}`,
+          ruta: it.tipo === 'informe' && it.torneo_id
+            ? `/admin/torneos/${it.torneo_id}?tab=informes${it.match_id ? `&partido=${it.match_id}` : ''}`
+            : it.torneo_id ? `/t/${it.torneo_id}${it.match_id ? `?partido=${it.match_id}` : ''}` : '/',
+          tag: URGENTES.includes(it.tipo) ? `${tipo}:${it.id ?? it.match_id}` : `${tipo}:${it.match_id}`, // cada roja / informe es su propia notificación
         })
       }
     } else {
-      avisos.push({ tipo, titulo: RESUMEN[tipo].titulo, cuerpo: RESUMEN[tipo].texto(lista.length), ruta: '/', tag: `resumen:${tipo}` })
+      avisos.push({ tipo, titulo: RESUMEN[tipo].titulo, cuerpo: RESUMEN[tipo].texto(lista.length), ruta: URGENTES.includes(tipo) ? '/admin' : '/', tag: `resumen:${tipo}` })
     }
   }
   return avisos
@@ -272,24 +314,28 @@ async function enviarCola(req, res) {
   if (!SUPABASE_URL || !SERVICE_KEY) return res.status(500).json({ error: 'Falta SUPABASE_SERVICE_ROLE_KEY' })
 
   const ahora = new Date()
-  if (!enVentanaEnvio(ahora)) return res.status(200).json({ enviados: 0, motivo: 'fuera del horario (10 am – 10 pm)' })
+  // Fuera del horario (10 pm – 10 am) solo salen las rojas y los informes para organizadores; lo demás espera a las 10 am
+  const dentroHorario = enVentanaEnvio(ahora)
   if (!leerCuenta() && !(process.env.VAPID_PRIVATE_KEY && (process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY))) {
     return res.status(500).json({ error: 'Falta FIREBASE_SERVICE_ACCOUNT o las claves VAPID (los avisos quedan en espera)' })
   }
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   try {
-    await crearRecordatorios(db, ahora)
+    if (dentroHorario) await crearRecordatorios(db, ahora)
 
-    const { data: cola, error } = await db.from('push_cola').select('*').is('enviado_en', null).order('id', { ascending: true }).limit(MAX_POR_VUELTA)
+    let consulta = db.from('push_cola').select('*').is('enviado_en', null)
+    if (!dentroHorario) consulta = consulta.in('tipo', URGENTES)
+    const { data: cola, error } = await consulta.order('id', { ascending: true }).limit(MAX_POR_VUELTA)
     if (error) throw new Error(error.message)
-    if (!cola?.length) return res.status(200).json({ enviados: 0, pendientes: 0 })
+    if (!cola?.length) return res.status(200).json({ enviados: 0, pendientes: 0, ...(dentroHorario ? {} : { motivo: 'fuera del horario (10 am – 10 pm)' }) })
 
     // Descarta lo que ya no sirve (partido que ya empezó, aviso muy viejo)
     const limiteEdad = ahora.getTime() - EDAD_MAXIMA_H * 3600 * 1000
     const vigentes = [], descartados = []
     for (const it of cola) {
-      const viejo = new Date(it.creado_en).getTime() < limiteEdad
+      const limite = URGENTES.includes(it.tipo) ? ahora.getTime() - EDAD_URGENTE_H * 3600 * 1000 : limiteEdad
+      const viejo = new Date(it.creado_en).getTime() < limite
       const yaEmpezo = it.vence_en && new Date(it.vence_en).getTime() <= ahora.getTime()
       ;(viejo || yaEmpezo ? descartados : vigentes).push(it.id)
     }
@@ -309,10 +355,11 @@ async function enviarCola(req, res) {
       }
     } catch { detalles = {} } // si falla, salen con el texto de siempre
 
+    const duenos = await cargarDuenos(db, items.filter(it => URGENTES.includes(it.tipo)))
     const dispositivos = await cargarDispositivos(db)
     const tareas = []
     for (const d of dispositivos) {
-      const suyos = items.filter(it => leAplica(d, it))
+      const suyos = items.filter(it => leAplica(d, it, duenos))
       for (const aviso of avisosParaDispositivo(suyos, detalles, d)) tareas.push(async () => ({ token: d.token, r: d.plataforma === 'web' ? await enviarWeb(d, aviso) : await enviarUno(d.token, aviso) }))
     }
     const resultados = await enParalelo(tareas, CONCURRENCIA)

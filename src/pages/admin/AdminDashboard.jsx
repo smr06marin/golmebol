@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import EstadoSistema from '../../components/EstadoSistema'
+import AvisosOrganizador from '../../components/AvisosOrganizador'
 
 // Solo el administrador PRINCIPAL ve las analíticas del sitio
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -293,6 +294,8 @@ export default function AdminDashboard() {
           </p>
         </div>
 
+        <AvisosOrganizador/>
+
         {misTorneos.length === 0 ? (
           <div>
             <div style={{ background: 'linear-gradient(135deg, #1a73e8, #6c35de)', borderRadius: '16px', padding: '28px 22px', color: '#fff', marginBottom: '16px' }}>
@@ -416,6 +419,8 @@ export default function AdminDashboard() {
           {new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
+
+      <AvisosOrganizador/>
 
       {/* Semáforo del sistema — solo administrador principal */}
       <EstadoSistema/>

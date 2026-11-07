@@ -33,7 +33,7 @@ self.addEventListener('notificationclick', e => {
   e.waitUntil((async () => {
     const ventanas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     // Aviso de torneo (público): abre o trae al frente Golmebol en la página del torneo
-    if (!ruta.startsWith('/admin')) {
+    if (!ruta.startsWith('/admin?ayuda')) {
       const mia = ventanas.find(c => { try { return new URL(c.url).origin === self.location.origin } catch { return false } })
       if (mia) {
         try { await mia.focus(); if ('navigate' in mia) await mia.navigate(ruta); return } catch { /* abre una ventana nueva */ }

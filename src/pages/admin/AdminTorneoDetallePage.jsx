@@ -7111,7 +7111,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       ))}
 
       {/* ── TAB INFORMES ARBITRALES ── */}
-      {tab === 'informes' && <InformesArbitrales torneoId={id} partidos={partidos}/>}
+      {tab === 'informes' && <InformesArbitrales torneoId={id} partidos={partidos} abrirPartido={searchParams.get('partido')}/>}
 
       {/* ── TAB ESTADÍSTICAS ── */}
       {tab === 'estadisticas' && renderEstadisticasGenerales()}

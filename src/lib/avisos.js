@@ -176,6 +176,18 @@ async function alSeguirTorneo(ev) {
 export async function iniciarAvisos() {
   if (iniciado) return
   iniciado = true
+  // Si la persona inicia o cierra sesión, el celular se vuelve a registrar: así queda atado a su usuario (organizador)
+  // y le llegan las rojas e informes de SUS torneos; al cerrar sesión deja de recibirlos.
+  let ultimoUsuario
+  try {
+    supabase.auth.onAuthStateChange((_ev, sesion) => {
+      const id = sesion?.user?.id || null
+      const primera = ultimoUsuario === undefined
+      if (!primera && id === ultimoUsuario) return
+      ultimoUsuario = id
+      if (avisosActivos() && (id || !primera)) sincronizarPronto()
+    })
+  } catch { /* sin sesión: los avisos públicos siguen igual */ }
   window.addEventListener(EVENTO_EQUIPO_SEGUIDO, alSeguirEquipo)
   window.addEventListener(EVENTO_TORNEO_SEGUIDO, alSeguirTorneo)
   if (!esNativo()) {

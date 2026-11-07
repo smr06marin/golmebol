@@ -83,7 +83,7 @@ function Marcador({ p }) {
   )
 }
 
-export default function InformesArbitrales({ torneoId, partidos }) {
+export default function InformesArbitrales({ torneoId, partidos, abrirPartido = null }) {
   const [informes, setInformes] = useState(null)
   const [error, setError] = useState('')
   const [arbitros, setArbitros] = useState({})
@@ -121,6 +121,15 @@ export default function InformesArbitrales({ torneoId, partidos }) {
     Object.values(mapa).forEach(l => l.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)))
     return mapa
   }, [informes])
+
+  // Viene de tocar el aviso «el árbitro escribió un informe»: deja ese informe abierto y lo trae a la pantalla
+  useEffect(() => {
+    if (!abrirPartido || !informes || !(porPartido[abrirPartido]?.length)) return
+    setFiltro('todos'); setBusca('')
+    setAbiertos(o => (o[abrirPartido] ? o : { ...o, [abrirPartido]: true }))
+    const t = setTimeout(() => { try { document.getElementById('informe-' + abrirPartido)?.scrollIntoView({ block: 'start', behavior: 'smooth' }) } catch { /* ignorar */ } }, 350)
+    return () => clearTimeout(t)
+  }, [abrirPartido, informes, porPartido])
 
   const partidoDe = id => (partidos || []).find(p => p.id === id)
   const listaArbitros = p => [p?.arbitro1_id, p?.arbitro2_id, p?.arbitro3_id].filter(Boolean).map(i => arbitros[i]).filter(Boolean)
@@ -256,7 +265,7 @@ export default function InformesArbitrales({ torneoId, partidos }) {
                   const principal = TIPOS[claves.includes('roja') ? 'roja' : claves[0]]
                   const mostrar = abierto ? infs : infs.slice(0, 1)
                   return (
-                    <article key={mid} style={{ background: '#fff', border: `1px solid ${abierto ? principal.c + '55' : LINE}`, borderRadius: 18, overflow: 'hidden', boxShadow: abierto ? '0 8px 24px rgba(16,24,40,.08)' : '0 1px 2px rgba(16,24,40,.04)', transition: 'box-shadow .15s' }}>
+                    <article key={mid} id={'informe-' + mid} style={{ scrollMarginTop: 80, background: '#fff', border: `1px solid ${abierto ? principal.c + '55' : LINE}`, borderRadius: 18, overflow: 'hidden', boxShadow: abierto ? '0 8px 24px rgba(16,24,40,.08)' : '0 1px 2px rgba(16,24,40,.04)', transition: 'box-shadow .15s' }}>
                       <button onClick={() => setAbiertos(o => ({ ...o, [mid]: !o[mid] }))} aria-expanded={abierto}
                         style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
                         {/* Franja superior: tipo de informe + jornada */}
