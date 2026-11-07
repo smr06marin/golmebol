@@ -206,7 +206,7 @@ export default function EscenarioReservasFijasPage() {
             <div>
               <label style={lbl}>Duración</label>
               <select value={form.duracion} onChange={e=>setForm(f=>({...f,duracion:e.target.value}))} style={inp}>
-                <option value={60}>1 hora</option><option value={90}>1.5 horas</option><option value={120}>2 horas</option>
+                <option value={60}>1 hora</option><option value={120}>2 horas</option><option value={180}>3 horas</option>{Number(form.duracion) === 90 && <option value={90}>1.5 horas (antigua)</option>}
               </select>
             </div>
           </div>
