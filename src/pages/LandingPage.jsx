@@ -18,6 +18,7 @@ import BotonAvisos from '../components/BotonAvisos'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
+import TarjetaAvisoEnVivoOverlay from '../components/TarjetaAvisoEnVivoOverlay'
 import { useCanalesEnVivo, resolverStreams } from '../lib/enVivoCanal'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
@@ -1089,6 +1090,7 @@ export default function LandingPage({ modo = 'inicio' }) {
                       <>
                         {marcadorStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={marcadorStream}/>}
                         {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} {...propsAvisoGol(controlStream?.overlay, tapaMarcador)}/>}
+                        {partidoDeStream && <TarjetaAvisoEnVivoOverlay partido={partidoDeStream} {...propsAvisoGol(controlStream?.overlay, tapaMarcador)}/>}
                         {sponsorMostrando && <PatrocinadorEnVivoOverlay key={patrocinadorIdMostrando.clave} patrocinador={sponsorMostrando} tipo={patrocinadorIdMostrando.tipo} tamano={patrocinadorIdMostrando.tamano} descanso={descansoStream} onSonido={v => setVozPatrocinador(m => (!!m[s.id] === v ? m : { ...m, [s.id]: v }))} onTerminar={() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null }))}/>}
                         {!(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream)) && (
                           <>

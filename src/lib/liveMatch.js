@@ -314,13 +314,15 @@ export function extraerTarjetas(match) {
   if (tipo === 'rapida') {
     tarjetas = (snap.eventos || []).filter(e => TIPOS_TARJETA[e.tipo]).map(e => ({
       equipo: e.team, jugador: e.jugadorNombre || 'Jugador', color: TIPOS_TARJETA[e.tipo], minuto: e.minuto || null, periodo: e.periodo || 1,
+      numero: String(e.numero ?? '').trim(),
     }))
   } else {
     const extraerDe = (jugs, equipo) => (jugs || []).forEach(j => {
       const nombre = j.nombre || (j.numero ? `#${j.numero}` : 'Jugador')
-      if (j.amarilla) tarjetas.push({ equipo, jugador: nombre, color: 'amarilla', minuto: typeof j.amarilla === 'string' ? j.amarilla : null, periodo: 1 })
-      if (j.azul)     tarjetas.push({ equipo, jugador: nombre, color: 'azul',     minuto: typeof j.azul === 'string' ? j.azul : null, periodo: 1 })
-      if (j.roja)     tarjetas.push({ equipo, jugador: nombre, color: 'roja',     minuto: typeof j.roja === 'string' ? j.roja : null, periodo: 1 })
+      const numero = String(j.numero ?? '').trim()
+      if (j.amarilla) tarjetas.push({ equipo, jugador: nombre, color: 'amarilla', minuto: typeof j.amarilla === 'string' ? j.amarilla : null, periodo: 1, numero })
+      if (j.azul)     tarjetas.push({ equipo, jugador: nombre, color: 'azul',     minuto: typeof j.azul === 'string' ? j.azul : null, periodo: 1, numero })
+      if (j.roja)     tarjetas.push({ equipo, jugador: nombre, color: 'roja',     minuto: typeof j.roja === 'string' ? j.roja : null, periodo: 1, numero })
     })
     extraerDe(snap.jugadoresLocal, 'local')
     extraerDe(snap.jugadoresVisitante, 'visitante')

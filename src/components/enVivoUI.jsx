@@ -157,6 +157,12 @@ export const CSS_EV = `
 @keyframes evSube { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes evPulso { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 @keyframes gmGolFoto { 0% { opacity: 0; transform: translateY(24px) scale(.96); } 8% { opacity: .78; transform: translateY(0) scale(1); } 86% { opacity: .78; } 100% { opacity: 0; } }
+/* ── Aviso de TARJETA (mismo molde que el de gol): etiqueta de color + nombre + equipo, y la tarjeta a la derecha ── */
+.ev-ta-tag { font-weight: 800; font-size: calc(var(--u) * 3.1); letter-spacing: .12em; padding: .12em .8em .12em .6em; clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 1.1) 100%, 0 100%); white-space: nowrap; }
+.ev-ta-box { display: flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: calc(var(--u) * 17); padding: 0 calc(var(--u) * 2.4) 0 calc(var(--u) * 4);
+  background: rgba(255,255,255,.06); clip-path: polygon(calc(var(--u) * 2) 0, 100% 0, 100% 100%, 0 100%); }
+.ev-ta-card { display: block; width: calc(var(--u) * 6.4); height: calc(var(--u) * 9); border-radius: calc(var(--u) * .9); transform: rotate(7deg);
+  box-shadow: 0 calc(var(--u) * .5) calc(var(--u) * 1.8) rgba(0,0,0,.55), inset 0 0 0 calc(var(--u) * .25) rgba(255,255,255,.35); }
 @keyframes evAviso {
   0% { opacity: 0; transform: translateY(34px) scale(.97); }
   5% { opacity: 1; transform: translateY(-3px) scale(1.005); }

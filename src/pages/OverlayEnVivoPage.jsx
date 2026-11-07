@@ -9,6 +9,7 @@ import { hydratePlayersPublico } from '../lib/playersPublico'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
 import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
 import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
+import TarjetaAvisoEnVivoOverlay from '../components/TarjetaAvisoEnVivoOverlay'
 import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
 import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
 import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
@@ -477,6 +478,7 @@ export default function OverlayEnVivoPage() {
           {mostrarLogo && stream && <MarcaTransmision logoTorneo={partido?.tournaments?.logo_url || logoDeTorneo(stream.torneo_auto)} conMarcador={!!marcador?.vivo && !tapaMarcador} anchoEscenario={ANCHO_ESCENARIO}/>}
           {marcador && <MarcadorEnVivoOverlay partido={marcador} entrada oculto={tapaMarcador} enVivoBajoLogo={mostrarLogo && !!stream}/>}
           {partido && <GolAvisoEnVivoOverlay partido={partido} {...propsAvisoGol(overlayActivo, tapaMarcador)}/>}
+          {partido && <TarjetaAvisoEnVivoOverlay partido={partido} {...propsAvisoGol(overlayActivo, tapaMarcador)}/>}
           {sponsor && <PatrocinadorEnVivoOverlay key={patrocinadorMostrando.clave} patrocinador={sponsor} tipo={patrocinadorMostrando.tipo} tamano={patrocinadorMostrando.tamano} descanso={descansoAuto} onTerminar={() => setPatrocinadorMostrando(null)}/>}
           {!(sponsor && disparoEsExclusivo(patrocinadorMostrando, descansoAuto)) && (
             <>
