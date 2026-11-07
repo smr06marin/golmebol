@@ -12,7 +12,8 @@ const PALETAS = {
 // coordinador de escuela, encargado de escenario) para saltar entre los
 // portales que tenga esa misma cuenta, resaltando en cuál está parado ahora
 // mismo. Si la cuenta solo tiene un rol, no se muestra (no hay a dónde más ir).
-export default function PortalesMenu({ usuario, actual, theme = 'dark' }) {
+// lista: en vez de botoncitos en fila, filas grandes en columna (para usarlo dentro de un menú)
+export default function PortalesMenu({ usuario, actual, theme = 'dark', lista = false }) {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
   const [escenarios, setEscenarios] = useState([])
@@ -62,6 +63,25 @@ export default function PortalesMenu({ usuario, actual, theme = 'dark' }) {
   }
 
   if (opciones.length <= 1) return null
+
+  if (lista) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {opciones.map((o, i) => {
+          const isActual = o.isEscenario
+            ? (actual === 'escenario' && (!o.escenarioId || o.escenarioId === escenarioId))
+            : o.key === actual
+          return (
+            <button key={o.key} onClick={() => !isActual && navigate(o.to)} disabled={isActual}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', width: '100%', minHeight: '52px', padding: '0 16px', background: 'none', border: 'none', borderTop: i > 0 ? '1px solid #2a2a2a' : 'none', cursor: isActual ? 'default' : 'pointer', color: isActual ? '#6fcf3d' : '#fff', fontSize: '.92rem', fontWeight: 700, textAlign: 'left', fontFamily: 'inherit' }}>
+              <span>{o.label.replace(/^[^\p{L}\p{N}]+/u, '')}</span>
+              {isActual ? <span style={{ fontSize: '.68rem', fontWeight: 800, color: '#6fcf3d' }}>Estás aquí</span> : <span style={{ color: '#6b6b6b' }}>›</span>}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>

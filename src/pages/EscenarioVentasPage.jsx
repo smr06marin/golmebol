@@ -3,13 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtMoney, todayStr, registrarActividad, fechaLocalStr, fmtDate, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
 import { useAccionUnica } from '../lib/useAccionUnica'
+import { BotonVolver } from '../components/EscenarioUI'
 import { ShoppingCart, Search, Trash2, DollarSign, RotateCcw, History, NotebookPen, X, CheckCircle2, CalendarClock } from 'lucide-react'
 
 const S = {
-  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
-  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
-  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5', loss: '#d93025',
-  green: '#22c55e', greenDark: '#16a34a',
+  // Mismo look que el resto de Golmebol: negro, tarjetas planas, acento verde.
+  navy: '#0a0a0a', surface: '#0a0a0a', card: '#161616', card2: '#1c1c1c',
+  border: '#2a2a2a', cyan: '#6fcf3d', cyanDim: 'rgba(111,207,61,.13)',
+  gold: '#f5a623', text: '#ffffff', text2: '#c9c9c9', muted: '#8a8a8a', loss: '#e5433d',
+  green: '#6fcf3d', greenDark: '#58b02c',
 }
 // Elegir cuánto se devuelve de cada producto de la venta — no toda la venta
 // a la fuerza (ej. pidieron 3 aguas, pagaron, y solo devuelven 1).
@@ -180,7 +182,7 @@ export default function EscenarioVentasPage() {
     const p = getProduct(id)
     setCart(c => {
       const actual = (c[id] || 0) + 1
-      if (actual > p.cantidad) { setMsg(`⚠️ Solo quedan ${p.cantidad} unidades de ${p.nombre}`); setTimeout(()=>setMsg(''),2500); return { ...c, [id]: p.cantidad } }
+      if (actual > p.cantidad) { setMsg(`Solo quedan ${p.cantidad} unidades de ${p.nombre}`); setTimeout(()=>setMsg(''),2500); return { ...c, [id]: p.cantidad } }
       return { ...c, [id]: actual }
     })
   }
@@ -198,7 +200,7 @@ export default function EscenarioVentasPage() {
     if (items.length===0) return
     for (const it of items) {
       const p = getProduct(it.productId)
-      if (it.cantidad > p.cantidad) { setMsg(`⚠️ No hay suficiente ${p.nombre} en inventario`); setTimeout(()=>setMsg(''),2500); return }
+      if (it.cantidad > p.cantidad) { setMsg(`No hay suficiente ${p.nombre} en inventario`); setTimeout(()=>setMsg(''),2500); return }
     }
     const total = items.reduce((a,it)=>a+it.cantidad*it.precio,0)
     const costoTotal = items.reduce((a,it)=>a+it.cantidad*it.costo,0)
@@ -222,10 +224,10 @@ export default function EscenarioVentasPage() {
     setCart({})
     const sufijoFecha = esHoy ? '' : ` (${fmtDate(fechaVenta)})`
     if (fiado) {
-      setMsg(`📝 Anotado: ${fiado.nombre} debe ${fmtMoney(total)}${sufijoFecha}`); setTimeout(()=>setMsg(''),4000)
+      setMsg(`Anotado: ${fiado.nombre} debe ${fmtMoney(total)}${sufijoFecha}`); setTimeout(()=>setMsg(''),4000)
       registrarActividad(escenarioId, encargado, 'crear', 'venta', `Anotó fiado a "${fiado.nombre}" (${fiado.cancha}) por ${fmtMoney(total)}${sufijoFecha}`)
     } else {
-      setMsg(`✅ Venta registrada: ${fmtMoney(total)}${sufijoFecha}`); setTimeout(()=>setMsg(''),3000)
+      setMsg(`Venta registrada: ${fmtMoney(total)}${sufijoFecha}`); setTimeout(()=>setMsg(''),3000)
     }
     fetchTodo()
   })
@@ -245,7 +247,7 @@ export default function EscenarioVentasPage() {
     setPagandoId(venta.id)
     try {
       await supabase.from('escenario_ventas').update({ pago_estado:'pagado', pagado_at: new Date().toISOString() }).eq('id', venta.id)
-      setMsg(`✅ ${venta.deudor_nombre} ya pagó ${fmtMoney(venta.total)}`); setTimeout(()=>setMsg(''),3000)
+      setMsg(`${venta.deudor_nombre} ya pagó ${fmtMoney(venta.total)}`); setTimeout(()=>setMsg(''),3000)
       registrarActividad(escenarioId, encargado, 'editar', 'venta', `Marcó como pagada la deuda de "${venta.deudor_nombre}" (${fmtMoney(venta.total)})`)
       await fetchTodo()
     } finally {
@@ -279,18 +281,11 @@ export default function EscenarioVentasPage() {
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom: items.length>0 ? '220px' : '40px', touchAction:'manipulation' }}>
-      <div style={{ background:S.surface, borderBottom:`0.5px solid ${S.border}`, padding:'16px 20px', position:'sticky', top:0, zIndex:40 }}>
-        <div style={{ maxWidth:'640px', margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <div style={{ width:38, height:38, borderRadius:10, background:S.cyanDim, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <ShoppingCart size={19} color={S.cyan}/>
-            </div>
-            <div>
-              <div style={{ fontWeight:'800', fontSize:'1.05rem' }}>Hacer una venta</div>
-              <div style={{ fontSize:'.72rem', color:S.muted }}>{escenario?.name}</div>
-            </div>
-          </div>
-          <button onClick={() => navigate('/escenario/'+escenarioId)} style={{ background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'0 14px', minHeight:'44px', cursor:'pointer', color:S.text, fontSize:'.84rem', fontWeight:800, flexShrink:0, fontFamily:'inherit' }}>‹ Volver al inicio</button>
+      <div style={{ background:'rgba(10,10,10,.94)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', borderBottom:`1px solid ${S.border}`, padding:'10px 16px 12px', position:'sticky', top:0, zIndex:40 }}>
+        <div style={{ maxWidth:'640px', margin:'0 auto' }}>
+          <BotonVolver onClick={() => navigate('/escenario/'+escenarioId)}/>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10, fontWeight:900, fontSize:'1.2rem' }}><ShoppingCart size={20} color={S.cyan}/> Hacer una venta</div>
+          <div style={{ fontSize:'.8rem', color:S.muted }}>{escenario?.name}</div>
         </div>
       </div>
 
@@ -313,7 +308,7 @@ export default function EscenarioVentasPage() {
         </div>
         {!esHoy && (
           <div style={{ background:'rgba(249,168,37,.1)', border:`1px solid ${S.gold}`, borderRadius:'10px', padding:'8px 12px', fontSize:'.75rem', color:S.gold, fontWeight:600, marginBottom:'14px', textAlign:'center' }}>
-            📅 Estás registrando ventas del {fmtDate(fechaVenta)}, no de hoy.
+            Estás registrando ventas del {fmtDate(fechaVenta)}, no de hoy.
           </div>
         )}
 
@@ -340,7 +335,7 @@ export default function EscenarioVentasPage() {
                   <div style={{ fontSize:'.82rem', fontWeight:800, color:S.gold }}>{fmtMoney(v.total)}</div>
                 </div>
                 {!soloLectura && (
-                  <button onClick={()=>marcarPagado(v)} disabled={pagandoId===v.id} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(34,197,94,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor: pagandoId===v.id ? 'default' : 'pointer', opacity: pagandoId===v.id ? .6 : 1, color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                  <button onClick={()=>marcarPagado(v)} disabled={pagandoId===v.id} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(111,207,61,.15)', border:`1px solid ${S.green}`, borderRadius:'8px', cursor: pagandoId===v.id ? 'default' : 'pointer', opacity: pagandoId===v.id ? .6 : 1, color:S.green, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
                     <CheckCircle2 size={12}/> {pagandoId===v.id ? 'Guardando...' : 'Ya pagó'}
                   </button>
                 )}
@@ -362,7 +357,7 @@ export default function EscenarioVentasPage() {
                 </div>
                 {v.estado==='devuelta'
                   ? <span style={{ fontSize:'.7rem', fontWeight:700, color:S.loss, flexShrink:0 }}>Devuelta</span>
-                  : !soloLectura && <button onClick={()=>setDevolviendo(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(217,48,37,.12)', border:`1px solid ${S.loss}`, borderRadius:'8px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
+                  : !soloLectura && <button onClick={()=>setDevolviendo(v)} style={{ display:'flex', alignItems:'center', gap:'5px', padding:'7px 11px', background:'rgba(229,67,61,.14)', border:`1px solid ${S.loss}`, borderRadius:'8px', cursor:'pointer', color:S.loss, fontWeight:700, fontSize:'.72rem', flexShrink:0, whiteSpace:'nowrap' }}>
                       <RotateCcw size={12}/> Devolver
                     </button>}
               </div>
@@ -378,7 +373,7 @@ export default function EscenarioVentasPage() {
 
         {productos.length>0 && (
           <div style={{ fontSize:'.7rem', color:S.muted, marginBottom:'10px', textAlign:'center' }}>
-            {soloLectura ? '👁️ Modo solo lectura — no puedes registrar ventas' : 'Toca dos veces un producto para agregarlo al carrito'}
+            {soloLectura ? 'Modo solo lectura — no puedes registrar ventas' : 'Toca dos veces un producto para agregarlo al carrito'}
           </div>
         )}
 
@@ -386,7 +381,7 @@ export default function EscenarioVentasPage() {
           <div style={{ textAlign:'center', color:S.muted, padding:'40px 0' }}>
             <ShoppingCart size={32} style={{ opacity:.3, marginBottom:'8px' }}/>
             <div>No hay productos en el inventario todavía.</div>
-            <button onClick={()=>navigate(`/escenario/${escenarioId}/inventario`)} style={{ marginTop:'12px', padding:'9px 18px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#000', fontWeight:700, fontSize:'.8rem' }}>Ir a Inventario</button>
+            <button onClick={()=>navigate(`/escenario/${escenarioId}/inventario`)} style={{ marginTop:'12px', padding:'9px 18px', background:S.cyan, border:'none', borderRadius:'8px', cursor:'pointer', color:'#0a1a05', fontWeight:700, fontSize:'.8rem' }}>Ir a Inventario</button>
           </div>
         ) : visibles.length === 0 ? (
           <div style={{ textAlign:'center', color:S.muted, padding:'40px 0', fontSize:'.85rem' }}>Sin resultados.</div>
@@ -394,9 +389,9 @@ export default function EscenarioVentasPage() {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px' }}>
             {visibles.map(p => (
               <div key={p.id} onDoubleClick={soloLectura ? undefined : ()=>addToCart(p.id)}
-                style={{ position:'relative', display:'flex', flexDirection:'column', background: p.cantidad<=p.stock_minimo ? 'rgba(217,48,37,.1)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'14px', overflow:'hidden', cursor:'pointer', touchAction:'manipulation', userSelect:'none' }}>
+                style={{ position:'relative', display:'flex', flexDirection:'column', background: p.cantidad<=p.stock_minimo ? 'rgba(229,67,61,.12)' : S.card, border:`1px solid ${p.cantidad<=p.stock_minimo?S.loss:S.border}`, borderRadius:'14px', overflow:'hidden', cursor:'pointer', touchAction:'manipulation', userSelect:'none' }}>
                 {cart[p.id] && (
-                  <span onClick={e=>{e.stopPropagation(); quitarUno(p.id)}} style={{ position:'absolute', top:'6px', right:'6px', zIndex:2, background:S.cyan, color:'#000', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>
+                  <span onClick={e=>{e.stopPropagation(); quitarUno(p.id)}} style={{ position:'absolute', top:'6px', right:'6px', zIndex:2, background:S.cyan, color:'#0a1a05', borderRadius:'50%', width:'22px', height:'22px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.72rem', fontWeight:800 }}>{cart[p.id]}</span>
                 )}
                 {/* Cuadro de tamaño fijo para la foto: padding-bottom:100% fuerza
                     el cuadrado sin depender de aspect-ratio (algunos navegadores
@@ -444,7 +439,7 @@ export default function EscenarioVentasPage() {
               <span style={{ fontWeight:900, fontSize:'1.3rem', color:S.gold }}>{fmtMoney(total)}</span>
             </div>
             {!esHoy && (
-              <div style={{ textAlign:'center', fontSize:'.72rem', color:S.gold, fontWeight:700, marginBottom:'8px' }}>📅 Se va a registrar con fecha {fmtDate(fechaVenta)}</div>
+              <div style={{ textAlign:'center', fontSize:'.72rem', color:S.gold, fontWeight:700, marginBottom:'8px' }}>Se va a registrar con fecha {fmtDate(fechaVenta)}</div>
             )}
             <div style={{ display:'flex', gap:'8px' }}>
               <button onClick={abrirDebe} disabled={enviandoVenta}
@@ -452,7 +447,7 @@ export default function EscenarioVentasPage() {
                 <NotebookPen size={16}/> Debe
               </button>
               <button onClick={()=>finalizarVenta()} disabled={enviandoVenta}
-                style={{ flex:1, padding:'14px', background:`linear-gradient(135deg, ${S.green}, ${S.greenDark})`, border:'none', borderRadius:'12px', cursor: enviandoVenta ? 'default' : 'pointer', opacity: enviandoVenta ? .7 : 1, color:'#fff', fontWeight:900, fontSize:'.92rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
+                style={{ flex:1, padding:'14px', background:`linear-gradient(135deg, ${S.green}, ${S.greenDark})`, border:'none', borderRadius:'12px', cursor: enviandoVenta ? 'default' : 'pointer', opacity: enviandoVenta ? .7 : 1, color:'#0a1a05', fontWeight:900, fontSize:'.92rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
                 <DollarSign size={17}/> {enviandoVenta ? 'Procesando...' : esHoy ? 'COBRAR' : `COBRAR (${fmtDate(fechaVenta)})`}
               </button>
             </div>
@@ -464,7 +459,7 @@ export default function EscenarioVentasPage() {
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.65)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
           <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', width:'360px', maxWidth:'100%' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'4px' }}>
-              <div style={{ fontWeight:800, fontSize:'1rem' }}>📝 Anotar en cuenta</div>
+              <div style={{ fontWeight:800, fontSize:'1rem' }}>Anotar en cuenta</div>
               <button onClick={()=>setModalDebe(false)} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
             </div>
             <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>Total: <span style={{ color:S.gold, fontWeight:800 }}>{fmtMoney(total)}</span> — para saber a quién cobrarle después</div>

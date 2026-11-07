@@ -3,13 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijasThrottled, proximosDias, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
-import { X, ChevronLeft, Phone } from 'lucide-react'
+import { X, Phone, Eye, Wrench, Bell, CalendarDays, Goal } from 'lucide-react'
+import { BotonVolver } from '../components/EscenarioUI'
 
 const S = {
-  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
-  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
-  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
-  win: '#22c55e', warn: '#e8710a', loss: '#d93025',
+  // Mismo look que el resto de Golmebol: negro, tarjetas planas, acento verde.
+  navy: '#0a0a0a', surface: '#0a0a0a', card: '#161616', card2: '#1c1c1c',
+  border: '#2a2a2a', cyan: '#6fcf3d', cyanDim: 'rgba(111,207,61,.13)',
+  gold: '#f5a623', text: '#ffffff', text2: '#c9c9c9', muted: '#8a8a8a',
+  win: '#6fcf3d', warn: '#f5a623', loss: '#e5433d',
 }
 const inp = { width:'100%', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'0 14px', minHeight:'48px', color:S.text, fontSize:'1rem', outline:'none', boxSizing:'border-box', fontFamily:'inherit' }
 const lbl = { fontSize:'.78rem', color:S.text2, display:'block', marginBottom:'6px', fontWeight:700 }
@@ -50,7 +52,7 @@ function ModalRevisar({ reserva, canchas, encargado, soloLectura, onClose, onRes
       ;({ error } = await supabase.from('escenario_reservas').update({ estado:'aceptada' }).eq('id', reserva.id))
     }
     setProcesando(false)
-    onResuelto(error ? 'Error al aceptar: ' + error.message : '✅ Reserva aceptada')
+    onResuelto(error ? 'Error al aceptar: ' + error.message : 'Reserva aceptada')
   }
 
   async function rechazar() {
@@ -73,10 +75,10 @@ function ModalRevisar({ reserva, canchas, encargado, soloLectura, onClose, onRes
         )}
       </div>
       {soloLectura ? (
-        <div style={{ fontSize:'.84rem', color:S.muted, textAlign:'center' }}>👁️ Solo puedes mirar: no puedes aceptar ni rechazar.</div>
+        <div style={{ fontSize:'.84rem', color:S.muted, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><Eye size={16}/> Solo puedes mirar: no puedes aceptar ni rechazar.</div>
       ) : (
         <div style={{ display:'grid', gap:'10px' }}>
-          <button onClick={aceptar} disabled={procesando} style={{ ...BTN, background:S.cyan, color:'#000', opacity:procesando?.7:1 }}>{procesando ? 'Un momento…' : '✅ Aceptar reserva'}</button>
+          <button onClick={aceptar} disabled={procesando} style={{ ...BTN, background:S.cyan, color:'#0a1a05', opacity:procesando?.7:1 }}>{procesando ? 'Un momento…' : 'Aceptar reserva'}</button>
           <button onClick={rechazar} disabled={procesando} style={{ ...BTN_SUAVE, border:`1px solid ${S.loss}`, color:'#ff7b72', opacity:procesando?.7:1 }}>Rechazar</button>
         </div>
       )}
@@ -134,14 +136,14 @@ function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuar
         </div>
         <button type="button" onClick={()=>setRecurrente(v=>!v)} aria-pressed={recurrente}
           style={{ display:'flex', alignItems:'center', gap:'12px', textAlign:'left', width:'100%', minHeight:'56px', padding:'8px 14px', borderRadius:'12px', cursor:'pointer', fontFamily:'inherit', border: recurrente ? `2px solid ${S.cyan}` : `1px solid ${S.border}`, background: recurrente ? S.cyanDim : S.card2, color:S.text }}>
-          <span style={{ width:'24px', height:'24px', borderRadius:'7px', flexShrink:0, border:`2px solid ${recurrente ? S.cyan : S.muted}`, background: recurrente ? S.cyan : 'transparent', color:'#000', fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.9rem' }}>{recurrente ? '✓' : ''}</span>
+          <span style={{ width:'24px', height:'24px', borderRadius:'7px', flexShrink:0, border:`2px solid ${recurrente ? S.cyan : S.muted}`, background: recurrente ? S.cyan : 'transparent', color:'#0a1a05', fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.9rem' }}>{recurrente ? '✓' : ''}</span>
           <span><b style={{ fontSize:'.9rem' }}>Repetir cada semana</b><br/><span style={{ fontSize:'.76rem', color:S.muted }}>Lo anota el mismo día y hora por 8 semanas</span></span>
         </button>
         {monto > 0 && <div style={{ fontSize:'.88rem', color:S.text2, textAlign:'center' }}>Valor de la cancha: <b style={{ color:S.gold }}>{fmtMoney(monto)}</b></div>}
         {error && <div style={{ color:'#ff7b72', fontSize:'.86rem', fontWeight:700, textAlign:'center' }}>{error}</div>}
-        <button onClick={handleReservar} disabled={guardando} style={{ ...BTN, background:S.cyan, color:'#000', opacity:guardando?.7:1 }}>{guardando ? 'Guardando…' : 'Guardar reserva'}</button>
+        <button onClick={handleReservar} disabled={guardando} style={{ ...BTN, background:S.cyan, color:'#0a1a05', opacity:guardando?.7:1 }}>{guardando ? 'Guardando…' : 'Guardar reserva'}</button>
         <button onClick={handleBloquear} disabled={guardando} style={{ ...BTN_SUAVE, border:`1px solid ${S.border}`, color:S.muted, fontSize:'.8rem', opacity:guardando?.7:1 }}>
-          🛠️ Mejor cerrar este horario (mantenimiento)
+          <Wrench size={15} style={{ marginRight:6 }}/> Mejor cerrar este horario (mantenimiento)
         </button>
       </div>
     </Hoja>
@@ -173,24 +175,24 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
     }).eq('id', reserva.id)
     setProcesando(false)
     if (error) {
-      onResuelto(/does not exist/.test(error.message||'') ? '⚠️ Falta correr la migración migracion_escenario_motivo_pago.sql en Supabase' : '❌ ' + error.message)
+      onResuelto(/does not exist/.test(error.message||'') ? 'Falta correr la migración migracion_escenario_motivo_pago.sql en Supabase' : error.message)
       return
     }
-    onResuelto(pago === 'pagado' ? '✅ Marcada como pagada' : pago === 'anticipo' ? '✅ Pago parcial guardado' : 'Marcada como sin pagar')
+    onResuelto(pago === 'pagado' ? 'Marcada como pagada' : pago === 'anticipo' ? 'Pago parcial guardado' : 'Marcada como sin pagar')
   }
 
   async function desbloquear() {
     setProcesando(true)
     const { error } = await supabase.from('escenario_reservas').delete().eq('id', reserva.id)
     setProcesando(false)
-    onResuelto(error ? '❌ ' + error.message : 'Horario abierto otra vez')
+    onResuelto(error ? error.message : 'Horario abierto otra vez')
   }
 
   async function cancelar(motivo) {
     setProcesando(true)
     const { error } = await supabase.from('escenario_reservas').update({ estado: 'cancelada', motivo_cancelacion: motivo }).eq('id', reserva.id)
     setProcesando(false)
-    onResuelto(error ? '❌ ' + error.message : 'Reserva cancelada — el horario quedó libre')
+    onResuelto(error ? error.message : 'Reserva cancelada — el horario quedó libre')
   }
 
   async function confirmarReprogramar() {
@@ -207,8 +209,8 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
     <Hoja titulo="Horario cerrado" subtitulo={subtitulo} onClose={onClose}>
       <div style={{ fontSize:'.9rem', color:S.text2, marginBottom:'16px', lineHeight:1.5 }}>Este horario está cerrado por mantenimiento y nadie puede reservarlo.</div>
       {soloLectura
-        ? <div style={{ fontSize:'.84rem', color:S.muted, textAlign:'center' }}>👁️ Solo puedes mirar.</div>
-        : <button onClick={desbloquear} disabled={procesando} style={{ ...BTN, background:S.cyan, color:'#000', opacity:procesando?.7:1 }}>{procesando ? 'Un momento…' : 'Abrir este horario otra vez'}</button>}
+        ? <div style={{ fontSize:'.84rem', color:S.muted, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><Eye size={16}/> Solo puedes mirar.</div>
+        : <button onClick={desbloquear} disabled={procesando} style={{ ...BTN, background:S.cyan, color:'#0a1a05', opacity:procesando?.7:1 }}>{procesando ? 'Un momento…' : 'Abrir este horario otra vez'}</button>}
     </Hoja>
   )
 
@@ -235,7 +237,7 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
           </select>
         </div>
         {error && <div style={{ color:'#ff7b72', fontSize:'.86rem', fontWeight:700, textAlign:'center' }}>{error}</div>}
-        <button onClick={confirmarReprogramar} style={{ ...BTN, background:S.cyan, color:'#000' }}>Guardar el nuevo horario</button>
+        <button onClick={confirmarReprogramar} style={{ ...BTN, background:S.cyan, color:'#0a1a05' }}>Guardar el nuevo horario</button>
       </div>
       {volver}
     </Hoja>
@@ -251,7 +253,7 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
         )}
         <div style={{ fontSize:'.95rem', marginTop:'8px' }}>
           Valor: <b>{fmtMoney(monto)}</b>
-          {reserva.pago === 'pagado' && <span style={{ color:S.win, fontWeight:800 }}> · ✅ Pagado</span>}
+          {reserva.pago === 'pagado' && <span style={{ color:S.win, fontWeight:800 }}> · Pagado</span>}
           {reserva.pago === 'anticipo' && <span style={{ color:S.gold, fontWeight:800 }}> · pagó {fmtMoney(reserva.monto_pagado)}</span>}
           {(reserva.pago === 'pendiente' || !reserva.pago) && <span style={{ color:'#ff7b72', fontWeight:800 }}> · sin pagar</span>}
         </div>
@@ -259,18 +261,18 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
       </div>
 
       {soloLectura ? (
-        <div style={{ fontSize:'.84rem', color:S.muted, textAlign:'center' }}>👁️ Solo puedes mirar: no puedes cambiar el pago, mover ni cancelar.</div>
+        <div style={{ fontSize:'.84rem', color:S.muted, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}><Eye size={16}/> Solo puedes mirar: no puedes cambiar el pago, mover ni cancelar.</div>
       ) : modo === 'parcial' ? (
         <div style={{ display:'grid', gap:'12px' }}>
           <div><label style={lbl}>¿Cuánto pagó?</label><input type="number" inputMode="numeric" value={montoPagadoInput} onChange={e=>setMontoPagadoInput(e.target.value)} style={inp} placeholder="Ej: 20000" autoFocus/></div>
           {pagoMenor && <div><label style={lbl}>¿Por qué pagó menos? <span style={{ color:S.muted, fontWeight:500 }}>(opcional)</span></label><input value={motivoInput} onChange={e=>setMotivoInput(e.target.value)} style={inp} placeholder="Descuento, cliente frecuente, lluvia…"/></div>}
-          <button onClick={()=>guardarPago(Number(montoPagadoInput) || 0, motivoInput)} disabled={procesando} style={{ ...BTN, background:S.cyan, color:'#000', opacity:procesando?.7:1 }}>{procesando ? 'Guardando…' : 'Guardar pago'}</button>
+          <button onClick={()=>guardarPago(Number(montoPagadoInput) || 0, motivoInput)} disabled={procesando} style={{ ...BTN, background:S.cyan, color:'#0a1a05', opacity:procesando?.7:1 }}>{procesando ? 'Guardando…' : 'Guardar pago'}</button>
           {volver}
         </div>
       ) : (
         <div style={{ display:'grid', gap:'10px' }}>
           <div style={{ fontSize:'.76rem', fontWeight:800, letterSpacing:'.06em', color:S.muted, textTransform:'uppercase' }}>¿Ya pagó?</div>
-          {reserva.pago !== 'pagado' && <button onClick={()=>guardarPago(monto, '')} disabled={procesando} style={{ ...BTN, background:S.win, color:'#05140a', opacity:procesando?.7:1 }}>✅ Pagó todo ({fmtMoney(monto)})</button>}
+          {reserva.pago !== 'pagado' && <button onClick={()=>guardarPago(monto, '')} disabled={procesando} style={{ ...BTN, background:S.win, color:'#05140a', opacity:procesando?.7:1 }}>Pagó todo ({fmtMoney(monto)})</button>}
           <div style={{ display:'grid', gridTemplateColumns: reserva.pago === 'pagado' ? '1fr' : '1fr 1fr', gap:'10px' }}>
             <button onClick={()=>setModo('parcial')} style={{ ...BTN_SUAVE, border:`1px solid ${S.gold}`, color:S.gold }}>Pagó una parte</button>
             {reserva.pago !== 'pendiente' && reserva.pago && <button onClick={()=>guardarPago(0, '')} disabled={procesando} style={{ ...BTN_SUAVE, border:`1px solid ${S.border}`, color:S.text2 }}>Aún no pagó</button>}
@@ -329,7 +331,7 @@ export default function EscenarioCanchasPage() {
   }
 
   function abrir(cancha, fecha, hora) { if (!soloLectura) setModalSlot({ cancha, fecha, hora }) }
-  function guardado() { setModalSlot(null); setMsg('✅ Reserva guardada'); setTimeout(()=>setMsg(''),3000); fetchTodo() }
+  function guardado() { setModalSlot(null); setMsg('Reserva guardada'); setTimeout(()=>setMsg(''),3000); fetchTodo() }
 
   function abrirRevisar(cancha, fecha, hora) {
     const r = reservas.find(x => x.cancha === cancha && x.fecha === fecha && x.estado === 'pendiente'
@@ -368,7 +370,7 @@ export default function EscenarioCanchasPage() {
   const nLibres = estados.filter(e => e === 'libre').length
   const nOcupados = estados.length - nLibres
   const paso = { display:'flex', alignItems:'center', gap:'8px', fontSize:'.86rem', fontWeight:900, color:S.text, margin:'0 0 10px' }
-  const numero = { width:'24px', height:'24px', borderRadius:'50%', background:S.cyan, color:'#000', fontWeight:900, fontSize:'.78rem', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }
+  const numero = { width:'24px', height:'24px', borderRadius:'50%', background:S.cyan, color:'#0a1a05', fontWeight:900, fontSize:'.78rem', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }
 
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
@@ -385,13 +387,10 @@ export default function EscenarioCanchasPage() {
           onClose={()=>setGestionando(null)} onResuelto={resueltoGestion}/>
       )}
 
-      <div style={{ background:S.surface, borderBottom:`1px solid ${S.border}`, padding:'10px 16px 14px', position:'sticky', top:0, zIndex:40 }}>
+      <div style={{ background:'rgba(10,10,10,.94)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', borderBottom:`1px solid ${S.border}`, padding:'10px 16px 14px', position:'sticky', top:0, zIndex:40 }}>
         <div style={{ maxWidth:'640px', margin:'0 auto' }}>
-          <button onClick={() => navigate('/escenario/'+escenarioId)}
-            style={{ display:'inline-flex', alignItems:'center', gap:'4px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'0 14px 0 8px', minHeight:'44px', cursor:'pointer', color:S.text, fontSize:'.88rem', fontWeight:800, fontFamily:'inherit' }}>
-            <ChevronLeft size={20}/> Volver al inicio
-          </button>
-          <div style={{ fontWeight:900, fontSize:'1.2rem', marginTop:'10px' }}>⚽ Reservas de canchas</div>
+          <BotonVolver onClick={() => navigate('/escenario/'+escenarioId)}/>
+          <div style={{ fontWeight:900, fontSize:'1.2rem', marginTop:'10px', display:'flex', alignItems:'center', gap:8 }}><Goal size={20} color={S.cyan}/> Reservas de canchas</div>
           <div style={{ fontSize:'.8rem', color:S.muted }}>{escenario?.name}</div>
         </div>
       </div>
@@ -400,12 +399,12 @@ export default function EscenarioCanchasPage() {
         {msg && <div style={{ background:S.cyanDim, border:`1px solid ${S.cyan}55`, color:S.cyan, borderRadius:12, padding:'12px 14px', fontSize:'.9rem', fontWeight:800, marginBottom:14, textAlign:'center' }}>{msg}</div>}
 
         {pendientesTodas.length > 0 && (
-          <div style={{ background:'rgba(232,113,14,.1)', border:`1.5px solid ${S.warn}`, borderRadius:'14px', padding:'12px 14px', marginBottom:'18px' }}>
-            <div style={{ fontWeight:900, fontSize:'.92rem', color:S.warn, marginBottom:'2px' }}>🔔 {pendientesTodas.length} {pendientesTodas.length>1?'clientes quieren reservar':'cliente quiere reservar'}</div>
+          <div style={{ background:'rgba(245,166,35,.1)', border:`1.5px solid ${S.warn}`, borderRadius:'14px', padding:'12px 14px', marginBottom:'18px' }}>
+            <div style={{ fontWeight:900, fontSize:'.92rem', color:S.warn, marginBottom:'2px' }}><Bell size={15} style={{ verticalAlign:'-2px', marginRight:6 }}/>{pendientesTodas.length} {pendientesTodas.length>1?'clientes quieren reservar':'cliente quiere reservar'}</div>
             <div style={{ fontSize:'.76rem', color:S.text2, marginBottom:'6px' }}>Toca uno para aceptarlo o rechazarlo</div>
             {pendientesTodas.map((r,i) => (
               <button key={r.id} onClick={()=>irAPendiente(r)}
-                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'8px', width:'100%', minHeight:'48px', textAlign:'left', background:'none', border:'none', borderTop: `1px solid rgba(232,113,14,.3)`, padding:'8px 0', cursor:'pointer', color:S.text, fontFamily:'inherit' }}>
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'8px', width:'100%', minHeight:'48px', textAlign:'left', background:'none', border:'none', borderTop: `1px solid rgba(245,166,35,.3)`, padding:'8px 0', cursor:'pointer', color:S.text, fontFamily:'inherit' }}>
                 <span style={{ fontSize:'.84rem' }}>{fmtDate(r.fecha)} · {fmtHora12(r.hora)}<br/><span style={{ color:S.muted, fontSize:'.74rem' }}>{nombreCancha(canchas, r.cancha)}</span></span>
                 <span style={{ fontSize:'.84rem', fontWeight:800, color:S.warn, flexShrink:0 }}>{r.nombre} ›</span>
               </button>
@@ -434,7 +433,7 @@ export default function EscenarioCanchasPage() {
           </div>
           {otraFecha
             ? <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{ ...inp, marginTop:'8px' }} aria-label="Elegir otra fecha"/>
-            : <button onClick={()=>setOtraFecha(true)} style={{ background:'none', border:'none', color:S.cyan, fontWeight:800, fontSize:'.82rem', cursor:'pointer', padding:'8px 2px', minHeight:'40px', fontFamily:'inherit' }}>📅 Elegir otro día</button>}
+            : <button onClick={()=>setOtraFecha(true)} style={{ background:'none', border:'none', color:S.cyan, fontWeight:800, fontSize:'.82rem', cursor:'pointer', padding:'8px 2px', minHeight:'40px', fontFamily:'inherit' }}><CalendarDays size={15} style={{ verticalAlign:'-3px', marginRight:5 }}/>Elegir otro día</button>}
         </div>
 
         {/* Paso 2: la cancha (solo si hay más de una) */}
@@ -474,9 +473,9 @@ export default function EscenarioCanchasPage() {
                 const parcial = r && !mant && r.pago === 'anticipo'
                 let titulo, detalle, color, bg, borde, accion
                 if (est === 'libre') { titulo = 'Libre'; detalle = ''; color = S.win; bg = S.card; borde = S.border; accion = soloLectura ? '' : 'Reservar +' }
-                else if (est === 'pendiente') { titulo = rp?.nombre || 'Solicitud'; detalle = 'Quiere reservar — responde'; color = S.warn; bg = 'rgba(232,113,14,.1)'; borde = S.warn; accion = 'Responder ›' }
+                else if (est === 'pendiente') { titulo = rp?.nombre || 'Solicitud'; detalle = 'Quiere reservar — responde'; color = S.warn; bg = 'rgba(245,166,35,.1)'; borde = S.warn; accion = 'Responder ›' }
                 else if (mant) { titulo = 'Cerrado'; detalle = 'Mantenimiento'; color = S.muted; bg = S.card; borde = S.border; accion = 'Ver ›' }
-                else { titulo = r?.nombre || 'Reservado'; detalle = [r?.equipo, pagado ? '✅ Pagado' : parcial ? '🟠 Pagó una parte' : '🔴 Sin pagar'].filter(Boolean).join(' · '); color = pagado ? S.win : parcial ? S.gold : '#ff7b72'; bg = pagado ? 'rgba(34,197,94,.1)' : parcial ? 'rgba(249,168,37,.08)' : 'rgba(217,48,37,.08)'; borde = pagado ? S.win : parcial ? S.gold : S.loss; accion = 'Ver ›' }
+                else { titulo = r?.nombre || 'Reservado'; detalle = [r?.equipo, pagado ? 'Pagado' : parcial ? 'Pagó una parte' : 'Sin pagar'].filter(Boolean).join(' · '); color = pagado ? S.win : parcial ? S.gold : '#ff7b72'; bg = pagado ? 'rgba(111,207,61,.1)' : parcial ? 'rgba(245,166,35,.1)' : 'rgba(229,67,61,.1)'; borde = pagado ? S.win : parcial ? S.gold : S.loss; accion = 'Ver ›' }
                 return (
                   <button key={h} onClick={() => est==='libre' ? abrir(cancha, fecha, h) : est==='pendiente' ? abrirRevisar(cancha, fecha, h) : abrirGestionar(cancha, fecha, h)}
                     disabled={est==='libre' && soloLectura}

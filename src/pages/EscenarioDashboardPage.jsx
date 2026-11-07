@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import PortalBanner from '../components/PortalBanner'
+import { G, EncabezadoEscenario } from '../components/EscenarioUI'
 import { fmtMoney, fmtDate, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijasThrottled, obtenerAccesoEscenario, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { Building2, ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, ArrowLeftRight, Repeat, History, Bell, ChevronRight, ChevronDown } from 'lucide-react'
+import { ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, Repeat, History, Bell, ChevronRight, ChevronDown, CalendarDays, AlertTriangle } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
+// Mismos colores del resto de Golmebol (negro + verde); "cyan" es el verde de acento.
 const S = {
-  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
-  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
-  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
-  green: '#22c55e', loss: '#d93025', warn: '#e8710a',
+  navy: G.bg, surface: G.card, card: G.card, card2: G.card2, soft: G.soft,
+  border: G.border, cyan: G.green, cyanDim: G.greenBg,
+  gold: G.gold, goldBg: G.goldBg, text: G.text, text2: G.text2, muted: G.muted, faint: G.faint,
+  green: G.green, loss: G.loss, warn: G.gold,
 }
 
 export default function EscenarioDashboardPage() {
@@ -141,157 +142,154 @@ export default function EscenarioDashboardPage() {
 
   const B = escenarioId
   const nombrePila = encargado.name?.split(' ')[0] || ''
+  const totalHorarios = libres + ocupados
+  const pctOcupado = totalHorarios > 0 ? Math.round((ocupados / totalHorarios) * 100) : 0
   // Lo de todos los días va grande arriba; el resto queda agrupado y explicado en "Más opciones".
   const GRUPOS = [
     { titulo: 'Tu tienda', items: [
-      { to: `/escenario/${B}/inventario`, icon: Package,  label: 'Productos y precios', desc: 'Cuánto hay y cuánto cuesta cada cosa', badge: bajoStock.length, badgeTxt: 'poco stock' },
+      { to: `/escenario/${B}/inventario`, icon: Package,  label: 'Productos y precios', desc: 'Cuánto hay y cuánto cuesta cada cosa', aviso: bajoStock.length > 0 ? `${bajoStock.length} con poco stock` : '' },
       { to: `/escenario/${B}/compras`,    icon: Truck,    label: 'Compras', desc: 'Lo que le compras a los proveedores' },
       { to: `/escenario/${B}/gastos`,     icon: Wallet,   label: 'Gastos', desc: 'Arriendo, servicios, nómina y otros' },
     ] },
     { titulo: 'Informes', items: [
-      { to: `/escenario/${B}/cierre`,   icon: Receipt,   label: 'Informe del día', desc: 'Todo el resumen del día, para imprimir o guardar en PDF' },
+      { to: `/escenario/${B}/cierre`,   icon: Receipt,   label: 'Informe del día', desc: 'El resumen del día, para imprimir o guardar en PDF' },
       { to: `/escenario/${B}/reportes`, icon: BarChart3, label: 'Lo más vendido', desc: 'Qué productos dejan más ganancia' },
     ] },
     { titulo: 'Otras cosas', items: [
       { to: `/escenario/${B}/fijas`,     icon: Repeat,     label: 'Clientes de todas las semanas', desc: 'Los que juegan siempre el mismo día y hora' },
-      { to: `/escenario/${B}/pedido`,    icon: Smartphone, label: 'Pedidos desde la cancha', desc: 'Los que llegan por WhatsApp', badge: pedidosPend, badgeTxt: 'por atender' },
-      { to: `/escenario/${B}/actividad`, icon: History,    label: 'Quién hizo qué', desc: 'Cambios de precios, ventas y cancelaciones', badge: hayActividadNueva ? 1 : 0, badgeTxt: 'nuevo' },
+      { to: `/escenario/${B}/pedido`,    icon: Smartphone, label: 'Pedidos desde la cancha', desc: 'Los que llegan por WhatsApp', aviso: pedidosPend > 0 ? `${pedidosPend} por atender` : '' },
+      { to: `/escenario/${B}/actividad`, icon: History,    label: 'Quién hizo qué', desc: 'Cambios de precios, ventas y cancelaciones', aviso: hayActividadNueva ? 'Nuevo' : '' },
       { to: `/escenario/${B}/config`,    icon: Settings,   label: 'Ajustes del escenario', desc: 'Horarios, precios, datos y página pública' },
     ] },
   ]
+  const hayAvisosMas = bajoStock.length > 0 || pedidosPend > 0 || hayActividadNueva
   function abrirOpcion(to) {
     if (to.endsWith('/actividad') && actividadReciente[0]) {
       try { localStorage.setItem(`escenario_actividad_visto_${escenarioId}_${encargado.id}`, actividadReciente[0].created_at) } catch { /* sin almacenamiento: no pasa nada */ }
     }
     navigate(to)
   }
-  const avisosMas = bajoStock.length + pedidosPend + (hayActividadNueva ? 1 : 0)
-  const BOTON_GRANDE = { boxSizing:'border-box', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', width:'100%', minHeight:'56px', border:'none', borderRadius:'14px', cursor:'pointer', fontWeight:900, fontSize:'1rem', fontFamily:'inherit' }
+  const ETIQUETA = { fontSize:'.68rem', fontWeight:800, letterSpacing:'.08em', textTransform:'uppercase', color:S.muted }
+  const TARJETA = { background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', overflow:'hidden', marginBottom:'14px' }
 
   return (
-    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
+    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,-apple-system,sans-serif', color:S.text, paddingBottom:'48px' }}>
       {mostrarAviso && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
-          <div style={{ background:S.card, border:`1px solid ${S.gold}`, borderRadius:'16px', padding:'24px', maxWidth:'360px', textAlign:'center' }}>
-            <div style={{ fontSize:'2rem', marginBottom:'10px' }}>⚠️</div>
-            <div style={{ fontWeight:800, fontSize:'.95rem', marginBottom:'8px' }}>Recordatorio</div>
-            <div style={{ fontSize:'.86rem', color:S.text2, lineHeight:1.5, marginBottom:'18px' }}>
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:800, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+          <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'18px', padding:'22px', maxWidth:'360px', width:'100%' }}>
+            <div style={{ fontWeight:800, fontSize:'1.05rem', marginBottom:'8px' }}>Un recordatorio</div>
+            <div style={{ fontSize:'.88rem', color:S.text2, lineHeight:1.55, marginBottom:'18px' }}>
               Todo lo que cambies aquí (ventas, precios, cancelaciones, pagos) queda anotado con tu nombre, la fecha y la hora. Los demás encargados del escenario pueden verlo.
             </div>
-            <button onClick={cerrarAviso} style={{ ...BOTON_GRANDE, background:S.cyan, color:'#000', minHeight:'48px', fontSize:'.9rem' }}>Entendido</button>
+            <button onClick={cerrarAviso} style={{ boxSizing:'border-box', width:'100%', minHeight:'50px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:G.greenDk, fontWeight:900, fontSize:'.95rem', fontFamily:'inherit' }}>Entendido</button>
           </div>
         </div>
       )}
 
-      <PortalBanner theme="dark" sticky
-        avatarUrl={escenario.logo_url} avatarEmoji={<Building2 size={22}/>} avatarShape="rounded"
-        onAvatarUpload={soloLectura ? undefined : handleLogo} uploadingAvatar={subiendoLogo}
-        kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Building2 size={11}/> Escenario deportivo</span>} title={escenario.name}
-        subtitle={<span>🏟️ {soloLectura ? '👁️ Solo lectura' : 'Encargado'} · {nombrePila}</span>}
-        subtitleColor={S.gold}
-        usuario={encargado} actual="escenario" onLogout={handleLogout}
-      />
+      <EncabezadoEscenario nombre={escenario.name} logoUrl={escenario.logo_url}
+        rol={`${soloLectura ? 'Solo lectura' : 'Encargado'} · ${nombrePila}`} usuario={encargado}
+        onLogo={soloLectura ? undefined : handleLogo} subiendoLogo={subiendoLogo}
+        onCambiarEscenario={otros.length > 1 ? () => navigate('/escenario') : undefined} onLogout={handleLogout}/>
 
-      <div style={{ maxWidth:'640px', margin:'0 auto', padding:'20px 16px' }}>
+      <div style={{ maxWidth:'640px', margin:'0 auto', padding:'22px 16px' }}>
 
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'16px' }}>
-          <div>
-            <div style={{ fontSize:'1.25rem', fontWeight:900, lineHeight:1.2 }}>Hola, {nombrePila} 👋</div>
-            <div style={{ fontSize:'.84rem', color:S.muted, marginTop:'2px' }}>¿Qué quieres hacer hoy?</div>
-          </div>
-          {otros.length > 1 && (
-            <button onClick={()=>navigate('/escenario')}
-              style={{ display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${S.border}`, borderRadius:'10px', padding:'0 12px', minHeight:'40px', cursor:'pointer', color:S.text2, fontSize:'.76rem', fontWeight:700, flexShrink:0, fontFamily:'inherit' }}>
-              <ArrowLeftRight size={13}/> Cambiar
-            </button>
-          )}
+        <div style={{ marginBottom:'20px' }}>
+          <div style={{ fontSize:'1.55rem', fontWeight:900, letterSpacing:'-.02em', lineHeight:1.15 }}>Hola, {nombrePila}</div>
+          <div style={{ fontSize:'.88rem', color:S.muted, marginTop:'4px' }}>¿Qué quieres hacer hoy?</div>
         </div>
 
         {/* Solicitudes de reserva esperando respuesta: lo más urgente va primero */}
         {reservasPendientes.length > 0 && (
           <button onClick={() => navigate(`/escenario/${B}/canchas`)}
-            style={{ ...BOTON_GRANDE, justifyContent:'space-between', padding:'12px 16px', marginBottom:'14px', background:'rgba(232,113,14,.14)', border:`1.5px solid ${S.warn}`, color:S.text, textAlign:'left', fontWeight:700, fontSize:'.9rem' }}>
-            <span style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-              <Bell size={20} color={S.warn}/>
-              <span><b style={{ color:S.warn }}>{reservasPendientes.length} {reservasPendientes.length === 1 ? 'cliente quiere' : 'clientes quieren'} reservar.</b><br/><span style={{ fontSize:'.78rem', color:S.text2, fontWeight:500 }}>Toca para aceptar o rechazar</span></span>
+            style={{ boxSizing:'border-box', display:'flex', alignItems:'center', gap:'12px', width:'100%', minHeight:'64px', padding:'10px 14px', marginBottom:'14px', background:S.card, border:`1px solid ${S.border}`, borderLeft:`4px solid ${S.gold}`, borderRadius:'14px', cursor:'pointer', color:S.text, textAlign:'left', fontFamily:'inherit' }}>
+            <Bell size={20} color={S.gold} style={{ flexShrink:0 }}/>
+            <span style={{ flex:1, minWidth:0 }}>
+              <span style={{ display:'block', fontWeight:800, fontSize:'.92rem' }}>{reservasPendientes.length} {reservasPendientes.length === 1 ? 'cliente quiere reservar' : 'clientes quieren reservar'}</span>
+              <span style={{ display:'block', fontSize:'.76rem', color:S.muted, marginTop:'2px' }}>Toca para aceptar o rechazar</span>
             </span>
-            <ChevronRight size={20} color={S.warn}/>
+            <ChevronRight size={20} color={S.muted} style={{ flexShrink:0 }}/>
           </button>
         )}
 
-        {/* 1 · Reservas: lo principal de todos los días */}
-        <div style={{ background:`linear-gradient(160deg, ${S.card}, ${S.card2})`, border:`1.5px solid ${S.cyan}66`, borderRadius:'18px', padding:'16px', marginBottom:'14px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
-            <GiSoccerBall size={22} color={S.cyan}/>
-            <div>
-              <div style={{ fontWeight:900, fontSize:'1.02rem' }}>Reservas de hoy</div>
-              <div style={{ fontSize:'.74rem', color:S.muted }}>{fmtDate(todayStr())}</div>
-            </div>
+        {/* Reservas: lo principal de todos los días */}
+        <div style={TARJETA}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', padding:'12px 16px', background:S.card2, borderBottom:`1px solid ${S.border}` }}>
+            <span style={{ ...ETIQUETA, display:'flex', alignItems:'center', gap:'7px' }}><CalendarDays size={14}/> Reservas de hoy</span>
+            <span style={{ fontSize:'.74rem', color:S.muted, fontWeight:600 }}>{fmtDate(todayStr())}</span>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'14px' }}>
-            <div style={{ background:'rgba(34,197,94,.1)', border:`1px solid ${S.green}55`, borderRadius:'12px', padding:'10px', textAlign:'center' }}>
-              <div style={{ fontSize:'1.7rem', fontWeight:900, color:S.green, lineHeight:1 }}>{libres}</div>
-              <div style={{ fontSize:'.76rem', color:S.text2, marginTop:'4px', fontWeight:700 }}>Horarios libres</div>
+          <div style={{ padding:'16px' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1px 1fr', alignItems:'center', marginBottom:'14px' }}>
+              <div style={{ textAlign:'center' }}>
+                <div style={{ fontSize:'2.5rem', fontWeight:900, lineHeight:1, letterSpacing:'-.03em' }}>{libres}</div>
+                <div style={{ fontSize:'.78rem', color:S.text2, fontWeight:700, marginTop:'6px', display:'inline-flex', alignItems:'center', gap:'6px' }}><span style={{ width:'8px', height:'8px', borderRadius:'50%', background:S.green }}/> {libres === 1 ? 'Horario libre' : 'Horarios libres'}</div>
+              </div>
+              <div style={{ width:'1px', height:'46px', background:S.border }}/>
+              <div style={{ textAlign:'center' }}>
+                <div style={{ fontSize:'2.5rem', fontWeight:900, lineHeight:1, letterSpacing:'-.03em' }}>{ocupados}</div>
+                <div style={{ fontSize:'.78rem', color:S.text2, fontWeight:700, marginTop:'6px', display:'inline-flex', alignItems:'center', gap:'6px' }}><span style={{ width:'8px', height:'8px', borderRadius:'50%', background:S.loss }}/> {ocupados === 1 ? 'Ya reservado' : 'Ya reservados'}</div>
+              </div>
             </div>
-            <div style={{ background:'rgba(217,48,37,.1)', border:`1px solid ${S.loss}55`, borderRadius:'12px', padding:'10px', textAlign:'center' }}>
-              <div style={{ fontSize:'1.7rem', fontWeight:900, color:'#ff7b72', lineHeight:1 }}>{ocupados}</div>
-              <div style={{ fontSize:'.76rem', color:S.text2, marginTop:'4px', fontWeight:700 }}>Ya reservados</div>
+            <div style={{ height:'6px', borderRadius:'999px', background:S.soft, overflow:'hidden', marginBottom:'16px' }} aria-hidden="true">
+              <div style={{ width:`${pctOcupado}%`, height:'100%', background:S.loss, borderRadius:'999px' }}/>
             </div>
+            <button onClick={() => navigate(`/escenario/${B}/canchas`)}
+              style={{ boxSizing:'border-box', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', width:'100%', minHeight:'54px', border:'none', borderRadius:'14px', cursor:'pointer', fontWeight:900, fontSize:'1rem', fontFamily:'inherit', background:S.cyan, color:G.greenDk }}>
+              {soloLectura ? 'Ver los horarios' : 'Ver horarios y reservar'} <ChevronRight size={20}/>
+            </button>
           </div>
-          <button onClick={() => navigate(`/escenario/${B}/canchas`)} style={{ ...BOTON_GRANDE, background:S.cyan, color:'#000' }}>
-            <GiSoccerBall size={20}/> {soloLectura ? 'Ver los horarios' : 'Ver horarios y reservar'}
-          </button>
         </div>
 
-        {/* 2 · Tienda */}
-        <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'18px', padding:'16px', marginBottom:'14px' }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'12px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-              <ShoppingCart size={22} color={S.gold}/>
-              <div style={{ fontWeight:900, fontSize:'1.02rem' }}>Tienda</div>
-            </div>
-            <div style={{ textAlign:'right' }}>
-              <div style={{ fontSize:'1.25rem', fontWeight:900, color:S.gold, lineHeight:1 }}>{fmtMoney(totalVentasHoy)}</div>
-              <div style={{ fontSize:'.7rem', color:S.muted, marginTop:'3px' }}>vendido hoy</div>
-            </div>
+        {/* Tienda */}
+        <div style={TARJETA}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', padding:'12px 16px', background:S.card2, borderBottom:`1px solid ${S.border}` }}>
+            <span style={{ ...ETIQUETA, display:'flex', alignItems:'center', gap:'7px' }}><ShoppingCart size={14}/> Tienda</span>
           </div>
-          {bajoStock.length > 0 && (
-            <button onClick={() => navigate(`/escenario/${B}/inventario`)}
-              style={{ display:'block', width:'100%', textAlign:'left', background:'rgba(249,168,37,.1)', border:`1px solid ${S.gold}66`, borderRadius:'10px', padding:'9px 12px', marginBottom:'10px', color:S.gold, fontSize:'.8rem', fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
-              📦 {bajoStock.length} {bajoStock.length === 1 ? 'producto con poco stock' : 'productos con poco stock'} — toca para verlos
+          <div style={{ padding:'16px' }}>
+            <div style={{ display:'flex', alignItems:'baseline', gap:'8px', marginBottom: bajoStock.length > 0 ? '12px' : '16px' }}>
+              <div style={{ fontSize:'2rem', fontWeight:900, letterSpacing:'-.03em', lineHeight:1 }}>{fmtMoney(totalVentasHoy)}</div>
+              <div style={{ fontSize:'.8rem', color:S.muted, fontWeight:600 }}>vendido hoy</div>
+            </div>
+            {bajoStock.length > 0 && (
+              <button onClick={() => navigate(`/escenario/${B}/inventario`)}
+                style={{ boxSizing:'border-box', display:'flex', alignItems:'center', gap:'10px', width:'100%', minHeight:'46px', padding:'0 12px', marginBottom:'14px', background:S.goldBg, border:'none', borderRadius:'10px', color:S.gold, fontSize:'.84rem', fontWeight:700, cursor:'pointer', textAlign:'left', fontFamily:'inherit' }}>
+                <AlertTriangle size={17} style={{ flexShrink:0 }}/>
+                <span style={{ flex:1 }}>{bajoStock.length} {bajoStock.length === 1 ? 'producto con poco stock' : 'productos con poco stock'}</span>
+                <ChevronRight size={17} style={{ flexShrink:0 }}/>
+              </button>
+            )}
+            <button onClick={() => navigate(`/escenario/${B}/ventas`)}
+              style={{ boxSizing:'border-box', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', width:'100%', minHeight:'52px', border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', fontWeight:800, fontSize:'.98rem', fontFamily:'inherit', background:S.card2, color:S.text }}>
+              <ShoppingCart size={19}/> {soloLectura ? 'Ver las ventas' : 'Hacer una venta'}
             </button>
-          )}
-          <button onClick={() => navigate(`/escenario/${B}/ventas`)} style={{ ...BOTON_GRANDE, background:S.gold, color:'#1a1200' }}>
-            <ShoppingCart size={20}/> {soloLectura ? 'Ver las ventas' : 'Hacer una venta'}
-          </button>
+          </div>
         </div>
 
         {/* Más opciones: cerradas para no abrumar */}
         <button onClick={() => setMostrarMas(v => !v)} aria-expanded={mostrarMas}
-          style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', minHeight:'54px', padding:'0 16px', background:S.surface, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, fontWeight:800, fontSize:'.92rem', fontFamily:'inherit' }}>
-          <span style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+          style={{ boxSizing:'border-box', display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', minHeight:'56px', padding:'0 16px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', cursor:'pointer', color:S.text, fontWeight:800, fontSize:'.95rem', fontFamily:'inherit' }}>
+          <span style={{ display:'flex', alignItems:'center', gap:'10px' }}>
             Más opciones
-            {!mostrarMas && avisosMas > 0 && <span style={{ background:S.warn, color:'#fff', borderRadius:'999px', fontSize:'.68rem', fontWeight:900, padding:'2px 8px' }}>{avisosMas}</span>}
+            {!mostrarMas && hayAvisosMas && <span aria-label="Hay avisos adentro" style={{ width:'8px', height:'8px', borderRadius:'50%', background:S.gold }}/>}
           </span>
           {mostrarMas ? <ChevronDown size={20} color={S.muted}/> : <ChevronRight size={20} color={S.muted}/>}
         </button>
 
         {mostrarMas && (
-          <div style={{ marginTop:'12px', display:'flex', flexDirection:'column', gap:'16px' }}>
+          <div style={{ marginTop:'18px', display:'flex', flexDirection:'column', gap:'20px' }}>
             {GRUPOS.map(g => (
               <div key={g.titulo}>
-                <div style={{ fontSize:'.7rem', fontWeight:800, letterSpacing:'.08em', textTransform:'uppercase', color:S.muted, margin:'0 4px 8px' }}>{g.titulo}</div>
-                <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', overflow:'hidden' }}>
+                <div style={{ ...ETIQUETA, margin:'0 4px 8px' }}>{g.titulo}</div>
+                <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', overflow:'hidden' }}>
                   {g.items.map((n, i) => (
-                    <button key={n.to} onClick={() => { abrirOpcion(n.to) }}
-                      style={{ display:'flex', alignItems:'center', gap:'12px', width:'100%', minHeight:'62px', padding:'10px 14px', background:'none', border:'none', borderTop: i > 0 ? `1px solid ${S.border}` : 'none', cursor:'pointer', color:S.text, textAlign:'left', fontFamily:'inherit' }}>
-                      <span style={{ width:'38px', height:'38px', borderRadius:'10px', background:S.cyanDim, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><n.icon size={19} color={S.cyan}/></span>
+                    <button key={n.to} onClick={() => abrirOpcion(n.to)}
+                      style={{ boxSizing:'border-box', display:'flex', alignItems:'center', gap:'14px', width:'100%', minHeight:'64px', padding:'10px 16px', background:'none', border:'none', borderTop: i > 0 ? `1px solid ${S.border}` : 'none', cursor:'pointer', color:S.text, textAlign:'left', fontFamily:'inherit' }}>
+                      <n.icon size={21} color={S.muted} style={{ flexShrink:0 }}/>
                       <span style={{ flex:1, minWidth:0 }}>
-                        <span style={{ display:'block', fontWeight:800, fontSize:'.9rem' }}>{n.label}</span>
-                        <span style={{ display:'block', fontSize:'.74rem', color:S.muted, lineHeight:1.35, marginTop:'1px' }}>{n.desc}</span>
+                        <span style={{ display:'block', fontWeight:700, fontSize:'.92rem' }}>{n.label}</span>
+                        <span style={{ display:'block', fontSize:'.76rem', color:S.muted, lineHeight:1.35, marginTop:'2px' }}>{n.desc}</span>
                       </span>
-                      {n.badge > 0 && <span style={{ background:S.warn, color:'#fff', borderRadius:'999px', fontSize:'.66rem', fontWeight:900, padding:'3px 8px', flexShrink:0 }}>{n.badge === 1 && n.badgeTxt === 'nuevo' ? 'nuevo' : `${n.badge} ${n.badgeTxt}`}</span>}
-                      <ChevronRight size={18} color={S.muted} style={{ flexShrink:0 }}/>
+                      {n.aviso && <span style={{ background:S.goldBg, color:S.gold, borderRadius:'999px', fontSize:'.68rem', fontWeight:800, padding:'3px 9px', flexShrink:0, whiteSpace:'nowrap' }}>{n.aviso}</span>}
+                      <ChevronRight size={18} color={S.faint} style={{ flexShrink:0 }}/>
                     </button>
                   ))}
                 </div>
