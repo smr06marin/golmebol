@@ -354,7 +354,7 @@ export default function AdminTorneosPage() {
     setEditId(t.id)
     setVerAvanzado(true)
     setShowForm(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    (document.querySelector('[data-admin-scroll]') || window).scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function handleDelete(t) {

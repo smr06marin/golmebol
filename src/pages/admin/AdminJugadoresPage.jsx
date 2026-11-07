@@ -481,7 +481,7 @@ export default function AdminJugadoresPage() {
       posicion_futbol11: j.posicion_futbol11||'',
     })
     setEditId(j.id); setShowForm(true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    (document.querySelector('[data-admin-scroll]') || window).scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   // Abre el modal de confirmación (no borra nada todavía) — el borrado real,

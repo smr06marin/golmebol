@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { Ban, Trophy, Shield, Users, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone } from 'lucide-react'
 import { supabase, supabaseSilent } from '../../lib/supabase'
@@ -32,6 +32,17 @@ export default function AdminLayout() {
   const location = useLocation()
   const { rol, user, setRol } = useAuthStore()
   const isMobile = useIsMobile()
+  // En el celular, la barra de abajo y el título NO flotan: el panel ocupa la pantalla y solo se desplaza el contenido del medio.
+  // (Una barra "fixed" en el iPhone se descuadra al desplazar o al cerrar el teclado y queda a mitad de pantalla.)
+  const scrollRef = useRef(null)
+  useEffect(() => { scrollRef.current?.scrollTo(0, 0) }, [location.pathname])
+  useEffect(() => {
+    if (!isMobile) return undefined
+    // Al cerrar el teclado el iPhone a veces deja la pantalla corrida: se acomoda sola
+    const acomodar = () => setTimeout(() => { if (window.scrollY !== 0) window.scrollTo(0, 0) }, 120)
+    document.addEventListener('focusout', acomodar)
+    return () => document.removeEventListener('focusout', acomodar)
+  }, [isMobile])
   // Sin sistema de roles cargado (tabla no creada), todo usuario del admin es admin
   const esAdmin = rol?.rol ? rol.rol === 'admin' : true
   const esOrganizador = rol?.rol === 'organizador'
@@ -102,7 +113,9 @@ export default function AdminLayout() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f4f6f8', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={isMobile
+      ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', background: '#f4f6f8', fontFamily: 'system-ui, sans-serif', overflow: 'hidden' }
+      : { display: 'flex', minHeight: '100vh', background: '#f4f6f8', fontFamily: 'system-ui, sans-serif' }}>
       <ConfirmHost/>
 
       {/* Sidebar (solo escritorio) */}
@@ -144,7 +157,7 @@ export default function AdminLayout() {
 
       {/* Barra inferior (solo celular) */}
       {isMobile && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, background: '#fff', borderTop: '1px solid #e8eaed', boxShadow: '0 -2px 12px rgba(0,0,0,.08)', display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 4px calc(4px + env(safe-area-inset-bottom))' }}>
+        <div style={{ order: 2, flexShrink: 0, zIndex: 100, background: '#fff', borderTop: '1px solid #e8eaed', boxShadow: '0 -2px 12px rgba(0,0,0,.08)', display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 4px calc(4px + env(safe-area-inset-bottom))' }}>
           {MENU.map(item => {
             const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
             return (
@@ -164,9 +177,9 @@ export default function AdminLayout() {
       )}
 
       {/* Contenido */}
-      <div style={{ marginLeft: isMobile ? 0 : '92px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ marginLeft: isMobile ? 0 : '92px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, order: 1 }}>
         {/* Topbar */}
-        <div style={{ height: '52px', background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', padding: isMobile ? '0 14px' : '0 24px', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ height: '52px', background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', padding: isMobile ? '0 14px' : '0 24px', justifyContent: 'space-between', position: isMobile ? 'relative' : 'sticky', flexShrink: 0, top: 0, zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             {isMobile && (
               <div onClick={() => navigate('/admin')} style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
@@ -197,7 +210,7 @@ export default function AdminLayout() {
         </div>
 
         {/* Página */}
-        <div style={{ flex: 1, padding: isMobile ? '14px 12px calc(84px + env(safe-area-inset-bottom))' : '24px', overflowY: 'auto', minWidth: 0 }}>
+        <div ref={scrollRef} data-admin-scroll style={{ flex: 1, minHeight: 0, padding: isMobile ? '14px 12px 24px' : '24px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
           <Outlet />
         </div>
       </div>
