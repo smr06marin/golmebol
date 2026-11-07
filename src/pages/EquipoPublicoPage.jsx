@@ -178,7 +178,7 @@ export default function EquipoPublicoPage() {
             <Numero valor={totales.p} etiqueta="P" color="#fecaca" puesto={PL.p}/>
             <Numero valor={`${dif > 0 ? '+' : ''}${dif}`} etiqueta="DG" color={dif > 0 ? '#a7f3d0' : dif < 0 ? '#fecaca' : '#fff'} puesto={PL.dg}/>
           </div>
-          {Object.keys(PL).length > 0 && <NotaPuestos>El número pequeño (por ejemplo 3°) es el puesto del equipo en el ranking de Golmebol.</NotaPuestos>}
+          {Object.keys(PL).length > 0 && <NotaPuestos>El número pequeño (por ejemplo 3°) es el puesto del equipo en el ranking de Golmebol. Tócalo para ver qué mide y el ranking completo.</NotaPuestos>}
           {forma.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '14px' }}>
               <span style={{ fontSize: '.64rem', fontWeight: 800, color: C.muted, letterSpacing: '.08em', textTransform: 'uppercase' }}>Forma</span>

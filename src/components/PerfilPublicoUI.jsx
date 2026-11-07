@@ -1,6 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Share2, Check, Shield, User } from 'lucide-react'
+import { textoPuesto } from '../lib/rankings'
+
+// La ventana con el ranking completo se baja solo cuando alguien toca un puesto
+const RankingModal = lazy(() => import('./RankingModal'))
 
 // Piezas compartidas por los perfiles públicos de equipo (/e/:id) y de
 // jugador (/j/:id): cabecera con botón de volver, escudo/foto, chips de
@@ -83,27 +87,53 @@ export function ChipForma({ letra, size = 24 }) {
 // etiqueta → texto antes (ej. "Goles"). compacto (o apilado/claro, por compatibilidad) → solo "3°", para cuadros angostos
 // como los números de la cabecera (el significado se explica en una nota debajo).
 // p = { n, de } (null/undefined = no se pinta nada, así un dato sin puesto no deja un hueco raro).
-export function ChipPuesto({ p, claro = false, etiqueta, apilado = false, compacto = false }) {
-  if (!p || !p.n) return null
+export function ChipPuesto(props) {
+  if (!props.p || !props.p.n) return null
+  return <ChipPuestoInterno {...props}/>
+}
+function ChipPuestoInterno({ p, claro = false, etiqueta, apilado = false, compacto = false }) {
   const oro = p.n === 1, top = p.n <= 3
   const fondo = oro ? C.goldBg : top ? C.winBg : 'rgba(255,255,255,.07)'
   const color = oro ? C.gold : top ? C.win : C.muted
-  const titulo = `Puesto ${p.n} del ranking, de ${p.de}`
+  const [abierto, setAbierto] = useState(false)
+  // Con "k" (de qué dato es) el puesto se puede tocar y abre el ranking completo.
+  // Puestos viejos guardados en el celular sin "k" se ven igual, sin tocar.
+  const tocable = !!p.k && !!p.tipo
+  const titulo = tocable ? textoPuesto(p) : `Puesto ${p.n} del ranking, de ${p.de}`
+  const baseBoton = tocable
+    ? { border: 'none', fontFamily: 'inherit', cursor: 'pointer', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.14)', WebkitTapHighlightColor: 'transparent' }
+    : {}
+  const Marco = tocable ? 'button' : 'span'
+  const propsMarco = tocable
+    ? { type: 'button', 'aria-label': titulo, onClick: e => { e.stopPropagation(); e.preventDefault(); setAbierto(true) }, onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation() } }
+    : {}
+  const modal = abierto && (
+    <Suspense fallback={null}>
+      <RankingModal p={p} onClose={() => setAbierto(false)}/>
+    </Suspense>
+  )
   if (compacto || apilado || claro) {
     return (
-      <span title={titulo}
-        style={{ display: 'inline-flex', alignItems: 'center', background: fondo, color, borderRadius: '999px', padding: '2px 8px', fontSize: '.66rem', fontWeight: 800, lineHeight: 1.4, whiteSpace: 'nowrap' }}>
-        {p.n}°
-      </span>
+      <>
+        <Marco {...propsMarco} title={titulo}
+          style={{ display: 'inline-flex', alignItems: 'center', background: fondo, color, borderRadius: '999px', padding: tocable ? '3px 9px' : '2px 8px', fontSize: '.66rem', fontWeight: 800, lineHeight: 1.4, whiteSpace: 'nowrap', ...baseBoton }}>
+          {p.n}°
+        </Marco>
+        {modal}
+      </>
     )
   }
   return (
-    <span title={titulo}
-      style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', background: fondo, color, borderRadius: '999px', padding: '1px 8px', fontSize: '.64rem', fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap' }}>
-      {etiqueta && <span style={{ fontWeight: 600, opacity: .85 }}>{etiqueta}</span>}
-      <span>{p.n}° ranking</span>
-      <span style={{ fontWeight: 600, opacity: .8 }}>de {p.de}</span>
-    </span>
+    <>
+      <Marco {...propsMarco} title={titulo}
+        style={{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', background: fondo, color, borderRadius: '999px', padding: tocable ? '3px 9px' : '1px 8px', fontSize: '.64rem', fontWeight: 800, lineHeight: 1.5, whiteSpace: 'nowrap', ...baseBoton }}>
+        {etiqueta && <span style={{ fontWeight: 600, opacity: .85 }}>{etiqueta}</span>}
+        <span>{p.n}° ranking</span>
+        <span style={{ fontWeight: 600, opacity: .8 }}>de {p.de}</span>
+        {tocable && <span aria-hidden="true" style={{ fontWeight: 800, opacity: .8 }}>›</span>}
+      </Marco>
+      {modal}
+    </>
   )
 }
 

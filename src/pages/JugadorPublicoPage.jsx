@@ -146,7 +146,7 @@ export default function JugadorPublicoPage() {
               </>
             )}
           </div>
-          {Object.keys(PL).length > 0 && <NotaPuestos>El número pequeño (por ejemplo 3°) es el puesto del jugador en el ranking de Golmebol.</NotaPuestos>}
+          {Object.keys(PL).length > 0 && <NotaPuestos>El número pequeño (por ejemplo 3°) es el puesto del jugador en el ranking de Golmebol. Tócalo para ver qué mide y el ranking completo.</NotaPuestos>}
         </div>
       </div>
 
