@@ -506,7 +506,7 @@ export default function PantallaPapel({
   arqueroLocal, arqueroVis, onElegirArquero,
   onToggleCronometro, onCambiarPeriodo, onAsignarNumero, onAbrirJugador, onGol, onGolSinJugador, onTarjeta, onQuitarEvento, onAgregarJugador,
   onSalir, onAbrirCierre, onAbrirEspecial,
-  duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo, onSilenciar,
+  duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo, onSilenciar, onCambiarProfesional,
 }) {
   const hojaRef = useRef(null)
   const informeRef = useRef(null)
@@ -655,6 +655,16 @@ export default function PantallaPapel({
           </div>
         </div>
         <div style={{ textAlign: 'center', fontSize: '.64rem', fontWeight: '600', opacity: .8, marginTop: '4px' }}>Toca el número para sumar un gol · «− 1» para quitar</div>
+        {/* Solo el organizador, y solo mientras no se haya llenado nada (ni goles, ni tarjetas, ni cronómetro): pasar a la planilla profesional */}
+        {onCambiarProfesional && eventosLocal.length === 0 && eventosVis.length === 0 && !corriendo && segundos === 0 && periodo === 1 && (
+          <div style={{ textAlign: 'center', marginTop: '8px' }}>
+            <button type="button"
+              onClick={() => { if (window.confirm('¿Cambiar a la planilla profesional?\n\nSe abre la planilla completa (con cronómetro, faltas y tarjetas) para este partido.')) onCambiarProfesional() }}
+              style={{ ...boton, background: 'rgba(255,255,255,.95)', color: '#1a3a8a', fontWeight: '800', fontSize: '.78rem', padding: '9px 14px' }}>
+              Cambiar a la planilla profesional →
+            </button>
+          </div>
+        )}
         {(pen.hubo || globalLlave) && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap', marginTop: '6px', fontSize: '.78rem', fontWeight: '800' }}>
             {pen.hubo && <span>Penales: {pen.local === '' ? '–' : pen.local} - {pen.visitante === '' ? '–' : pen.visitante}</span>}

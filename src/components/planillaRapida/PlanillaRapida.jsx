@@ -119,7 +119,7 @@ const COLOR_VIS_PAPEL = '#d93025'
 // vista="papel": MISMO motor (guardado en vivo, cronómetro, varios celulares,
 // cierre, estadísticas, penales) pero con la pantalla de la hoja de papel
 // (planillaPapel/PantallaPapel.jsx): Documento, Nombre, N°, Amarilla, Roja, GOL.
-export default function PlanillaRapida({ partido, onClose, onGuardarResultado, vista, oculta = false }) {
+export default function PlanillaRapida({ partido, onClose, onGuardarResultado, vista, oculta = false, onCambiarProfesional }) {
   const esPapel = vista === 'papel'
   const colorLocalDef = esPapel ? COLOR_LOCAL_PAPEL : null
   const colorVisDef = esPapel ? COLOR_VIS_PAPEL : null
@@ -1821,6 +1821,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
           onQuitarEvento={quitarEvento} onAgregarJugador={agregarJugadorPapel}
           onSalir={pausarYSalir} onAbrirCierre={() => setMostrarCierre(true)}
           onAbrirEspecial={tipo => { setTipoEspecialInicial(tipo || null); setMostrarEspecial(true) }}
+          onCambiarProfesional={onCambiarProfesional}
         />
         {modalFoto && (
           <ModalFotoNumero jugador={modalFoto.jugador} tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}

@@ -31,48 +31,30 @@ function haySalonLocal(id) {
 //
 // Hay DOS planillas:
 //  · FÚTBOL DE SALÓN = la planilla profesional (PlanillaPartido, la completa).
-//  · FÚTBOL 11 = la hoja de papel (PlanillaPapel, la sencilla).
+//  · FÚTBOL 11 = la hoja de papel (PlanillaPapel, la normal, la sencilla).
+//
+// REGLA: la planilla profesional SOLO se abre cuando el árbitro entra con su PROPIO usuario (contexto 'arbitro':
+// cuenta de árbitro, asignado por el árbitro líder, o de coordinador). Todos los demás (admin, organizador, planillador
+// por link) usan la planilla normal. Ya no se escoge planilla al crear el torneo: el torneo no cambia nada acá.
 //
 // Qué se abre:
-//  1. Si el coordinador eligió una para ese partido (matches.planilla_tipo =
-//     'salon' | 'futbol11'), esa.
-//  2. Si no eligió, y quien abre es admin/organizador (cualquier contexto que
-//     no sea 'arbitro'), manda la planilla que se escogió al CREAR el torneo
-//     (tournaments.planilla_tipo).
-//  3. Si tampoco hay (torneos viejos, sin elegir) → automático:
-//       contexto 'arbitro' (cuenta de árbitro o de coordinador) → Fútbol de salón
-//       cualquier otro (admin, organizador) → Fútbol 11
-//     La planilla del torneo NO cambia lo que ve un árbitro/coordinador.
-//     (el link de planillador no pasa por aquí: sigue igual que siempre).
+//  1. Si el árbitro líder eligió una planilla para ese partido (matches.planilla_tipo = 'futbol11'), la normal.
+//  2. Si no, contexto 'arbitro' → profesional; cualquier otro contexto → normal.
 //
-// OJO con los borradores vacíos: la planilla de Fútbol 11 guarda un borrador
-// apenas se abre el partido, aunque no se haya anotado nada. Si ese borrador
-// está VACÍO (sin goles, tarjetas, números, hoja de papel ni cronómetro) NO
-// cuenta como trabajo: manda la planilla escogida para el torneo. Así, un
-// partido que alguien abrió "de curioso" antes de escoger la planilla no queda
-// pegado a Fútbol 11 para siempre.
-//
-// (Lo mismo vale para la cuenta de árbitro: un borrador de papel vacío no la deja pegada a la hoja de papel.)
-//
-// Dos protecciones para no dañar trabajo que ya existe (mandan sobre lo anterior):
-//  · Un partido YA JUGADO se reedita con la planilla con la que se llenó: si se
-//    llenó con la de Fútbol 11 (tiene datos de papel) o con la rápida ("sin
-//    planillador"), abre Fútbol 11; si no, abre la de salón para no perder nada.
-//  · Un partido a medias (borrador en la base o en este celular) sigue en la
-//    planilla donde está hasta cerrarlo.
-export function usaPlanillaCompleta(p, contexto = 'admin', tipoTorneo = null) {
+// Protecciones para no dañar trabajo que ya existe (mandan sobre lo anterior):
+//  · Un partido YA JUGADO se reedita con la planilla con la que se llenó: si se llenó con la normal (tiene datos de
+//    papel) o con la rápida ("sin planillador"), abre la normal; si no, abre la profesional para no perder nada.
+//  · Un partido a medias (borrador en la base o en este celular) sigue en la planilla donde está hasta cerrarlo.
+//  · Un borrador de papel VACÍO (solo abierto, sin goles/tarjetas/números/cronómetro) no ata el partido a la normal.
+export function usaPlanillaCompleta(p, contexto = 'admin') {
   if (!p) return false
   if (p.status === 'finished') return !(p.planilla_papel || p.sin_planillador)
-  // Un borrador de papel VACÍO (solo abierto, sin goles/tarjetas/números/cronómetro) no ata el partido a Fútbol 11.
-  // Vale para TODOS (también para la cuenta de árbitro): si alguien abrió el partido "de curioso" con la hoja de papel
-  // antes de escoger la planilla, ese borrador vacío ya no manda — manda lo que se escogió (partido o torneo) y, si no
-  // hay nada escogido, la cuenta de árbitro/coordinador abre la profesional de Fútbol de salón.
+  const esArbitro = contexto === 'arbitro'
   const sinTrabajoDePapel = !p.planilla_papel && borradorRapidaVacio(p.live_state_rapida) && borradorLocalRapidaVacio(p.id)
-  if (sinTrabajoDePapel && (contexto === 'arbitro' || tipoTorneo === 'salon' || tipoTorneo === 'futbol11')) {
-    if (p.live_state || haySalonLocal(p.id)) return true // ya hay trabajo en la de salón
-    if (p.planilla_tipo === 'salon') return true
+  if (sinTrabajoDePapel) {
+    if (p.live_state || haySalonLocal(p.id)) return true // ya hay trabajo en la profesional
     if (p.planilla_tipo === 'futbol11') return false
-    return contexto === 'arbitro' ? true : tipoTorneo === 'salon'
+    return esArbitro
   }
   if (p.live_state && !p.live_state_rapida && !p.planilla_papel) return true
   try {
@@ -80,11 +62,6 @@ export function usaPlanillaCompleta(p, contexto = 'admin', tipoTorneo = null) {
     if (p.id && localStorage.getItem(`planilla_rapida_${p.id}`)) return false
   } catch { /* sin acceso al almacenamiento: se ignora */ }
   if (p.live_state_rapida || p.planilla_papel) return false
-  if (p.planilla_tipo === 'salon') return true
   if (p.planilla_tipo === 'futbol11') return false
-  if (contexto !== 'arbitro') {
-    if (tipoTorneo === 'salon') return true
-    if (tipoTorneo === 'futbol11') return false
-  }
-  return contexto === 'arbitro'
+  return esArbitro
 }
