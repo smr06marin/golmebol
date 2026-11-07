@@ -222,9 +222,10 @@ export default function EquipoPublicoPage() {
                     </div>
                   </div>
                 </div>
-                {PL.pts && (
-                  <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center' }}>
-                    Puntos (3 por victoria, 1 por empate): <b style={{ color: C.text }}>{totales.g * 3 + totales.e}</b> <ChipPuesto p={PL.pts}/>
+                {(PL.pts || PL.ppp) && (
+                  <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.soft}`, fontSize: '.78rem', color: C.muted, textAlign: 'center', lineHeight: 2 }}>
+                    {PL.ppp && <div>Rendimiento: <b style={{ color: C.text }}>{((totales.g * 3 + totales.e) / totales.pj).toFixed(2)}</b> puntos por partido <ChipPuesto p={PL.ppp}/></div>}
+                    {PL.pts && <div>Puntos (3 por victoria, 1 por empate): <b style={{ color: C.text }}>{totales.g * 3 + totales.e}</b> <ChipPuesto p={PL.pts}/></div>}
                   </div>
                 )}
               </Tarjeta>
@@ -289,7 +290,7 @@ export default function EquipoPublicoPage() {
                   </div>
                   {t.pj > 0 && (
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '5px' }}>
-                      {[['pts', 'Puntos'], ['gf', 'Goles a favor'], ['gc', 'Goles en contra']].map(([k, et]) => PT(t.id)[k] ? <ChipPuesto key={k} p={PT(t.id)[k]} etiqueta={et}/> : null)}
+                      {[['ppp', 'Rendimiento'], ['pts', 'Puntos'], ['gf', 'Goles a favor'], ['gc', 'Goles en contra']].map(([k, et]) => PT(t.id)[k] ? <ChipPuesto key={k} p={PT(t.id)[k]} etiqueta={et}/> : null)}
                     </div>
                   )}
                 </div>

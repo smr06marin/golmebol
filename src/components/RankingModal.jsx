@@ -104,7 +104,7 @@ export default function RankingModal({ p, onClose }) {
         <span style={{ width: 34, flexShrink: 0, textAlign: 'center', fontWeight: 900, fontSize: '.86rem', color: medalla }}>{f.puesto}°</span>
         {esEquipo ? <Escudo url={n?.img} nombre={n?.name} size={32} radio={8}/> : <FotoJugador url={n?.img} nombre={n?.name} size={32}/>}
         <span style={{ flex: 1, minWidth: 0, fontSize: '.86rem', fontWeight: resaltar ? 800 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {n?.name || '…'}{resaltar && <span style={{ marginLeft: 6, fontSize: '.62rem', fontWeight: 800, color: C.green }}>{esEquipo ? 'ESTE EQUIPO' : 'ESTE JUGADOR'}</span>}
+          {n?.name || '…'}{resaltar && <span style={{ display: 'block', fontSize: '.6rem', fontWeight: 800, color: C.green, letterSpacing: '.04em' }}>{esEquipo ? 'ESTE EQUIPO' : 'ESTE JUGADOR'}</span>}
         </span>
         <span style={{ flexShrink: 0, fontWeight: 900, fontSize: '.95rem', color: resaltar ? C.green : '#fff' }}>{formatear(f.valor, info.fmt)}</span>
       </button>

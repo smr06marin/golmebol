@@ -33,6 +33,7 @@ export const DEFS_JUGADOR = [
   { k: 'pj',        v: m => m.pj,       el: m => m.pj > 0,  sh: pos },
   { k: 'goles',     v: m => m.goles,    el: m => m.pj > 0,  sh: pos },
   { k: 'gpp',       v: m => r2(m.goles / m.pj), el: m => m.pj >= MIN_PJ_TASA, sh: pos },
+  { k: 'tpp',       dir: 'bajo', v: m => r2((m.amarillas + m.rojas) / m.pj), el: m => m.pj >= MIN_PJ_TASA, sh: siempre },
   { k: 'amarillas', dir: 'bajo', v: m => m.amarillas, el: m => m.pj > 0, sh: pos },
   { k: 'rojas',     dir: 'bajo', v: m => m.rojas,     el: m => m.pj > 0, sh: pos },
   { k: 'mvp',       v: m => m.mvp,      el: m => m.pj > 0,  sh: pos },
@@ -50,7 +51,22 @@ export const DEFS_JUGADOR = [
   { k: 'golesArq',  v: m => m.golesArq, el: m => m.arqPj > 0, sh: pos },
 ]
 
+// Puntaje de "rendimiento" de un equipo: puntos por partido (3 por victoria, 1 por empate) y, si hay
+// empate, diferencia de gol por partido y luego goles a favor por partido. Así los equipos que han jugado
+// distinta cantidad de partidos se comparan en igualdad (se ordena por promedio, no por totales).
+const rendimiento = m => {
+  const ppp = (m.g * 3 + m.e) / m.pj
+  const dgpp = (m.gf - m.gc) / m.pj
+  const gfpp = m.gf / m.pj
+  return Math.round(ppp * 1000) * 1e11 + Math.round((dgpp + 100) * 100) * 1e5 + Math.min(99999, Math.round(gfpp * 100))
+}
+
 export const DEFS_EQUIPO = [
+  { k: 'ppp',  v: m => r2((m.g * 3 + m.e) / m.pj), r: rendimiento, el: m => m.pj >= MIN_PJ_TASA, sh: siempre },
+  { k: 'pctg', v: m => Math.round((100 * m.g) / m.pj), el: m => m.pj >= MIN_PJ_TASA, sh: siempre },
+  { k: 'dgpp', v: m => r2((m.gf - m.gc) / m.pj), el: m => m.pj >= MIN_PJ_TASA, sh: siempre },
+  { k: 'cs',   v: m => m.cs,           el: m => m.pj > 0, sh: pos },
+  { k: 'cspct', v: m => Math.round((100 * m.cs) / m.pj), el: m => m.pj >= MIN_PJ_TASA, sh: pos },
   { k: 'pj',   v: m => m.pj,           el: m => m.pj > 0, sh: pos },
   { k: 'g',    v: m => m.g,            el: m => m.pj > 0, sh: pos },
   { k: 'p',    dir: 'bajo', v: m => m.p, el: m => m.pj > 0, sh: siempre },
@@ -64,7 +80,7 @@ export const DEFS_EQUIPO = [
 ]
 
 const nuevoJ = () => ({ pj: 0, goles: 0, amarillas: 0, rojas: 0, hat: 0, g: 0, mvp: 0, camp: 0, arqPj: 0, arqRec: 0, arqCero: 0, golesArq: 0, penAt: 0, penEnf: 0, racha: 0, _l: [] })
-const nuevoE = () => ({ pj: 0, g: 0, e: 0, p: 0, gf: 0, gc: 0, camp: 0 })
+const nuevoE = () => ({ pj: 0, g: 0, e: 0, p: 0, gf: 0, gc: 0, cs: 0, camp: 0 })
 
 // ── Descarga paginada (Supabase devuelve máx. ~1000 filas por consulta) ──
 async function traerTodo(armar) {
@@ -157,6 +173,7 @@ export function construirUniverso({ stats = [], partidos = [], logros = [], pena
       if (m.tournament_id) { if (!e.torneos[m.tournament_id]) e.torneos[m.tournament_id] = nuevoE(); amb.push(e.torneos[m.tournament_id]) }
       amb.forEach(a => {
         a.pj++; a.gf += gf || 0; a.gc += gc || 0
+        if (!(gc || 0)) a.cs++
         if ((gf || 0) > (gc || 0)) a.g++; else if ((gf || 0) === (gc || 0)) a.e++; else a.p++
       })
     })
@@ -177,7 +194,7 @@ export function construirUniverso({ stats = [], partidos = [], logros = [], pena
   const tabla = (entidades, defs) => {
     const out = {}
     defs.forEach(d => { out[d.k] = [] })
-    entidades.forEach(a => { defs.forEach(d => { if (d.el(a)) out[d.k].push(d.v(a)) }) })
+    entidades.forEach(a => { defs.forEach(d => { if (d.el(a)) out[d.k].push((d.r || d.v)(a)) }) })
     return out
   }
   const armar = (mapa, defs) => {
@@ -203,10 +220,11 @@ function puestoEn(tablaValores, def, ambito) {
   if (!def.el(ambito)) return null
   const mio = def.v(ambito)
   if (!def.sh(mio)) return null
+  const orden = (def.r || def.v)(ambito)   // con desempates si el dato los tiene
   const vals = tablaValores[def.k] || []
   let mejores = 0
   for (let i = 0; i < vals.length; i++) {
-    if (def.dir === 'bajo' ? vals[i] < mio : vals[i] > mio) mejores++
+    if (def.dir === 'bajo' ? vals[i] < orden : vals[i] > orden) mejores++
   }
   return { n: mejores + 1, de: vals.length }
 }
@@ -233,30 +251,36 @@ export const puestosEquipo  = (u, id) => puestosDe(u.eqs, u.tablasE, DEFS_EQUIPO
 // fmt: 'int' | 'dec' (2 decimales) | 'signo' (+/-) | 'pct'
 export const INFO_RANKING = {
   equipo: {
-    pj:   { titulo: 'Partidos jugados', explica: 'Equipos ordenados por cuántos partidos han jugado en Golmebol.', fmt: 'int' },
-    g:    { titulo: 'Partidos ganados', explica: 'Equipos ordenados por cuántos partidos han ganado.', fmt: 'int' },
-    p:    { titulo: 'Partidos perdidos', explica: 'Equipos ordenados de menos a más derrotas: el 1° es el que menos ha perdido.', fmt: 'int' },
-    dg:   { titulo: 'Diferencia de gol', explica: 'Goles a favor menos goles en contra. Mientras más alta, mejor.', fmt: 'signo' },
-    gf:   { titulo: 'Goles a favor', explica: 'Equipos ordenados por la cantidad de goles que han marcado.', fmt: 'int' },
-    gc:   { titulo: 'Goles en contra', explica: 'Ordenados de menos a más goles recibidos: el 1° es el que menos goles le han hecho.', fmt: 'int', min: true },
+    ppp:  { titulo: 'Rendimiento (puntos por partido)', explica: 'El ranking más justo para comparar equipos: promedio de puntos por partido (3 por victoria, 1 por empate). Así no importa si un equipo ha jugado más partidos que otro. Si empatan, decide la diferencia de gol por partido y luego los goles a favor por partido.', fmt: 'dec', min: true },
+    pctg: { titulo: '% de victorias', explica: 'De cada 100 partidos, cuántos ha ganado.', fmt: 'pct', min: true },
+    dgpp: { titulo: 'Diferencia de gol por partido', explica: 'Goles a favor menos goles en contra, en promedio por partido.', fmt: 'signo2', min: true },
+    cs:   { titulo: 'Partidos sin recibir gol', explica: 'Partidos en los que el equipo dejó su arco en cero. Cuenta totales: quien juega más partidos tiene más oportunidades.', fmt: 'int', justo: 'cspct' },
+    cspct: { titulo: '% de partidos sin recibir gol', explica: 'De cada 100 partidos, en cuántos dejó el arco en cero.', fmt: 'pct', min: true },
+    pj:   { titulo: 'Partidos jugados', explica: 'Equipos ordenados por cuántos partidos han jugado. Mide actividad, no calidad.', fmt: 'int' },
+    g:    { titulo: 'Partidos ganados', explica: 'Equipos ordenados por cuántos partidos han ganado.', fmt: 'int', justo: 'pctg' },
+    p:    { titulo: 'Partidos perdidos', explica: 'Equipos ordenados de menos a más derrotas: el 1° es el que menos ha perdido.', fmt: 'int', justo: 'ppp' },
+    dg:   { titulo: 'Diferencia de gol', explica: 'Goles a favor menos goles en contra. Mientras más alta, mejor.', fmt: 'signo', justo: 'dgpp' },
+    gf:   { titulo: 'Goles a favor', explica: 'Equipos ordenados por la cantidad de goles que han marcado.', fmt: 'int', justo: 'gfpp' },
+    gc:   { titulo: 'Goles en contra', explica: 'Ordenados de menos a más goles recibidos: el 1° es el que menos goles le han hecho.', fmt: 'int', min: true, justo: 'gcpp' },
     gfpp: { titulo: 'Goles a favor por partido', explica: 'Promedio de goles que marca en cada partido.', fmt: 'dec', min: true },
     gcpp: { titulo: 'Goles en contra por partido', explica: 'Promedio de goles que recibe en cada partido: el 1° es el que menos recibe.', fmt: 'dec', min: true },
-    pts:  { titulo: 'Puntos', explica: 'Se suman 3 puntos por victoria y 1 por empate, en todos sus partidos de Golmebol.', fmt: 'int' },
+    pts:  { titulo: 'Puntos', explica: 'Se suman 3 puntos por victoria y 1 por empate, en todos sus partidos.', fmt: 'int', justo: 'ppp' },
     camp: { titulo: 'Títulos', explica: 'Equipos ordenados por la cantidad de torneos que han ganado como campeón.', fmt: 'int' },
   },
   jugador: {
-    pj:        { titulo: 'Partidos jugados', explica: 'Jugadores ordenados por cuántos partidos han jugado.', fmt: 'int' },
-    goles:     { titulo: 'Goles', explica: 'Jugadores ordenados por la cantidad de goles marcados.', fmt: 'int' },
+    pj:        { titulo: 'Partidos jugados', explica: 'Jugadores ordenados por cuántos partidos han jugado. Mide actividad, no calidad.', fmt: 'int' },
+    goles:     { titulo: 'Goles', explica: 'Jugadores ordenados por la cantidad de goles marcados. Cuenta totales: quien juega más partidos tiene más oportunidades.', fmt: 'int', justo: 'gpp' },
+    tpp:       { titulo: 'Juego limpio (tarjetas por partido)', explica: 'Amarillas y rojas por partido jugado: el 1° es el más disciplinado.', fmt: 'dec', min: true },
     gpp:       { titulo: 'Goles por partido', explica: 'Promedio de goles que marca en cada partido.', fmt: 'dec', min: true },
-    amarillas: { titulo: 'Tarjetas amarillas', explica: 'Ordenados de menos a más tarjetas: el 1° es el más disciplinado.', fmt: 'int' },
+    amarillas: { titulo: 'Tarjetas amarillas', explica: 'Ordenados de menos a más tarjetas: el 1° es el más disciplinado. Cuenta totales; para comparar justo mira las tarjetas por partido.', fmt: 'int', justo: 'tpp' },
     rojas:     { titulo: 'Tarjetas rojas', explica: 'Ordenados de menos a más rojas: el 1° es el más disciplinado.', fmt: 'int' },
     mvp:       { titulo: 'Jugador del partido (MVP)', explica: 'Veces que fue elegido el mejor jugador de un partido.', fmt: 'int' },
     hat:       { titulo: 'Hat-tricks', explica: 'Partidos en los que marcó 3 goles o más.', fmt: 'int' },
     g:         { titulo: 'Partidos ganados', explica: 'Partidos que ganó con su equipo.', fmt: 'int' },
     camp:      { titulo: 'Títulos', explica: 'Torneos que ganó como campeón.', fmt: 'int' },
     arqPj:     { titulo: 'Partidos como arquero', explica: 'Partidos en los que atajó.', fmt: 'int' },
-    arqCero:   { titulo: 'Arcos en cero', explica: 'Partidos en los que atajó sin recibir ningún gol.', fmt: 'int' },
-    arqRec:    { titulo: 'Goles recibidos', explica: 'Ordenados de menos a más goles recibidos como arquero: el 1° es el que menos recibe.', fmt: 'int', min: true },
+    arqCero:   { titulo: 'Arcos en cero', explica: 'Partidos en los que atajó sin recibir ningún gol.', fmt: 'int', justo: 'arqPct' },
+    arqRec:    { titulo: 'Goles recibidos', explica: 'Ordenados de menos a más goles recibidos como arquero: el 1° es el que menos recibe.', fmt: 'int', min: true, justo: 'arqProm' },
     arqProm:   { titulo: 'Promedio de goles recibidos', explica: 'Goles recibidos por partido como arquero: el 1° es el que menos recibe.', fmt: 'dec', min: true },
     arqPct:    { titulo: '% de arcos en cero', explica: 'De cada 100 partidos como arquero, en cuántos dejó el arco en cero.', fmt: 'pct', min: true },
     racha:     { titulo: 'Mejor racha sin recibir gol', explica: 'Mayor cantidad de partidos seguidos con el arco en cero.', fmt: 'int' },
@@ -272,27 +296,51 @@ export function textoPuesto(p) {
   return `${i.titulo}: puesto ${p.n} de ${p.de}. ${i.explica} Toca para ver el ranking completo.`
 }
 
-// Lista completa y ordenada de un ranking (la misma cuenta que usan los puestos: empates comparten puesto).
+// Orden en que se ofrecen los rankings en la ventana (primero los justos: por partido / porcentajes)
+export const ORDEN_RANKING = {
+  equipo: [
+    ['Rendimiento', ['ppp', 'pctg', 'dgpp']],
+    ['Ataque', ['gfpp', 'gf']],
+    ['Defensa', ['gcpp', 'cspct', 'gc', 'cs']],
+    ['Totales', ['pts', 'g', 'p', 'dg', 'pj', 'camp']],
+  ],
+  jugador: [
+    ['Goles', ['gpp', 'goles', 'hat']],
+    ['Equipo', ['mvp', 'g', 'camp', 'pj']],
+    ['Juego limpio', ['tpp', 'amarillas', 'rojas']],
+    ['Arqueros', ['arqProm', 'arqPct', 'arqCero', 'arqRec', 'racha', 'arqPj', 'penAt', 'golesArq']],
+  ],
+}
+
+// Torneos en los que ya hay datos de este equipo / jugador (para el filtro por torneo)
+export function torneosDe(u, tipo, id) {
+  const e = (tipo === 'jugador' ? u.jug : u.eqs).get(id)
+  return e ? Object.keys(e.torneos) : []
+}
+
+// Lista completa y ordenada de un ranking, la misma cuenta que usan los puestos
+// (con desempates si el dato los tiene; si no, empatan y comparten puesto).
 export function listaRanking(u, tipo, k, ambito) {
   const defs = tipo === 'jugador' ? DEFS_JUGADOR : DEFS_EQUIPO
   const mapa = tipo === 'jugador' ? u.jug : u.eqs
   const def = defs.find(d => d.k === k)
-  if (!def) return { filas: [], total: 0 }
+  if (!def) return { filas: [], total: 0, minimo: 0 }
+  const orden = def.r || def.v
   const filas = []
   mapa.forEach((e, id) => {
     const amb = ambito === 'plataforma' ? e.total : e.torneos[ambito]
     if (!amb || !def.el(amb)) return
-    filas.push({ id, valor: def.v(amb) })
+    filas.push({ id, valor: def.v(amb), o: orden(amb), pj: amb.pj })
   })
   const bajo = def.dir === 'bajo'
-  filas.sort((a, b) => (bajo ? a.valor - b.valor : b.valor - a.valor))
+  filas.sort((a, b) => (bajo ? a.o - b.o : b.o - a.o))
   let puesto = 0
   filas.forEach((f, i) => {
-    if (i === 0 || f.valor !== filas[i - 1].valor) puesto = i + 1
+    if (i === 0 || f.o !== filas[i - 1].o) puesto = i + 1
     f.puesto = puesto
     f.mostrar = def.sh(f.valor)
   })
-  return { filas: filas.filter(f => f.mostrar), total: filas.length }
+  return { filas: filas.filter(f => f.mostrar), total: filas.length, minimo: INFO_RANKING[tipo]?.[k]?.min ? MIN_PJ_TASA : 0 }
 }
 
 // ── Carga desde Supabase (una vez cada 5 min por sesión) ──
