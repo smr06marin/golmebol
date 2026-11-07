@@ -157,7 +157,7 @@ export default function AdminLayout() {
 
       {/* Barra inferior (solo celular) */}
       {isMobile && (
-        <div style={{ order: 2, flexShrink: 0, zIndex: 100, background: '#fff', borderTop: '1px solid #e8eaed', boxShadow: '0 -2px 12px rgba(0,0,0,.08)', display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 4px calc(4px + env(safe-area-inset-bottom))' }}>
+        <div className="gm-admin-nav" style={{ order: 2, flexShrink: 0, zIndex: 100, background: '#fff', borderTop: '1px solid #e8eaed', boxShadow: '0 -2px 12px rgba(0,0,0,.08)', display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 4px calc(4px + env(safe-area-inset-bottom))' }}>
           {MENU.map(item => {
             const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
             return (
@@ -179,7 +179,7 @@ export default function AdminLayout() {
       {/* Contenido */}
       <div style={{ marginLeft: isMobile ? 0 : '92px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, order: 1 }}>
         {/* Topbar */}
-        <div style={{ height: '52px', background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', padding: isMobile ? '0 14px' : '0 24px', justifyContent: 'space-between', position: isMobile ? 'relative' : 'sticky', flexShrink: 0, top: 0, zIndex: 50 }}>
+        <div className="gm-admin-top" style={{ height: '52px', background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', padding: isMobile ? '0 14px' : '0 24px', justifyContent: 'space-between', position: isMobile ? 'relative' : 'sticky', flexShrink: 0, top: 0, zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             {isMobile && (
               <div onClick={() => navigate('/admin')} style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
@@ -210,7 +210,7 @@ export default function AdminLayout() {
         </div>
 
         {/* Página */}
-        <div ref={scrollRef} data-admin-scroll style={{ flex: 1, minHeight: 0, padding: isMobile ? '14px 12px 24px' : '24px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', minWidth: 0 }}>
+        <div ref={scrollRef} data-admin-scroll style={{ flex: 1, minHeight: 0, padding: isMobile ? '14px 12px 24px' : '24px', overflowY: 'auto', minWidth: 0 }}>
           <Outlet />
         </div>
       </div>

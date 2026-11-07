@@ -380,7 +380,7 @@ function ChatInterno() {
   return (
     <>
       {!abierto && (
-        <button onClick={() => setAbierto(true)} aria-label="Abrir el chat de ayuda"
+        <button className="gm-ayuda-fab" onClick={() => setAbierto(true)} aria-label="Abrir el chat de ayuda"
           style={{ position: 'fixed', right: '14px', bottom: bottomFab, zIndex: 120, minWidth: '56px', height: '56px', padding: '0 18px 0 16px', borderRadius: '28px', border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#1a73e8,#6c35de)', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 6px 20px rgba(26,115,232,.4)', fontSize: '.86rem', fontWeight: '700' }}>
           <MessageCircle size={22} />
           <span>Ayuda</span>

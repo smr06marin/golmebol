@@ -611,6 +611,13 @@ function SlotSeleccion({ equipo, i, valores, setArr, jugs, dropKeyPrefix, ultima
 }
 
 export default function PlanillaPartido({ partido, onClose, onGuardarResultado, oculta = false }) {
+  // Mientras la planilla está abierta se esconden el título y el menú de abajo del panel y el botón de Ayuda:
+  // la planilla ocupa toda la pantalla (así su botón de «Atrás» y la ✕ nunca quedan tapados). Ver index.css.
+  useEffect(() => {
+    if (oculta) return undefined
+    document.body.classList.add('gm-planilla-abierta')
+    return () => document.body.classList.remove('gm-planilla-abierta')
+  }, [oculta])
   const [loading,            setLoading]            = useState(true)
   const [arbitrosTorneo,     setArbitrosTorneo]     = useState([])
   const [arbitroInput1,      setArbitroInput1]      = useState('')

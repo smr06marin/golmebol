@@ -120,6 +120,13 @@ const COLOR_VIS_PAPEL = '#d93025'
 // cierre, estadísticas, penales) pero con la pantalla de la hoja de papel
 // (planillaPapel/PantallaPapel.jsx): Documento, Nombre, N°, Amarilla, Roja, GOL.
 export default function PlanillaRapida({ partido, onClose, onGuardarResultado, vista, oculta = false, onCambiarProfesional }) {
+  // Mientras la planilla está abierta se esconden el título y el menú de abajo del panel y el botón de Ayuda:
+  // la planilla ocupa toda la pantalla (así su botón de «Atrás» y la ✕ nunca quedan tapados). Ver index.css.
+  useEffect(() => {
+    if (oculta) return undefined
+    document.body.classList.add('gm-planilla-abierta')
+    return () => document.body.classList.remove('gm-planilla-abierta')
+  }, [oculta])
   const esPapel = vista === 'papel'
   const colorLocalDef = esPapel ? COLOR_LOCAL_PAPEL : null
   const colorVisDef = esPapel ? COLOR_VIS_PAPEL : null

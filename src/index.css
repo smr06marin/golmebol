@@ -273,3 +273,9 @@ body.gm-chat-abierto .gm-marca-golmebol {
 /* Logro a punto de romperse: pulso dorado */
 .gm-casi { animation: gmPulseGlow 1.5s ease-in-out infinite; }
 .gm-trofeo { display: inline-block; animation: gmTrofeo 1.8s ease-in-out infinite; }
+
+/* Planilla abierta (profesional, rápida o de papel): ocupa toda la pantalla. Se esconden el título y el menú de abajo del
+   panel y el botón de Ayuda, para que no tapen el «Atrás», la ✕ ni los botones de la planilla. */
+body.gm-planilla-abierta .gm-admin-nav,
+body.gm-planilla-abierta .gm-admin-top,
+body.gm-planilla-abierta .gm-ayuda-fab { display: none !important; }
