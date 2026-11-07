@@ -161,8 +161,13 @@ export function construirUniverso({ stats = [], partidos = [], logros = [], pena
       })
     })
   })
+  // Un título cuenta UNA vez por equipo y torneo (la tabla guarda una fila por jugador)
+  const titulosVistos = new Set()
   logros.forEach(l => {
     if (!l || l.tipo !== 'campeon' || !l.team_id || !eqs.has(l.team_id)) return
+    const kT = `${l.team_id}|${l.tournament_id}`
+    if (titulosVistos.has(kT)) return
+    titulosVistos.add(kT)
     const e = eqs.get(l.team_id)
     e.total.camp++
     if (l.tournament_id && e.torneos[l.tournament_id]) e.torneos[l.tournament_id].camp++

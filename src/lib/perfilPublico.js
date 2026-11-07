@@ -99,7 +99,15 @@ export async function cargarEquipoPublico(id) {
   } catch { plantilla = [] }
 
   // ── Palmarés ──
-  const logros = (rLogros.data || [])
+  // tournament_logros guarda UNA fila por jugador (con el team_id del equipo): un equipo
+  // campeón con 10 jugadores tiene 10 filas del mismo título. Se cuenta una sola vez
+  // por torneo y tipo.
+  const vistosLogro = new Set()
+  const logros = (rLogros.data || []).filter(l => {
+    const k = `${l.tipo}|${l.tournament_id}`
+    if (vistosLogro.has(k)) return false
+    vistosLogro.add(k); return true
+  })
   const campeonatos = logros.filter(l => l.tipo === 'campeon')
   const subcampeonatos = logros.filter(l => l.tipo === 'subcampeon')
   const terceros = logros.filter(l => l.tipo === 'tercer_puesto')

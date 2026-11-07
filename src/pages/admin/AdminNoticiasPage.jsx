@@ -622,7 +622,7 @@ Texto plano, sin markdown.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cu
     const [{ data: statsGlobal }, { data: partidosFinal }, { data: logrosCampeon }] = await Promise.all([
       supabase.from('player_match_stats').select('goals_scored, players(name)').gt('goals_scored', 0),
       supabase.from('matches').select('home_score, away_score, played_at, home:home_team_id(name), away:away_team_id(name), tournaments(name)').eq('status', 'finished'),
-      supabase.from('tournament_logros').select('team_id, teams(name)').eq('tipo', 'campeon'),
+      supabase.from('tournament_logros').select('team_id, tournament_id, teams(name)').eq('tipo', 'campeon'),
     ])
 
     const golPorJugador = {}
@@ -634,7 +634,14 @@ Texto plano, sin markdown.${indicacion ? `\n\nINDICACIÓN DEL ADMIN (tenla en cu
     const topGoleadas       = [...conTotal].sort((a, b) => b.dif - a.dif).slice(0, 3)
 
     const titulosPorEquipo = {}
-    ;(logrosCampeon || []).forEach(l => { const n = l.teams?.name; if (n) titulosPorEquipo[n] = (titulosPorEquipo[n] || 0) + 1 })
+    const titulosVistos = new Set() // una fila por jugador: se cuenta un título por equipo y torneo
+    ;(logrosCampeon || []).forEach(l => {
+      const n = l.teams?.name; if (!n) return
+      const k = `${l.team_id}|${l.tournament_id}`
+      if (titulosVistos.has(k)) return
+      titulosVistos.add(k)
+      titulosPorEquipo[n] = (titulosPorEquipo[n] || 0) + 1
+    })
     const topTitulos = Object.entries(titulosPorEquipo).sort((a, b) => b[1] - a[1]).slice(0, 5)
 
     return { topGoleadores, topPartidosGoles, topGoleadas, topTitulos, totalPartidos: (partidosFinal || []).length }
