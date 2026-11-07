@@ -33,7 +33,7 @@ const CONCURRENCIA = 20
 
 // ── Firebase (HTTP v1) ────────────────────────────────────────
 let cuenta = null
-function leerCuenta() {
+export function leerCuenta() {
   if (cuenta) return cuenta
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT
   if (!raw) return null
@@ -66,7 +66,7 @@ async function accessToken() {
 }
 
 // Devuelve 'ok' | 'invalido' (el celular ya no existe: hay que desactivarlo) | 'error'
-async function enviarUno(token, aviso) {
+export async function enviarUno(token, aviso) {
   if (!leerCuenta()) return 'error'
   try {
     const r = await fetch(`https://fcm.googleapis.com/v1/projects/${leerCuenta().project_id}/messages:send`, {
@@ -105,7 +105,7 @@ async function cargarWebPush() {
   } catch { webpushListo = false }
   return webpushListo
 }
-async function enviarWeb(disp, aviso) {
+export async function enviarWeb(disp, aviso) {
   const wp = await cargarWebPush()
   if (!wp || !disp.suscripcion?.p256dh || !disp.suscripcion?.auth) return 'error'
   try {

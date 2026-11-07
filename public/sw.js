@@ -9,7 +9,7 @@ self.addEventListener('push', e => {
   e.waitUntil((async () => {
     // Si la persona ya está mirando la app, no hace falta la notificación del sistema.
     const ventanas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    if (ventanas.some(c => c.visibilityState === 'visible' && c.focused)) {
+    if (d.tag !== 'prueba' && ventanas.some(c => c.visibilityState === 'visible' && c.focused)) {
       const esChat = !d.tag || String(d.tag).startsWith('soporte')
       // chat: se actualiza solo · avisos de torneo: se muestran dentro de la app
       ventanas.forEach(c => c.postMessage(esChat ? { tipo: 'chat-nuevo' } : { tipo: 'aviso-torneo', titulo: d.titulo, cuerpo: d.cuerpo }))

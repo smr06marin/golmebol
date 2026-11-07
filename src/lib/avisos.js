@@ -90,28 +90,54 @@ export const avisosActivos = () => leer(K_ACTIVO, false) === true
 export const torneosConAviso = () => { const v = leer(K_TORNEOS, []); return Array.isArray(v) ? v : [] }
 
 // Manda a Supabase el celular + equipos + torneos actuales.
+// Devuelve { ok, error }: antes los fallos se tragaban en silencio y la app decía "AVISOS ACTIVADOS" aunque el celular
+// nunca hubiera quedado registrado (por eso podían no llegar avisos). Ahora se sabe si de verdad quedó guardado.
+export let ultimoErrorRegistro = ''
 export async function sincronizarAvisos() {
-  if (!avisosActivos()) return
+  const falla = (error) => { ultimoErrorRegistro = String(error || '').slice(0, 200); return { ok: false, error: ultimoErrorRegistro } }
+  if (!avisosActivos()) return falla('inactivo')
   if (!esNativo()) {
-    if (!webSoportado()) return
+    if (!webSoportado()) return falla('navegador sin soporte')
     const sub = await suscripcionWebActual()
     const j = sub?.toJSON?.()
-    if (!j?.endpoint || !j.keys?.p256dh || !j.keys?.auth) return
+    if (!j?.endpoint || !j.keys?.p256dh || !j.keys?.auth) return falla('sin suscripción del navegador')
     try {
-      await supabase.rpc('registrar_push_web', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_equipos: leerFavoritosIds(), p_torneos: torneosConAviso() })
-    } catch { /* sin internet: se reintenta en el próximo cambio o al abrir la app */ }
-    return
+      const { error } = await supabase.rpc('registrar_push_web', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_equipos: leerFavoritosIds(), p_torneos: torneosConAviso() })
+      if (error) return falla(error.message || error.code || 'error del servidor')
+    } catch (e) { return falla(e?.message || 'sin internet') } // se reintenta en el próximo cambio o al abrir la app
+    ultimoErrorRegistro = ''
+    return { ok: true }
   }
   const token = leer(K_TOKEN, null)
-  if (!token) return
+  if (!token) return falla('sin token del celular')
   try {
-    await supabase.rpc('registrar_push', {
+    const { error } = await supabase.rpc('registrar_push', {
       p_token: token,
       p_plataforma: Capacitor.getPlatform() === 'ios' ? 'ios' : 'android',
       p_equipos: leerFavoritosIds(),
       p_torneos: torneosConAviso(),
     })
-  } catch { /* sin internet: se reintenta en el próximo cambio o al abrir la app */ }
+    if (error) return falla(error.message || error.code || 'error del servidor')
+  } catch (e) { return falla(e?.message || 'sin internet') } // se reintenta en el próximo cambio o al abrir la app
+  ultimoErrorRegistro = ''
+  return { ok: true }
+}
+
+// Manda una notificación de prueba a ESTE celular (api/push-probar.js) y devuelve qué encontró el servidor.
+// Primero vuelve a registrar el celular, para que la prueba sea con lo que de verdad está guardado.
+export async function probarAvisos() {
+  const reg = await sincronizarAvisos()
+  const token = esNativo() ? leer(K_TOKEN, null) : (await suscripcionWebActual())?.endpoint
+  if (!token) return { error: 'sin_token', registroError: reg.error }
+  try {
+    const url = esNativo() ? 'https://golmebol.com/api/push-probar' : '/api/push-probar'
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok && !j.registrado && !j.error) return { error: 'servidor', registroError: reg.error }
+    return { ...j, registroError: reg.ok ? '' : reg.error }
+  } catch {
+    return { error: 'red', registroError: reg.error }
+  }
 }
 
 let iniciado = false
@@ -171,9 +197,10 @@ export async function iniciarAvisos() {
   }
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
-    await PushNotifications.addListener('registration', t => {
+    await PushNotifications.addListener('registration', async t => {
       escribir(K_TOKEN, t.value)
-      sincronizarAvisos()
+      const reg = await sincronizarAvisos()
+      if (!reg.ok && reg.error !== 'inactivo') notify('Los avisos quedaron a medias: no se pudo registrar tu celular en Golmebol. Abre Avisos y toca «Enviarme una prueba».', 'error')
     })
     await PushNotifications.addListener('registrationError', () => {
       notify('No se pudieron activar los avisos. Intenta de nuevo.', 'error')
@@ -211,7 +238,9 @@ export async function activarAvisos() {
       const sub = await suscribirWeb()
       escribir(K_TOKEN, sub.endpoint)
       escribir(K_ACTIVO, true)
-      await sincronizarAvisos()
+      const reg = await sincronizarAvisos()
+      // Si el celular no quedó registrado en Golmebol, NO se deja "activado": no llegaría ningún aviso.
+      if (!reg.ok) { escribir(K_ACTIVO, false); return { ok: false, motivo: 'registro', detalle: reg.error } }
       return { ok: true }
     } catch {
       return { ok: false, motivo: 'error' }

@@ -6,6 +6,7 @@ export function mensajeMotivo(motivo, donde) {
       : 'Las notificaciones de golmebol.com están bloqueadas en este navegador. Toca el candado junto a la dirección → Notificaciones → Permitir, y vuelve a intentar.'
   }
   if (motivo === 'falta_instalar') return 'En iPhone, Apple solo permite los avisos si Golmebol está instalada en tu pantalla de inicio. Instálala, ábrela desde su ícono y activa los avisos desde ahí.'
+  if (motivo === 'registro') return 'El celular aceptó los avisos, pero no se pudo registrar en Golmebol, y sin eso no te llegaría nada. Revisa tu internet e intenta de nuevo; si sigue igual, avísale al administrador.'
   if (motivo === 'no_disponible') return 'Este navegador no permite notificaciones. Prueba con Chrome, o instala la app de Golmebol.'
   return 'No se pudieron activar los avisos. Revisa tu internet e intenta de nuevo.'
 }

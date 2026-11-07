@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Bell, BellRing, X, Star, Check } from 'lucide-react'
+import { Bell, BellRing, X, Star, Check, Send } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useFavoritos } from '../lib/favoritos'
-import { useAvisos, plataformaAvisos, activarAvisosDeTorneo } from '../lib/avisos'
+import { useAvisos, plataformaAvisos, activarAvisosDeTorneo, probarAvisos } from '../lib/avisos'
 import { mensajeMotivo } from '../lib/avisosTextos'
 
 // Botón "AVISOS" + hoja para activar las notificaciones, ver los equipos que sigue y elegir torneos.
@@ -23,6 +23,30 @@ function Interruptor({ activo, onClick, deshabilitado, nombre }) {
   )
 }
 
+// Qué le decimos a la persona después de la prueba (y qué hacer si algo falla).
+function textoPrueba(r, donde) {
+  const cfg = r?.config || {}
+  const detalle = r?.registroError ? ` (${r.registroError})` : ''
+  if (r?.error === 'red') return { tono: 'mal', lineas: ['No se pudo hablar con Golmebol. Revisa tu internet e intenta otra vez.'] }
+  if (r?.error === 'espera') return { tono: 'aviso', lineas: ['Espera unos segundos y vuelve a tocar el botón.'] }
+  if (r?.error === 'sin_token') return { tono: 'mal', lineas: ['Este celular no tiene el permiso de avisos listo. Apaga y vuelve a prender «Recibir notificaciones».' + detalle] }
+  if (r?.error === 'servidor' || r?.error === 'base') return { tono: 'mal', lineas: ['El servidor de Golmebol no respondió bien.' + (r.detalle ? ` (${r.detalle})` : ''), ...(cfg.faltan?.length ? ['Le falta configurar: ' + cfg.faltan.join(', ') + '.'] : [])] }
+  if (r?.registrado === false) return { tono: 'mal', lineas: ['Tu celular NO está registrado en Golmebol, por eso no te llegan avisos.' + detalle, 'Apaga y vuelve a prender «Recibir notificaciones». Si sigue igual, el administrador debe revisar el servidor.'] }
+  const lineas = []
+  let tono = 'ok'
+  const subir = (t) => { if (tono === 'ok') tono = t }
+  if (r.envio === 'ok') lineas.push('Te mandamos una prueba: debe aparecer ahora como notificación en la pantalla.' + (donde === 'nativo' ? ' (Si tienes la app abierta, sale adentro de la app.)' : ''))
+  else if (r.envio === 'invalido') { subir('mal'); lineas.push('El servicio de avisos de tu celular ya no es válido. Apaga y vuelve a prender «Recibir notificaciones».') }
+  else { subir('mal'); lineas.push('El servidor no pudo enviar la notificación.' + (cfg.faltan?.length ? ' Le falta configurar: ' + cfg.faltan.join(', ') + '.' : ' Intenta de nuevo en un momento.')) }
+  lineas.push(`Registrado en Golmebol: sigues ${r.equipos} ${r.equipos === 1 ? 'equipo' : 'equipos'} y ${r.torneos} ${r.torneos === 1 ? 'torneo' : 'torneos'}.`)
+  if (!r.activo) { subir('mal'); lineas.push('Ojo: en el servidor tu celular figura apagado. Apaga y vuelve a prender «Recibir notificaciones».') }
+  if (r.equipos === 0 && r.torneos === 0) { subir('aviso'); lineas.push('No tienes ningún equipo ni torneo activado, así que no te llegará ningún aviso de partidos. Toca la estrella de un equipo o activa un torneo.') }
+  if (cfg.cron_secreto === false) { subir('aviso'); lineas.push('Al servidor le falta PUSH_CRON_SECRET: sin eso los avisos automáticos de partidos no salen (esta prueba sí).') }
+  if (cfg.en_horario_de_envio === false) lineas.push('Ahora no es horario de envío (10 am – 10 pm de Colombia): los avisos de partidos esperan hasta las 10 am.')
+  if (r.envio === 'ok') lineas.push(donde === 'nativo' ? 'Si no la ves: Ajustes del celular → Aplicaciones → Golmebol → Notificaciones.' : 'Si no la ves: revisa que las notificaciones de Golmebol estén permitidas en los Ajustes del celular (en iPhone, Golmebol debe estar instalada en la pantalla de inicio).')
+  return { tono, lineas }
+}
+
 function Hoja({ onCerrar }) {
   const { activo, torneos, activar, desactivar, alternarTorneo } = useAvisos()
   const { ids: equiposIds } = useFavoritos()
@@ -34,6 +58,7 @@ function Hoja({ onCerrar }) {
   const donde = plataformaAvisos()
   const sinSoporte = donde === 'falta_instalar' || donde === 'no_disponible'
   const [motivoAviso, setMotivoAviso] = useState('')
+  const [prueba, setPrueba] = useState({ fase: 'idle', r: null })
 
   useEffect(() => {
     let cancelado = false
@@ -59,9 +84,16 @@ function Hoja({ onCerrar }) {
     if (activo) await desactivar()
     else {
       const r = await activar()
-      if (!r.ok) { setMotivoAviso(r.motivo); setAviso(mensajeMotivo(r.motivo, donde)) }
+      if (!r.ok) { setMotivoAviso(r.motivo); setAviso(mensajeMotivo(r.motivo, donde) + (r.detalle ? ` (${r.detalle})` : '')) }
     }
     setOcupado(false)
+  }
+
+  async function probar() {
+    if (prueba.fase === 'enviando') return
+    setPrueba({ fase: 'enviando', r: null })
+    const r = await probarAvisos()
+    setPrueba({ fase: 'listo', r })
   }
 
   const fila = { display: 'flex', alignItems: 'center', gap: 12, padding: '13px 0', borderTop: `1px solid ${C.border}` }
@@ -91,6 +123,24 @@ function Hoja({ onCerrar }) {
             Ver cómo instalar Golmebol
           </button>
         )}
+
+        {activo && (() => {
+          const res = prueba.fase === 'listo' ? textoPrueba(prueba.r, donde) : null
+          const color = res?.tono === 'ok' ? C.green : res?.tono === 'aviso' ? '#f5a623' : C.red
+          return (
+            <div style={{ marginTop: 12 }}>
+              <button type="button" onClick={probar} disabled={prueba.fase === 'enviando'}
+                style={{ width: '100%', minHeight: 48, borderRadius: 12, border: `1px solid ${C.green}`, background: 'rgba(111,207,61,.1)', color: C.green, fontWeight: 900, fontSize: '.92rem', cursor: prueba.fase === 'enviando' ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: prueba.fase === 'enviando' ? .7 : 1 }}>
+                <Send size={17}/> {prueba.fase === 'enviando' ? 'Enviando prueba…' : 'Enviarme una notificación de prueba'}
+              </button>
+              {res && (
+                <div style={{ marginTop: 8, borderRadius: 10, padding: '10px 12px', fontSize: '.8rem', lineHeight: 1.5, color: C.text2, background: C.card2, border: `1px solid ${color}` }}>
+                  {res.lineas.map((t, i) => <div key={i} style={{ marginBottom: i === res.lineas.length - 1 ? 0 : 6, color: i === 0 ? C.text : C.text2, fontWeight: i === 0 ? 700 : 500 }}>{t}</div>)}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         <div style={{ background: C.card2, borderRadius: 12, padding: '12px 14px', marginTop: 12, fontSize: '.8rem', color: C.text2, lineHeight: 1.5 }}>
           {[
@@ -146,7 +196,7 @@ export function BotonAvisosTorneo({ torneoId, nombre, sobreColor = false }) {
     setOcupado(true)
     const r = await activarAvisosDeTorneo(torneoId)
     setOcupado(false)
-    if (!r.ok) { setMotivo(r.motivo); setError(mensajeMotivo(r.motivo, donde)) }
+    if (!r.ok) { setMotivo(r.motivo); setError(mensajeMotivo(r.motivo, donde) + (r.detalle ? ` (${r.detalle})` : '')) }
   }
   const Icono = siguiendo ? BellRing : Bell
   return (
@@ -172,14 +222,16 @@ export function BotonAvisosTorneo({ torneoId, nombre, sobreColor = false }) {
   )
 }
 
-export default function BotonAvisos() {
+export default function BotonAvisos({ cristal = false }) {
   const [abierto, setAbierto] = useState(false)
   const { activo } = useAvisos()
   const Icono = activo ? BellRing : Bell
   return (
     <>
-      <button type="button" onClick={() => setAbierto(true)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14, padding: '11px 20px', borderRadius: 999, border: `1px solid ${activo ? C.green : C.border}`, background: 'transparent', color: activo ? C.green : C.text2, fontSize: '.8rem', fontWeight: 800, letterSpacing: '.04em', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+      <button type="button" onClick={() => setAbierto(true)} className={cristal ? 'gm-cristal' : undefined}
+        style={cristal
+          ? { display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 42, padding: '0 16px', borderRadius: 999, color: activo ? C.green : C.text2, fontSize: '.78rem', fontWeight: 800, letterSpacing: '.04em', ...(activo ? { borderColor: 'rgba(111,207,61,.55)' } : {}) }
+          : { display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14, padding: '11px 20px', borderRadius: 999, border: `1px solid ${activo ? C.green : C.border}`, background: 'transparent', color: activo ? C.green : C.text2, fontSize: '.8rem', fontWeight: 800, letterSpacing: '.04em', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
         <Icono size={16}/> {activo ? 'AVISOS ACTIVADOS' : 'ACTIVAR AVISOS'}
       </button>
       {abierto && <Hoja onCerrar={() => setAbierto(false)}/>}
