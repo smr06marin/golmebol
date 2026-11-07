@@ -26,6 +26,7 @@ export default function EscenarioDashboardPage() {
   const [canchas,    setCanchas]    = useState([])
   const [reservas,   setReservas]   = useState([])
   const [pedidosPend,setPedidosPend]= useState(0)
+  const [nFijos,     setNFijos]     = useState(0) // clientes que juegan siempre el mismo día y hora
   const [loading,    setLoading]    = useState(true)
   const [notFound,   setNotFound]   = useState(false)
   const [subiendoLogo, setSubiendoLogo] = useState(false)
@@ -51,7 +52,7 @@ export default function EscenarioDashboardPage() {
     const p = r.encargado
 
     const hoy = todayStr()
-    const [{ data: asignaciones }, { data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }, { data: act }] = await Promise.all([
+    const [{ data: asignaciones }, { data: prods }, { data: ventas }, { data: cs }, { data: rsvs }, { count: cPed }, { data: act }, { data: fijosAct }] = await Promise.all([
       supabase.from('escenario_encargados').select('escenarios(id, name, logo_url)').eq('player_id', p.id),
       supabase.from('escenario_productos').select('*').eq('escenario_id', escenarioId),
       supabase.from('escenario_ventas').select('*').eq('escenario_id', escenarioId).eq('fecha', hoy).eq('estado', 'completada'),
@@ -59,6 +60,7 @@ export default function EscenarioDashboardPage() {
       supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId).gte('fecha', hoy),
       supabase.from('escenario_pedidos').select('id', { count: 'exact', head: true }).eq('escenario_id', escenarioId).eq('estado', 'pendiente'),
       supabase.from('escenario_actividad').select('*').eq('escenario_id', escenarioId).order('created_at', { ascending: false }).limit(8),
+      supabase.from('escenario_reservas_fijas').select('id').eq('escenario_id', escenarioId).eq('activa', true),
       asegurarReservasFijasThrottled(escenarioId),
     ])
     setOtros((asignaciones || []).map(a => a.escenarios).filter(Boolean))
@@ -67,6 +69,7 @@ export default function EscenarioDashboardPage() {
     setCanchas(cs || [])
     setReservas(rsvs || [])
     setPedidosPend(cPed || 0)
+    setNFijos((fijosAct || []).length)
     setActividadReciente(act || [])
 
     // Recordatorio de responsabilidad: una vez por día por persona, para
@@ -156,7 +159,6 @@ export default function EscenarioDashboardPage() {
       { to: `/escenario/${B}/reportes`, icon: BarChart3, label: 'Lo más vendido', desc: 'Qué productos dejan más ganancia' },
     ] },
     { titulo: 'Otras cosas', items: [
-      { to: `/escenario/${B}/fijas`,     icon: Repeat,     label: 'Clientes de todas las semanas', desc: 'Los que juegan siempre el mismo día y hora' },
       { to: `/escenario/${B}/pedido`,    icon: Smartphone, label: 'Pedidos desde la cancha', desc: 'Los que llegan por WhatsApp', aviso: pedidosPend > 0 ? `${pedidosPend} por atender` : '' },
       { to: `/escenario/${B}/actividad`, icon: History,    label: 'Quién hizo qué', desc: 'Cambios de precios, ventas y cancelaciones', aviso: hayActividadNueva ? 'Nuevo' : '' },
       { to: `/escenario/${B}/config`,    icon: Settings,   label: 'Ajustes del escenario', desc: 'Horarios, precios, datos y página pública' },
@@ -235,6 +237,16 @@ export default function EscenarioDashboardPage() {
             <button onClick={() => navigate(`/escenario/${B}/canchas`)}
               style={{ boxSizing:'border-box', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', width:'100%', minHeight:'54px', border:'none', borderRadius:'14px', cursor:'pointer', fontWeight:900, fontSize:'1rem', fontFamily:'inherit', background:S.cyan, color:G.greenDk }}>
               {soloLectura ? 'Ver los horarios' : 'Ver horarios y reservar'} <ChevronRight size={20}/>
+            </button>
+            {/* Los que juegan siempre el mismo día y hora: justo debajo de reservar, a un toque */}
+            <button onClick={() => navigate(`/escenario/${B}/fijas`)}
+              style={{ boxSizing:'border-box', display:'flex', alignItems:'center', gap:'12px', width:'100%', minHeight:'60px', marginTop:'10px', padding:'8px 14px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'14px', cursor:'pointer', color:S.text, fontFamily:'inherit', textAlign:'left' }}>
+              <span style={{ width:'36px', height:'36px', borderRadius:'10px', background:G.greenBg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Repeat size={18} color={G.green}/></span>
+              <span style={{ flex:1, minWidth:0 }}>
+                <span style={{ display:'block', fontWeight:800, fontSize:'.95rem' }}>Clientes de todas las semanas</span>
+                <span style={{ display:'block', fontSize:'.76rem', color:S.muted, marginTop:'2px' }}>{nFijos > 0 ? `${nFijos} ${nFijos === 1 ? 'cliente fijo' : 'clientes fijos'} · ver, agregar o quitar` : 'Los que juegan siempre el mismo día y hora'}</span>
+              </span>
+              <ChevronRight size={20} color={S.muted} style={{ flexShrink:0 }}/>
             </button>
           </div>
         </div>
