@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Trophy, Users, Target, Radio, Building2, GraduationCap, ArrowRight, X, MapPin, Megaphone, ChevronLeft, ChevronRight, Search, SlidersHorizontal } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
-import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
+import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp, FaYoutube } from 'react-icons/fa'
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
 import { digitosWhatsapp } from '../lib/telefonoCo'
 import { supabase } from '../lib/supabase'
@@ -36,6 +36,14 @@ import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '..
 // acento verde (en vez del cyan/dorado que usa el resto de la app) — esta
 // portada tiene su propia identidad visual, más "marketing", que el resto
 // del sitio (que sigue siendo cyan/dorado sobre navy).
+// Redes oficiales de Golmebol: salen arriba de la portada del inicio para que la gente nos siga.
+const REDES_GOLMEBOL = [
+  { id: 'instagram', nombre: 'Instagram', cuenta: '@golmeboloficial', href: 'https://www.instagram.com/golmeboloficial/', Icono: FaInstagram, color: '#e1306c' },
+  { id: 'facebook',  nombre: 'Facebook',  cuenta: 'Golmebol',          href: 'https://www.facebook.com/profile.php?id=61555755174171', Icono: FaFacebook, color: '#1877f2' },
+  { id: 'tiktok',    nombre: 'TikTok',    cuenta: '@golmeboloficial', href: 'https://www.tiktok.com/@golmeboloficial', Icono: FaTiktok, color: '#ffffff' },
+  { id: 'youtube',   nombre: 'YouTube',   cuenta: '@golmebol',         href: 'https://www.youtube.com/@golmebol', Icono: FaYoutube, color: '#ff0000' },
+]
+
 const S = {
   bg:      '#0a0a0a',
   bg2:     '#111111',
@@ -916,6 +924,11 @@ export default function LandingPage({ modo = 'inicio' }) {
         /* Portada del inicio: una foto para computador y otra (vertical) para celular */
         .gm-hero-portada { min-height: clamp(440px, 34vw, 600px) }
         .gm-portada-movil { display: none }
+        .gm-redes { position: absolute; top: 14px; left: 0; right: 0; z-index: 3; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 10px; flex-wrap: nowrap }
+        .gm-redes-tit { font-size: .66rem; font-weight: 900; letter-spacing: .12em; color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,.7); margin-right: 2px }
+        .gm-red { box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; min-width: 44px; height: 44px; padding: 0 13px; border-radius: 999px; text-decoration: none; color: #fff; font-size: .8rem; font-weight: 800; justify-content: center }
+        .gm-red-cuenta { display: none }
+        @media (min-width: 900px) { .gm-red-cuenta { display: inline } .gm-red { padding: 0 16px 0 14px } }
         @media (max-width: 700px) {
           .gm-hero-portada { min-height: 520px }
           .gm-portada-pc { display: none }
@@ -962,7 +975,7 @@ export default function LandingPage({ modo = 'inicio' }) {
 
       {!soloTorneos && (<>
       {/* ── Hero: oscuro con acento verde ── */}
-      <div className={portadaInicio?.url ? 'gm-hero-portada' : undefined} style={{ position: 'relative', padding: '64px 16px 90px', textAlign: 'center', overflow: 'hidden', display: portadaInicio?.url ? 'flex' : undefined, alignItems: portadaInicio?.url ? 'flex-end' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
+      <div className={portadaInicio?.url ? 'gm-hero-portada' : undefined} style={{ position: 'relative', padding: '80px 16px 90px', textAlign: 'center', overflow: 'hidden', display: portadaInicio?.url ? 'flex' : undefined, alignItems: portadaInicio?.url ? 'flex-end' : undefined, background: portadaInicio?.url ? S.bg : `radial-gradient(circle at 50% -10%, ${S.bg2}, ${S.bg} 65%)` }}>
         {portadaInicio?.url ? (
           <>
             {/* Portada: la foto de fondo y un degradado oscuro que la funde con el resto de la página (sin borde duro abajo) */}
@@ -976,6 +989,16 @@ export default function LandingPage({ modo = 'inicio' }) {
             <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '280px', height: '280px', borderRadius: '50%', border: `1px solid ${S.border}`, opacity: .5 }}/>
           </>
         )}
+        {/* Síguenos: las redes de Golmebol, arriba de la portada */}
+        <nav className="gm-redes" aria-label="Redes sociales de Golmebol">
+          <span className="gm-redes-tit">SÍGUENOS</span>
+          {REDES_GOLMEBOL.map(r => (
+            <a key={r.id} className="gm-cristal gm-red" href={r.href} target="_blank" rel="noopener noreferrer" aria-label={`${r.nombre}: ${r.cuenta}`} title={`${r.nombre} · ${r.cuenta}`}>
+              <r.Icono size={20} color={r.color} style={{ flexShrink: 0 }}/>
+              <span className="gm-red-cuenta">{r.cuenta}</span>
+            </a>
+          ))}
+        </nav>
         <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto', width: portadaInicio?.url ? '100%' : undefined }}>
           {!portadaInicio?.url && (<>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '999px', border: `1px solid ${S.border}`, color: S.green, fontSize: '.68rem', fontWeight: 800, letterSpacing: '.06em', marginBottom: '20px' }}>
