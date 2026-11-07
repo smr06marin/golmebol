@@ -31,10 +31,12 @@ export default function MarcaTransmision({ logoTorneo, conMarcador = false, anch
           </>
         )}
       </div>
-      {/* EN VIVO: debajo de los logos; cuando los logos se van al marcador, sube a la esquina */}
+      {/* EN VIVO: debajo de los logos. Cuando los logos se van al marcador, esta palabra se desvanece:
+          el marcador muestra la suya debajo del logo de Golmebol (así no tapa el logo del torneo) */}
       <div style={{
         position: 'absolute', left: '10px', zIndex: 4, display: 'flex', alignItems: 'center', gap: '4px', pointerEvents: 'none',
-        top: conMarcador ? '10px' : `${10 + ALTO_LOGOS + 3}px`, transition: `top .6s ${EASE}`,
+        top: `${10 + ALTO_LOGOS + 3}px`, opacity: conMarcador ? 0 : 1,
+        transition: conMarcador ? 'opacity .25s ease' : 'opacity .25s ease .45s',
       }}>
         <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#e5433d', flexShrink: 0, animation: 'gmMicPulso 1s ease-in-out infinite', boxShadow: '0 0 3px rgba(0,0,0,.9)' }}/>
         <span style={{ fontSize: '.62rem', fontWeight: 900, color: '#fff', letterSpacing: '.04em', textShadow: '0 1px 3px rgba(0,0,0,.9)' }}>EN VIVO</span>

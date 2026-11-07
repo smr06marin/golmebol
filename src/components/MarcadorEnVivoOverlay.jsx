@@ -122,7 +122,8 @@ function EtiquetaEquipo({ nombre, color, lado }) {
 // oculto: lo contrario — los logos se juntan, el marcador se cierra y se desvanece. Solo lo usa el overlay de OBS.
 const T_ENTRADA_ABRIR_MS = 650
 const BORDE_CAPSULA = '1px solid rgba(255,255,255,.16)'
-export default function MarcadorEnVivoOverlay({ partido, entrada = false, oculto = false }) {
+// enVivoBajoLogo: (overlay de OBS) pone la palabra "EN VIVO" colgando debajo del logo de Golmebol, en la punta derecha de la barra.
+export default function MarcadorEnVivoOverlay({ partido, entrada = false, oculto = false, enVivoBajoLogo = false }) {
   const golesL = partido?.vivo?.golesLocal ?? 0
   const golesV = partido?.vivo?.golesVis ?? 0
   const idPartido = partido?.id
@@ -186,6 +187,7 @@ export default function MarcadorEnVivoOverlay({ partido, entrada = false, oculto
     }}>
       {/* ── Barra principal: equipo · escudo · marcador · escudo · equipo ── */}
       <style>{CSS_TRANSICION}</style>
+      <div style={{ position: 'relative', width: '100%' }}>
       <div style={{
         position: 'relative', '--gm-lg': 'clamp(26px, 7.4vw, 36px)', '--gm-bw': 'clamp(72px, 24vw, 122px)',
         display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', columnGap: 'clamp(4px, 2.2vw, 12px)',
@@ -229,6 +231,18 @@ export default function MarcadorEnVivoOverlay({ partido, entrada = false, oculto
           <EtiquetaEquipo nombre={away?.name} color={col.colorVisitante} lado="derecha"/>
         </div>
       </div>
+      {/* EN VIVO: cuelga debajo del logo de Golmebol (punta derecha de la barra), así no tapa el logo del torneo de la izquierda */}
+      {enVivoBajoLogo && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 'clamp(3px, 1vw, 7px)', marginTop: '-1px', zIndex: 1,
+          display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(6,6,8,.94)', borderRadius: '0 0 8px 8px',
+          padding: '2px 7px 3px', boxShadow: '0 3px 10px rgba(0,0,0,.45)', pointerEvents: 'none',
+        }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: ROJO_VIVO, flexShrink: 0, animation: 'gmMicPulso 1s ease-in-out infinite' }}/>
+          <span style={{ fontFamily: FUENTE, fontWeight: 800, fontSize: 'clamp(.5rem, 2.2vw, .62rem)', letterSpacing: '.06em', color: '#fff', lineHeight: 1.2, whiteSpace: 'nowrap' }}>EN VIVO</span>
+        </div>
+      )}
+      </div>
 
       {/* ── Fila de abajo: faltas/tarjetas del local · reloj · faltas/tarjetas del visitante ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'start', columnGap: 'clamp(4px, 2.2vw, 12px)', width: '100%', boxSizing: 'border-box' }}>
@@ -242,7 +256,7 @@ export default function MarcadorEnVivoOverlay({ partido, entrada = false, oculto
         {/* tres columnas: el cronómetro (o DESCANSO) queda SIEMPRE en el centro, el punto rojo a su izquierda y faltas/global a su derecha */}
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', minWidth: 0 }}>
           {/* en qué tiempo va el partido: 1T / 2T (en el descanso no se muestra, ahí ya dice DESCANSO) */}
-          {!vivo.descanso && (
+          {!vivo.descanso && !partido.manual && (
             <span style={{
               fontFamily: FUENTE, fontWeight: 800, fontSize: 'clamp(.58rem, 2.6vw, .74rem)', letterSpacing: '.06em', lineHeight: 1,
               color: '#fff', background: 'rgba(255,255,255,.16)', borderRadius: '4px', padding: '2px 5px', whiteSpace: 'nowrap',
