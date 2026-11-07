@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, reservasDeSlot, intervalosSolapan, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, reservasDeSlot, intervalosSolapan, horasSeguidasLibres, horaFin, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
@@ -35,18 +35,16 @@ export default function ReservarEscenarioPage() {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [equipo, setEquipo] = useState('')
-  // Fija en 60 — la reserva pública siempre es por horas completas. Antes
-  // había un selector de 60/90/120 min, pero nada evitaba que alguien
-  // reservara solo 90 min de una hora y dejara "colgados" los 30 min
-  // restantes sin poder ofrecerse a nadie más. Si alguien necesita más
-  // tiempo, reserva varias horas seguidas o escribe por WhatsApp (botón de
-  // "¿Necesitas algo especial?" más abajo).
-  const duracion = 60
+  // Todo es de 60 en 60 minutos (nada de 30 ni 90). Si la persona quiere más
+  // tiempo elige 2 o 3 horas: se ocupan esos horarios seguidos (solo si están
+  // libres) y el valor es el de una hora por la cantidad de horas.
+  const [horasSel, setHorasSel] = useState(1)
+  const duracion = horasSel * 60
   const [error, setError] = useState('')
   const [estadoEnvio, setEstadoEnvio] = useState('idle') // idle | esperando | ok | timeout | ocupado
 
   useEffect(() => { fetchTodo() }, [escenarioId])
-  useEffect(() => { setHoraSel(null) }, [fecha, cancha])
+  useEffect(() => { setHoraSel(null); setHorasSel(1) }, [fecha, cancha])
 
   async function fetchTodo() {
     setLoading(true)
@@ -110,7 +108,7 @@ export default function ReservarEscenarioPage() {
     const datos = {
       escenario_id: escenario.id, cancha, fecha, hora: modalSlot, duracion,
       nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
-      estado: 'pendiente', pago: 'pendiente', monto: precioCancha(canchas, cancha), monto_pagado: 0,
+      estado: 'pendiente', pago: 'pendiente', monto: precioCancha(canchas, cancha) * horasSel, monto_pagado: 0,
     }
     const { error: errInsert } = await supabase.from('escenario_reservas').insert(datos)
     if (errInsert) { setEstadoEnvio('timeout'); return }
@@ -143,6 +141,9 @@ export default function ReservarEscenarioPage() {
 
   const horas = getHours(escenario)
   const dias = proximosDias()
+  const maxHoras = horaSel ? horasSeguidasLibres(reservas, cancha, fecha, horas, horaSel, 3) : 0
+  const precioHora = precioCancha(canchas, cancha)
+  const idxSel = horaSel ? horas.findIndex(x => parseInt(x,10) === parseInt(horaSel,10)) : -1
   const waHref = escenario?.whatsapp ? `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent('Hola, quiero reservar una cancha en ' + escenario.name)}` : null
 
   return (
@@ -246,16 +247,16 @@ export default function ReservarEscenarioPage() {
           <div>
             <StepLabel n={3} texto="Elige la hora"/>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:10 }}>
-              {horas.map(h => {
+              {horas.map((h, i) => {
                 const est = slotEstado(reservas, cancha, fecha, h)
-                const sel = horaSel === h
+                const sel = idxSel >= 0 && i >= idxSel && i < idxSel + horasSel
                 const libre = est === 'libre'
                 const color = est === 'libre' ? S.win : est === 'pendiente' ? S.warn : S.loss
                 const label = est === 'libre' ? 'Disponible' : est === 'pendiente' ? 'Pendiente' : 'Ocupado'
                 return (
                   <button key={h}
                     onClick={() => {
-                      if (libre) { setHoraSel(h); return }
+                      if (libre) { setHoraSel(h); setHorasSel(1); return }
                       const rs = reservasDeSlot(reservas, cancha, fecha, h)
                       if (rs.length) setInfoSlot({ hora: h, reservas: rs })
                     }}
@@ -273,13 +274,39 @@ export default function ReservarEscenarioPage() {
             </div>
           </div>
 
+          {/* ¿Cuántas horas? — solo aparece cuando ya eligió la hora */}
+          {horaSel && (
+            <div>
+              <StepLabel n={4} texto="¿Cuántas horas?"/>
+              <div style={{ display:'flex', gap:10 }}>
+                {[1,2,3].map(n => {
+                  const ok = n <= maxHoras
+                  const activo = horasSel === n
+                  return (
+                    <button key={n} type="button" disabled={!ok} onClick={() => setHorasSel(n)}
+                      style={{ flex:1, padding:'12px 6px', borderRadius:12, cursor: ok ? 'pointer' : 'not-allowed', fontFamily:'inherit', textAlign:'center',
+                        border: activo ? `2px solid ${S.green}` : `1.5px solid ${S.border}`, background: activo ? S.greenDim : '#fff', opacity: ok ? 1 : .4 }}>
+                      <div style={{ fontWeight:900, fontSize:'.95rem', color: activo ? S.greenDark : S.text }}>{n} {n === 1 ? 'hora' : 'horas'}</div>
+                      {precioHora > 0 && <div style={{ fontSize:'.72rem', color:S.muted, marginTop:2 }}>{fmtMoney(precioHora * n)}</div>}
+                    </button>
+                  )
+                })}
+              </div>
+              {maxHoras < 3 && (
+                <div style={{ fontSize:'.74rem', color:S.muted, marginTop:8 }}>
+                  {maxHoras === 1 ? 'Después de esta hora el horario ya está ocupado (o el lugar cierra), por eso solo se puede 1 hora.' : 'Solo hay 2 horas seguidas libres desde esta hora.'}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* CTA */}
           <button onClick={abrirSlot} disabled={!horaSel}
             style={{ width:'100%', padding:'16px', borderRadius:14, border:'none', cursor: horaSel ? 'pointer' : 'not-allowed',
               background: horaSel ? `linear-gradient(135deg, ${S.green}, ${S.greenDark})` : '#e5e9e7', color: horaSel ? '#fff' : S.muted,
               fontWeight:900, fontSize:'.95rem', textAlign:'center', boxShadow: horaSel ? '0 8px 22px rgba(34,197,94,.35)' : 'none' }}>
             {horaSel ? (
-              <>Reservar {fmtHora12(horaSel)}<div style={{ fontWeight:600, fontSize:'.76rem', marginTop:2, opacity:.9 }}>{nombreCancha(canchas, cancha)} – {fmtDate(fecha)}</div></>
+              <>Reservar {fmtHora12(horaSel)}{horasSel > 1 ? ` – ${fmtHora12(horaFin(horaSel, horasSel))}` : ''}{precioHora > 0 ? ` · ${fmtMoney(precioHora * horasSel)}` : ''}<div style={{ fontWeight:600, fontSize:'.76rem', marginTop:2, opacity:.9 }}>{nombreCancha(canchas, cancha)} – {fmtDate(fecha)}</div></>
             ) : 'Elige una hora disponible'}
           </button>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:'.72rem', color:S.muted, marginTop:-14 }}>
@@ -348,7 +375,7 @@ export default function ReservarEscenarioPage() {
                 <div style={{ fontWeight:800, fontSize:'.9rem', color:S.text }}>{r.nombre || 'Sin nombre'}</div>
                 {r.equipo && <div style={{ fontSize:'.78rem', color:S.text2, marginTop:2 }}>Equipo: {r.equipo}</div>}
                 <div style={{ fontSize:'.72rem', color:S.muted, marginTop:2 }}>
-                  {fmtHora12(r.hora)} · {r.duracion} min · {r.estado === 'pendiente' ? 'Pendiente de confirmar' : r.estado === 'aceptada' ? 'Confirmada' : r.estado === 'mantenimiento' ? 'Mantenimiento' : r.estado}
+                  {fmtHora12(r.hora)} · {Math.max(1, Math.round((r.duracion||60)/60))} {Math.max(1, Math.round((r.duracion||60)/60)) === 1 ? 'hora' : 'horas'} · {r.estado === 'pendiente' ? 'Pendiente de confirmar' : r.estado === 'aceptada' ? 'Confirmada' : r.estado === 'mantenimiento' ? 'Mantenimiento' : r.estado}
                 </div>
               </div>
             ))}
@@ -358,7 +385,7 @@ export default function ReservarEscenarioPage() {
 
       {modalSlot && (() => {
         const mensajeWA = `Hola, quiero reservar la ${nombreCancha(canchas, cancha)}.\n` +
-          `Nombre: ${nombre.trim() || '-'}\nWhatsApp: ${telefono.trim() || '-'}\nEquipo: ${equipo.trim() || '-'}\nFecha: ${fmtDate(fecha)}\nHora: ${fmtHora12(modalSlot)}\nDuración: ${duracion} min`
+          `Nombre: ${nombre.trim() || '-'}\nWhatsApp: ${telefono.trim() || '-'}\nEquipo: ${equipo.trim() || '-'}\nFecha: ${fmtDate(fecha)}\nHora: ${fmtHora12(modalSlot)}${horasSel > 1 ? ' a ' + fmtHora12(horaFin(modalSlot, horasSel)) : ''}\nDuración: ${horasSel} ${horasSel === 1 ? 'hora' : 'horas'}${precioCancha(canchas,cancha) > 0 ? '\nValor: ' + fmtMoney(precioCancha(canchas,cancha) * horasSel) : ''}`
         const hrefReservar = escenario?.whatsapp ? `https://wa.me/${escenario.whatsapp}?text=${encodeURIComponent(mensajeWA)}` : null
         return (
         <div style={{ position:'fixed', inset:0, background:'rgba(10,15,13,.55)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
@@ -367,7 +394,7 @@ export default function ReservarEscenarioPage() {
               <div style={{ fontWeight:800, fontSize:'1rem' }}>Reservar {nombreCancha(canchas, cancha)}</div>
               <button onClick={cerrarModal} style={{ background:'none', border:'none', cursor:'pointer', color:S.muted }}><X size={18}/></button>
             </div>
-            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)} · {fmtMoney(precioCancha(canchas,cancha))}/h</div>
+            <div style={{ fontSize:'.78rem', color:S.muted, marginBottom:'16px' }}>{fmtDate(fecha)} — {fmtHora12(modalSlot)}{horasSel > 1 ? ` a ${fmtHora12(horaFin(modalSlot, horasSel))}` : ''} · {horasSel} {horasSel === 1 ? 'hora' : 'horas'}{precioCancha(canchas,cancha) > 0 ? ` · ${fmtMoney(precioCancha(canchas,cancha) * horasSel)}` : ''}</div>
 
             {estadoEnvio === 'ocupado' ? (
               <div style={{ textAlign:'center', padding:'10px 0 4px' }}>

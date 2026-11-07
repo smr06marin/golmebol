@@ -84,6 +84,13 @@ export function getHours(escenario) {
   return arr
 }
 
+// Horas ("17:00", "18:00"...) que ocupa una reserva que empieza en `hora` y dura `duracion` minutos.
+function horasQueOcupa(hora, duracion) {
+  const inicio = parseInt(hora, 10)
+  const n = Math.max(1, Math.ceil((duracion || 60) / 60))
+  return Array.from({ length: n }, (_, i) => String(inicio + i).padStart(2, '0') + ':00')
+}
+
 function horaEnRango(hora, r) {
   const inicio = parseInt(r.hora, 10)
   const fin = inicio + Math.ceil((r.duracion || 60) / 60)
@@ -97,6 +104,23 @@ export function slotEstado(reservas, cancha, fecha, hora) {
   if (rs.some(r => r.estado === 'aceptada' || r.estado === 'mantenimiento')) return 'ocupado'
   if (rs.some(r => r.estado === 'pendiente')) return 'pendiente'
   return 'libre'
+}
+
+// Cuántas horas SEGUIDAS están libres empezando en `hora` (máximo `max`).
+// Todas las reservas son de 60 en 60 minutos: si alguien pide 2 horas se
+// ocupan 2 horarios consecutivos, y solo se puede si el siguiente también
+// está libre y el escenario todavía no cerró. Sirve para ofrecer 1, 2, 3 horas.
+export function horasSeguidasLibres(reservas, cancha, fecha, horas, hora, max = 3) {
+  const i = (horas || []).findIndex(x => parseInt(x, 10) === parseInt(hora, 10))
+  if (i < 0) return 0
+  let n = 0
+  while (n < max && i + n < horas.length && slotEstado(reservas, cancha, fecha, horas[i + n]) === 'libre') n++
+  return n
+}
+
+// Hora en que termina una reserva que empieza en `hora` y dura `nHoras` ("17:00" + 2 → "19:00").
+export function horaFin(hora, nHoras) {
+  return String(parseInt(hora, 10) + (parseInt(nHoras, 10) || 1)).padStart(2, '0') + ':00'
 }
 
 // Reserva(s) que ocupan un horario puntual — a diferencia de slotEstado
@@ -309,7 +333,7 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
   // terminaría duplicando la cancha ese día (dos reservas "aceptada" para
   // el mismo cupo, sumando plata de más en los informes).
   const { data: existentes, error: errSelect } = await supabase.from('escenario_reservas')
-    .select('reserva_fija_id, fecha, cancha, hora, estado')
+    .select('reserva_fija_id, fecha, cancha, hora, duracion, estado')
     .eq('escenario_id', escenarioId).gte('fecha', desde)
   if (errSelect) console.error('asegurarReservasFijas: no se pudo leer reservas existentes —', errSelect.message)
   const filasExistentes = existentes || []
@@ -317,7 +341,7 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
   const ocupados = new Set(
     filasExistentes
       .filter(r => r.estado !== 'cancelada' && r.estado !== 'rechazada')
-      .map(r => `${r.cancha}_${r.fecha}_${r.hora}`)
+      .flatMap(r => horasQueOcupa(r.hora, r.duracion).map(h => `${r.cancha}_${r.fecha}_${h}`))
   )
 
   const filas = []
@@ -327,15 +351,16 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
       if (d.getDay() !== f.dia_semana) continue
       const fecha = fechaLocalStr(d)
       if (yaExistePorRegla.has(`${f.id}_${fecha}`)) continue
-      const claveSlot = `${f.cancha}_${fecha}_${f.hora}`
-      if (ocupados.has(claveSlot)) continue
+      // Una reserva de 2 horas ocupa 2 horarios seguidos: todos deben estar libres
+      const clavesSlot = horasQueOcupa(f.hora, f.duracion).map(h => `${f.cancha}_${fecha}_${h}`)
+      if (clavesSlot.some(c => ocupados.has(c))) continue
       filas.push({
         escenario_id: escenarioId, cancha: f.cancha, fecha, hora: f.hora, duracion: f.duracion,
         nombre: f.nombre, telefono: f.telefono || '', equipo: f.equipo || null,
         estado: 'aceptada', pago: 'pendiente', monto: f.monto, monto_pagado: 0,
         reserva_fija_id: f.id,
       })
-      ocupados.add(claveSlot) // evita que dos reglas fijas activas choquen entre sí en esta misma corrida
+      clavesSlot.forEach(c => ocupados.add(c)) // evita que dos reglas fijas activas choquen entre sí en esta misma corrida
     }
   })
   if (filas.length === 0) return

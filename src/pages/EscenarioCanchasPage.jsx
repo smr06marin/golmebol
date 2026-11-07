@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijasThrottled, proximosDias, obtenerAccesoEscenario } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijasThrottled, proximosDias, obtenerAccesoEscenario, horasSeguidasLibres, horaFin, intervalosSolapan, fechaLocalStr } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X, Phone, Eye, Wrench, Bell, CalendarDays, Goal } from 'lucide-react'
 import { BotonVolver } from '../components/EscenarioUI'
@@ -86,27 +86,51 @@ function ModalRevisar({ reserva, canchas, encargado, soloLectura, onClose, onRes
   )
 }
 
-function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuardado }) {
+function ModalReserva({ escenario, canchas, reservas, horas, cancha, fecha, hora, onClose, onGuardado }) {
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [equipo, setEquipo] = useState('')
-  const [duracion, setDuracion] = useState(60)
+  // Todo es de 60 en 60 minutos. 2 horas = 2 horarios seguidos y el valor de 2 horas.
+  const [nHoras, setNHoras] = useState(1)
   const [recurrente, setRecurrente] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
-  const monto = precioCancha(canchas, cancha)
+  const precioHora = precioCancha(canchas, cancha)
+  const monto = precioHora * nHoras
+  const duracion = nHoras * 60
+  const maxHoras = horasSeguidasLibres(reservas, cancha, fecha, horas, hora, 3)
+  const ocupan = e => e === 'aceptada' || e === 'pendiente' || e === 'mantenimiento'
 
   async function handleReservar() {
     if (!nombre.trim() || !telefono.trim()) { setError('Escribe el nombre y el teléfono de quien reserva.'); return }
     setGuardando(true); setError('')
+    // Revisión de último momento: que esas horas sigan libres (alguien pudo reservar mientras se llenaba el formulario)
+    const { data: actuales } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenario.id)
+    const choca = (actuales || []).some(r => r.cancha === cancha && r.fecha === fecha && ocupan(r.estado) && intervalosSolapan(hora, duracion, r.hora, r.duracion))
+    if (choca) { setGuardando(false); setError('Ese horario acaba de ocuparse. Cierra esta ventana y elige otro.'); return }
     const { error: errIns } = await supabase.from('escenario_reservas').insert({
       escenario_id: escenario.id, cancha, fecha, hora, duracion,
       nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
-      estado: 'aceptada', pago: 'pendiente', monto, monto_pagado: 0, recurrente,
+      estado: 'aceptada', pago: 'pendiente', monto, monto_pagado: 0, recurrente: false,
     })
+    if (errIns) { setGuardando(false); setError('No se pudo guardar: ' + errIns.message); return }
+    // "Repetir cada semana": las 8 semanas siguientes, saltando las que ya estén ocupadas
+    let textoFinal = 'Reserva guardada'
+    if (recurrente) {
+      const filas = []; let saltadas = 0
+      for (let i = 1; i <= 8; i++) {
+        const d = new Date(fecha + 'T00:00:00'); d.setDate(d.getDate() + 7 * i)
+        const f = fechaLocalStr(d)
+        const libre = !(actuales || []).some(r => r.cancha === cancha && r.fecha === f && ocupan(r.estado) && intervalosSolapan(hora, duracion, r.hora, r.duracion))
+        if (!libre) { saltadas++; continue }
+        filas.push({ escenario_id: escenario.id, cancha, fecha: f, hora, duracion, nombre: nombre.trim(), telefono: telefono.trim(), equipo: equipo.trim() || null,
+          estado: 'aceptada', pago: 'pendiente', monto, monto_pagado: 0, recurrente: false, generada_de_recurrente: true })
+      }
+      if (filas.length) await supabase.from('escenario_reservas').insert(filas)
+      textoFinal = `Reserva guardada y repetida ${filas.length} ${filas.length === 1 ? 'semana' : 'semanas'}` + (saltadas ? ` (${saltadas} ya estaban ocupadas)` : '')
+    }
     setGuardando(false)
-    if (errIns) { setError('No se pudo guardar: ' + errIns.message); return }
-    onGuardado()
+    onGuardado(textoFinal)
   }
 
   async function handleBloquear() {
@@ -131,7 +155,14 @@ function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuar
         <div>
           <label style={lbl}>¿Cuánto tiempo?</label>
           <div style={{ display:'flex', gap:'8px' }}>
-            {[[60,'1 hora'],[90,'1 h 30'],[120,'2 horas']].map(([min, txt]) => <button key={min} type="button" onClick={()=>setDuracion(min)} style={chip(duracion===min)}>{txt}</button>)}
+            {[1,2,3].map(n => {
+              const ok = n <= maxHoras
+              return <button key={n} type="button" disabled={!ok} onClick={()=>setNHoras(n)} style={{ ...chip(nHoras===n), opacity: ok ? 1 : .35, cursor: ok ? 'pointer' : 'not-allowed' }}>{n} {n === 1 ? 'hora' : 'horas'}</button>
+            })}
+          </div>
+          <div style={{ fontSize:'.78rem', color:S.muted, marginTop:'8px', lineHeight:1.4 }}>
+            {nHoras > 1 ? <>Se ocupan {nHoras} horarios seguidos: de <b style={{ color:S.text2 }}>{fmtHora12(hora)}</b> a <b style={{ color:S.text2 }}>{fmtHora12(horaFin(hora, nHoras))}</b>.</> : null}
+            {maxHoras < 3 ? <>{nHoras > 1 ? ' ' : ''}{maxHoras === 1 ? 'Después de este horario ya está ocupado o el lugar cierra: solo se puede 1 hora.' : 'Solo hay 2 horas seguidas libres desde acá.'}</> : null}
           </div>
         </div>
         <button type="button" onClick={()=>setRecurrente(v=>!v)} aria-pressed={recurrente}
@@ -139,7 +170,7 @@ function ModalReserva({ escenario, canchas, cancha, fecha, hora, onClose, onGuar
           <span style={{ width:'24px', height:'24px', borderRadius:'7px', flexShrink:0, border:`2px solid ${recurrente ? S.cyan : S.muted}`, background: recurrente ? S.cyan : 'transparent', color:'#0a1a05', fontWeight:900, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.9rem' }}>{recurrente ? '✓' : ''}</span>
           <span><b style={{ fontSize:'.9rem' }}>Repetir cada semana</b><br/><span style={{ fontSize:'.76rem', color:S.muted }}>Lo anota el mismo día y hora por 8 semanas</span></span>
         </button>
-        {monto > 0 && <div style={{ fontSize:'.88rem', color:S.text2, textAlign:'center' }}>Valor de la cancha: <b style={{ color:S.gold }}>{fmtMoney(monto)}</b></div>}
+        {monto > 0 && <div style={{ fontSize:'.88rem', color:S.text2, textAlign:'center' }}>Valor{nHoras > 1 ? ` de ${nHoras} horas` : ' de la cancha'}: <b style={{ color:S.gold }}>{fmtMoney(monto)}</b></div>}
         {error && <div style={{ color:'#ff7b72', fontSize:'.86rem', fontWeight:700, textAlign:'center' }}>{error}</div>}
         <button onClick={handleReservar} disabled={guardando} style={{ ...BTN, background:S.cyan, color:'#0a1a05', opacity:guardando?.7:1 }}>{guardando ? 'Guardando…' : 'Guardar reserva'}</button>
         <button onClick={handleBloquear} disabled={guardando} style={{ ...BTN_SUAVE, border:`1px solid ${S.border}`, color:S.muted, fontSize:'.8rem', opacity:guardando?.7:1 }}>
@@ -197,6 +228,14 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
 
   async function confirmarReprogramar() {
     if (!reForm.cancha || !reForm.fecha || !reForm.hora) { setError('Elige la cancha, el día y la hora.'); return }
+    // Que las horas de esta reserva (1, 2, 3...) quepan antes de que cierre el lugar y no se crucen con otra
+    const nH = Math.max(1, Math.ceil((reserva.duracion || 60) / 60))
+    const iHora = horas.findIndex(x => parseInt(x, 10) === parseInt(reForm.hora, 10))
+    if (iHora >= 0 && iHora + nH > horas.length) { setError(`Esa hora no sirve: la reserva dura ${nH} ${nH === 1 ? 'hora' : 'horas'} y el lugar cierra antes.`); return }
+    const { data: otras } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', reserva.escenario_id)
+    const choca = (otras || []).some(r => r.id !== reserva.id && r.cancha === reForm.cancha && r.fecha === reForm.fecha
+      && (r.estado === 'aceptada' || r.estado === 'pendiente' || r.estado === 'mantenimiento') && intervalosSolapan(reForm.hora, reserva.duracion, r.hora, r.duracion))
+    if (choca) { setError(nH > 1 ? `Esas ${nH} horas seguidas no están libres. Prueba otra hora.` : 'Ese horario ya está ocupado. Prueba otro.'); return }
     const { error } = await supabase.from('escenario_reservas').update({ cancha: reForm.cancha, fecha: reForm.fecha, hora: reForm.hora }).eq('id', reserva.id)
     if (error) { setError(error.message); return }
     onResuelto('Reserva movida al nuevo horario')
@@ -247,7 +286,7 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
     <Hoja titulo={reserva.nombre || 'Reserva'} subtitulo={subtitulo} onClose={onClose}>
       <div style={{ background:S.card2, borderRadius:'14px', padding:'14px', marginBottom:'16px', display:'grid', gap:'4px' }}>
         {reserva.equipo && <div style={{ fontSize:'.9rem', color:S.text2 }}>Equipo: {reserva.equipo}</div>}
-        <div style={{ fontSize:'.9rem', color:S.text2 }}>Tiempo: {reserva.duracion} min</div>
+        <div style={{ fontSize:'.9rem', color:S.text2 }}>Tiempo: {Math.max(1, Math.round((reserva.duracion || 60) / 60))} {Math.max(1, Math.round((reserva.duracion || 60) / 60)) === 1 ? 'hora' : 'horas'}</div>
         {reserva.telefono && (
           <a href={`tel:${reserva.telefono}`} style={{ display:'inline-flex', alignItems:'center', gap:'6px', color:S.cyan, fontWeight:800, fontSize:'.92rem', textDecoration:'none', marginTop:'4px' }}><Phone size={16}/> {reserva.telefono}</a>
         )}
@@ -331,7 +370,7 @@ export default function EscenarioCanchasPage() {
   }
 
   function abrir(cancha, fecha, hora) { if (!soloLectura) setModalSlot({ cancha, fecha, hora }) }
-  function guardado() { setModalSlot(null); setMsg('Reserva guardada'); setTimeout(()=>setMsg(''),3000); fetchTodo() }
+  function guardado(texto) { setModalSlot(null); setMsg(typeof texto === 'string' ? texto : 'Reserva guardada'); setTimeout(()=>setMsg(''),3000); fetchTodo() }
 
   function abrirRevisar(cancha, fecha, hora) {
     const r = reservas.find(x => x.cancha === cancha && x.fecha === fecha && x.estado === 'pendiente'
@@ -375,7 +414,7 @@ export default function EscenarioCanchasPage() {
   return (
     <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
       {modalSlot && (
-        <ModalReserva escenario={escenario} canchas={canchas} cancha={modalSlot.cancha} fecha={modalSlot.fecha} hora={modalSlot.hora}
+        <ModalReserva escenario={escenario} canchas={canchas} reservas={reservas} horas={horas} cancha={modalSlot.cancha} fecha={modalSlot.fecha} hora={modalSlot.hora}
           onClose={()=>setModalSlot(null)} onGuardado={guardado}/>
       )}
       {revisando && (
