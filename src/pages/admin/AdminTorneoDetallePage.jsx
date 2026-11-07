@@ -3711,6 +3711,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0,
       w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? null,
       limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? null, duracion_tiempo_min: torneo.duracion_tiempo_min ?? null,
+      // La edición nueva conserva «inscripción hasta que termine la fase de grupos»; una fecha concreta no se copia (ya sería vieja)
+      ...(torneo.inscripcion_jugadores_modo === 'fase_grupos' ? { inscripcion_jugadores_modo: 'fase_grupos' } : {}),
       // La edición nueva usa la misma planilla (salón / fútbol 11) que la anterior.
       planilla_tipo: torneo.planilla_tipo || 'futbol11',
     }
@@ -3718,7 +3720,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     // El sistema de puntos y algunos campos son relativamente nuevos: si en
     // este proyecto todavía falta correr su migración, no bloquea la
     // creación de la edición entera — se reintenta sin ese campo puntual.
-    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'w_goles_ganador', 'w_puntos_ganador', 'limite_jugadores_equipo', 'duracion_tiempo_min', 'planilla_tipo', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
+    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'w_goles_ganador', 'w_puntos_ganador', 'limite_jugadores_equipo', 'inscripcion_jugadores_modo', 'duracion_tiempo_min', 'planilla_tipo', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
     while (error && camposOpcionales.some(c => (error.message || '').includes(c))) {
       const campo = camposOpcionales.find(c => (error.message || '').includes(c))
       payload = { ...payload }
@@ -4243,7 +4245,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   async function handleGuardarTorneo() {
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
     const numOrNull = v => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? null : parseInt(v, 10)
-    let payload = { ...formTorneo, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), w_goles_ganador: Math.max(0, numDef(formTorneo.w_goles_ganador, 3)), w_puntos_ganador: numOrNull(formTorneo.w_puntos_ganador), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo), duracion_tiempo_min: numOrNull(formTorneo.duracion_tiempo_min) }
+    if (formTorneo.inscripcion_jugadores_modo === 'fecha' && !formTorneo.inscripcion_jugadores_hasta) { showMsg('Escribe el último día para inscribir jugadores, o elige otra opción', 'error'); return }
+    // Cierre de inscripción de jugadores: solo viaja si se usa (o si el torneo ya tenía la columna)
+    const { inscripcion_jugadores_modo: modoInsc0, inscripcion_jugadores_hasta: hastaInsc0, _inscColumna, ...formTorneoBase } = formTorneo
+    const modoInsc = modoInsc0 || 'sin_limite'
+    const camposInscripcion = (modoInsc !== 'sin_limite' || _inscColumna)
+      ? { inscripcion_jugadores_modo: modoInsc, inscripcion_jugadores_hasta: modoInsc === 'fecha' ? (hastaInsc0 || null) : null } : {}
+    let payload = { ...formTorneoBase, ...camposInscripcion, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), w_goles_ganador: Math.max(0, numDef(formTorneo.w_goles_ganador, 3)), w_puntos_ganador: numOrNull(formTorneo.w_puntos_ganador), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo), duracion_tiempo_min: numOrNull(formTorneo.duracion_tiempo_min) }
     let avisoDegradado = null
     let { data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id')
     if (error && (error.message?.includes('w_goles_ganador') || error.message?.includes('w_puntos_ganador'))) {
@@ -4266,6 +4274,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const { limite_jugadores_equipo, ...resto } = payload
       payload = resto
       avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó. Avísale al administrador de Golmebol para activarlo'
+      ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
+    }
+    if (error && error.message?.includes('inscripcion_jugadores')) {
+      // Falta correr migracion_inscripcion_jugadores_cierre.sql en Supabase: se reintenta sin esos campos
+      const { inscripcion_jugadores_modo, inscripcion_jugadores_hasta, ...resto } = payload
+      payload = resto
+      avisoDegradado = 'Torneo actualizado, pero la fecha de cierre de inscripción de jugadores NO se guardó. Falta ejecutar migracion_inscripcion_jugadores_cierre.sql en Supabase'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error && error.message?.includes('duracion_tiempo_min')) {
@@ -5318,6 +5333,33 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Máximo de jugadores por equipo en este torneo. Vacío = sin límite. Aplica igual para todos los equipos inscritos.</div>
                 </div>
               )}
+              {(esOrganizador || esAdminRol) && (
+                <div>
+                  <label style={labelStyle}>Inscripción de jugadores hasta cuándo</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {[
+                      ['sin_limite', 'Sin fecha de cierre'],
+                      ['fecha', 'Hasta una fecha'],
+                      ['fase_grupos', 'Hasta que termine la fase de grupos (se cierra solo al empezar las eliminatorias)'],
+                    ].map(([valor, titulo]) => {
+                      const activo = (formTorneo.inscripcion_jugadores_modo || 'sin_limite') === valor
+                      return (
+                        <label key={valor} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', padding: '9px 11px', borderRadius: '9px', cursor: 'pointer', border: `1.5px solid ${activo ? '#1a73e8' : '#e8eaed'}`, background: activo ? '#e8f0fe' : '#fff', fontSize: '.82rem', fontWeight: '600', color: '#202124' }}>
+                          <input type="radio" name="inscripcion_jugadores_modo_edit" checked={activo} onChange={() => setFormTorneo(p => ({ ...p, inscripcion_jugadores_modo: valor }))} style={{ marginTop: '2px' }}/>
+                          <span>{titulo}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {formTorneo.inscripcion_jugadores_modo === 'fecha' && (
+                    <div style={{ marginTop: '8px' }}>
+                      <input type="date" value={formTorneo.inscripcion_jugadores_hasta || ''} onChange={e => setFormTorneo(p => ({ ...p, inscripcion_jugadores_hasta: e.target.value }))} style={inputStyle}/>
+                      <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Último día para inscribir (hasta las 11:59 p. m., hora de Colombia).</div>
+                    </div>
+                  )}
+                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Los dueños de los equipos inscriben y quitan sus jugadores desde su perfil, sin pasarse del límite de arriba y solo mientras esté abierta. Tú siempre puedes dar un cupo extra.</div>
+                </div>
+              )}
               {esAdminRol && torneo.organizador_id && (
                 <div>
                   <label style={labelStyle}>Cupo de equipos habilitados (organizador)</label>
@@ -5575,7 +5617,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '14px' }}>
             🗄️
           </button>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? '', limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '' }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? '', limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '', inscripcion_jugadores_modo: torneo.inscripcion_jugadores_modo || 'sin_limite', inscripcion_jugadores_hasta: torneo.inscripcion_jugadores_hasta || '', _inscColumna: 'inscripcion_jugadores_modo' in torneo }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>

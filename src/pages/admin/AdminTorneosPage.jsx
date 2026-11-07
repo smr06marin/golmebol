@@ -11,7 +11,7 @@ import { reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import { confirmar } from '../../lib/confirmar'
 
 
-const EMPTY = { name: '', season: String(new Date().getFullYear()), city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '' }
+const EMPTY = { name: '', season: String(new Date().getFullYear()), city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '', inscripcion_jugadores_modo: 'sin_limite', inscripcion_jugadores_hasta: '' }
 // Solo estas cuentas pueden asignar/cambiar el organizador de un torneo ya
 // creado (mismo criterio que en AdminEquiposPage.jsx / AdminJugadorDetallePage.jsx
 // para "cambiar dueño" — respaldo por si la tabla de roles falla).
@@ -154,6 +154,7 @@ export default function AdminTorneosPage() {
     if (!form.categoria) return showMsg('La categoría es obligatoria (ej: Senior, Sub-20)', 'error')
     if (!form.formato) return showMsg('El formato es obligatorio', 'error')
     if (!form.fecha_inicio) return showMsg('La fecha de inicio es obligatoria', 'error')
+    if (form.inscripcion_jugadores_modo === 'fecha' && !form.inscripcion_jugadores_hasta) return showMsg('Escribe el último día para inscribir jugadores, o elige otra opción', 'error')
     setLoading(true)
     const num = v => (v === '' || v === null || v === undefined) ? 0 : (parseFloat(v) || 0)
     const numDef = (v, def) => (v === '' || v === null || v === undefined || isNaN(parseInt(v, 10))) ? def : parseInt(v, 10)
@@ -161,8 +162,14 @@ export default function AdminTorneosPage() {
     // fecha_fin (y fecha_inicio) no pueden viajar como "" a una columna date de
     // Postgres — "" no es una fecha válida y Supabase la rechaza con
     // "invalid input syntax for type date". Si el campo quedó vacío, se manda null.
+    // Cierre de inscripción de jugadores: solo viaja si se usa (o si el torneo ya tenía la columna), así los torneos de siempre se guardan igual
+    const { inscripcion_jugadores_modo: modoInsc0, inscripcion_jugadores_hasta: hastaInsc0, _inscColumna, ...formBase } = form
+    const modoInsc = modoInsc0 || 'sin_limite'
+    const camposInscripcion = (modoInsc !== 'sin_limite' || _inscColumna)
+      ? { inscripcion_jugadores_modo: modoInsc, inscripcion_jugadores_hasta: modoInsc === 'fecha' ? (hastaInsc0 || null) : null } : {}
     const formNorm = {
-      ...form,
+      ...formBase,
+      ...camposInscripcion,
       pts_victoria: numDef(form.pts_victoria, 3), pts_empate: numDef(form.pts_empate, 1), pts_derrota: numDef(form.pts_derrota, 0),
       // Partido por W: marcador con el que gana quien sí se presentó (por defecto 3-0) y puntos que recibe (vacío = los de una victoria).
       w_goles_ganador: Math.max(0, numDef(form.w_goles_ganador, 3)),
@@ -208,6 +215,8 @@ export default function AdminTorneosPage() {
     const wEsDefault = formNorm.w_goles_ganador === 3 && formNorm.w_puntos_ganador === null
     const esErrorW = error => error?.message?.includes('w_goles_ganador') || error?.message?.includes('w_puntos_ganador')
     const sinLimite = obj => { const { limite_jugadores_equipo, ...resto } = obj; return resto }
+    const sinInscripcion = obj => { const { inscripcion_jugadores_modo, inscripcion_jugadores_hasta, ...resto } = obj; return resto }
+    const esErrorInscripcion = error => error?.message?.includes('inscripcion_jugadores')
     const sinDuracion = obj => { const { duracion_tiempo_min, ...resto } = obj; return resto }
     const sinPlanilla = obj => { const { planilla_tipo, ...resto } = obj; return resto }
     const sinUbicacion = obj => { const { pais, departamento, municipio_codigo, vereda, ...resto } = obj; return resto }
@@ -242,6 +251,11 @@ export default function AdminTorneosPage() {
       if (error && esErrorLimite(error)) {
         payload = sinLimite(payload)
         avisoDegradado = 'Torneo actualizado, pero el límite de jugadores por equipo NO se guardó. Avísale al administrador de Golmebol para activarlo'
+        ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
+      }
+      if (error && esErrorInscripcion(error)) {
+        payload = sinInscripcion(payload)
+        avisoDegradado = 'Torneo actualizado, pero la fecha de cierre de inscripción de jugadores NO se guardó. Falta ejecutar migracion_inscripcion_jugadores_cierre.sql en Supabase'
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error && esErrorDuracion(error)) {
@@ -303,6 +317,11 @@ export default function AdminTorneosPage() {
         avisoDegradado = 'Torneo creado, pero el límite de jugadores por equipo NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
+      if (error && esErrorInscripcion(error)) {
+        payload = sinInscripcion(payload)
+        avisoDegradado = 'Torneo creado, pero la fecha de cierre de inscripción de jugadores NO se guardó. Falta ejecutar migracion_inscripcion_jugadores_cierre.sql en Supabase'
+        ;({ error } = await supabase.from('tournaments').insert(payload))
+      }
       if (error && esErrorDuracion(error)) {
         payload = sinDuracion(payload)
         avisoDegradado = 'Torneo creado, pero la duración de cada tiempo NO se guardó. Avísale al administrador de Golmebol para activarlo'
@@ -333,7 +352,7 @@ export default function AdminTorneosPage() {
     const ub = ubicacionDeTorneo(t)
     const detectada = !t.municipio_codigo && !!ub.munCodigo
     setUbicInferida(detectada)
-    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, w_goles_ganador: t.w_goles_ganador ?? 3, w_puntos_ganador: t.w_puntos_ganador ?? '', limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '', planilla_tipo: t.planilla_tipo || '' })
+    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, w_goles_ganador: t.w_goles_ganador ?? 3, w_puntos_ganador: t.w_puntos_ganador ?? '', limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '', planilla_tipo: t.planilla_tipo || '', inscripcion_jugadores_modo: t.inscripcion_jugadores_modo || 'sin_limite', inscripcion_jugadores_hasta: t.inscripcion_jugadores_hasta || '', _inscColumna: 'inscripcion_jugadores_modo' in t })
     const fc = t.finanzas_config || {}
     setFin({
       llevar_cuentas:       !!fc.llevar_cuentas,
@@ -574,6 +593,34 @@ export default function AdminTorneosPage() {
               <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124', marginBottom: '2px' }}>Límite de jugadores por equipo</div>
               <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '12px' }}>Máximo de jugadores que puede tener cada equipo inscrito en este torneo. Déjalo vacío si no quieres límite — se puede cambiar después desde "Editar torneo".</div>
               <input type="number" min="1" value={form.limite_jugadores_equipo} onChange={e => setForm(f => ({ ...f, limite_jugadores_equipo: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input} placeholder="Sin límite"/>
+            </div>
+
+            {/* Hasta cuándo se inscriben jugadores (lo hacen los dueños de los equipos desde su perfil) */}
+            <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ fontSize: '.85rem', fontWeight: '700', color: '#202124', marginBottom: '2px' }}>Inscripción de jugadores hasta cuándo</div>
+              <div style={{ fontSize: '.72rem', color: '#9aa0a6', marginBottom: '12px' }}>Los dueños de los equipos inscriben y quitan sus jugadores desde su perfil, sin pasarse del límite de arriba. Aquí eliges hasta cuándo pueden hacerlo. Tú siempre puedes dar un cupo extra. Se puede cambiar después desde "Editar torneo".</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  ['sin_limite', 'Sin fecha de cierre', 'Pueden inscribir en cualquier momento.'],
+                  ['fecha', 'Hasta una fecha', 'Tú escribes el último día.'],
+                  ['fase_grupos', 'Hasta que termine la fase de grupos', 'Se cierra solo cuando empiezan las eliminatorias.'],
+                ].map(([valor, titulo, ayuda]) => {
+                  const activo = (form.inscripcion_jugadores_modo || 'sin_limite') === valor
+                  return (
+                    <label key={valor} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '10px 12px', borderRadius: '10px', cursor: 'pointer', border: `1.5px solid ${activo ? '#1a73e8' : '#e8eaed'}`, background: activo ? '#e8f0fe' : '#fff' }}>
+                      <input type="radio" name="inscripcion_jugadores_modo" checked={activo} onChange={() => setForm(f => ({ ...f, inscripcion_jugadores_modo: valor }))} style={{ marginTop: '3px' }}/>
+                      <span><span style={{ display: 'block', fontSize: '.86rem', fontWeight: '700', color: '#202124' }}>{titulo}</span><span style={{ display: 'block', fontSize: '.72rem', color: '#5f6368' }}>{ayuda}</span></span>
+                    </label>
+                  )
+                })}
+              </div>
+              {form.inscripcion_jugadores_modo === 'fecha' && (
+                <div style={{ marginTop: '12px' }}>
+                  <label style={{ display: 'block', fontSize: '.78rem', fontWeight: '700', color: '#3c4043', marginBottom: '4px' }}>Último día para inscribir jugadores</label>
+                  <input type="date" value={form.inscripcion_jugadores_hasta || ''} onChange={e => setForm(f => ({ ...f, inscripcion_jugadores_hasta: e.target.value }))} style={input}/>
+                  <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Ese día se puede inscribir hasta las 11:59 p. m. (hora de Colombia). Al día siguiente queda cerrado.</div>
+                </div>
+              )}
             </div>
 
             {/* Duración de cada tiempo (cronómetro de la planilla) */}

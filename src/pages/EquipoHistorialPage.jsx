@@ -34,16 +34,32 @@ const TABS = [
 
 const normalizarTexto = s => (s || '').toLowerCase().normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '')
 
+// Botón de foto del formulario «+ Jugador nuevo» (abre cámara/galería, muestra la vista previa)
+function FotoNueva({ label, hint, file, onPick, S }) {
+  const url = useMemo(() => (file ? URL.createObjectURL(file) : ''), [file])
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+  return (
+    <label style={{ display:'flex', flexDirection:'column', gap:'4px', fontSize:'.72rem', color:S.muted, cursor:'pointer', minWidth:0 }}>
+      <span>{label}</span>
+      <span style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'74px', borderRadius:'8px', border:`1px dashed ${file ? S.win : S.border}`, background:S.card, overflow:'hidden', textAlign:'center', padding: url ? 0 : '6px' }}>
+        {url ? <img src={url} alt="" style={{ width:'100%', maxHeight:'120px', objectFit:'cover' }}/> : <span style={{ fontSize:'.72rem', lineHeight:1.35 }}>📷 Tocar para subir<br/><span style={{ opacity:.7 }}>{hint}</span></span>}
+      </span>
+      <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) onPick(f); e.target.value = '' }}/>
+    </label>
+  )
+}
+
 export default function EquipoHistorialPage() {
   const { id }   = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
   // Encargado del equipo (representante): si su cédula coincide con la del
-  // dueño registrado del equipo, puede desactivar/reactivar jugadores de la
-  // plantilla y corregirles el teléfono o la foto — pero NO puede agregar
-  // jugadores nuevos ni eliminar (borrar) a ninguno; eso sigue siendo solo
-  // del admin/organizador.
+  // dueño registrado del equipo, puede inscribir jugadores en cada torneo (los que ya son
+  // del equipo o personas nuevas con su cédula) y quitarlos del torneo, y corregirles el teléfono o la
+  // foto. Siempre dentro del cupo del torneo y mientras la inscripción esté abierta (fecha o fase de
+  // grupos): eso lo vigila la base de datos (migracion_inscripcion_jugadores_cierre.sql).
+  // Borrar a alguien del sistema sigue siendo solo del admin/organizador.
   const [miPlayer,        setMiPlayer]        = useState(null)
   const [msg,             setMsg]             = useState(null)
   const [editandoTelId,   setEditandoTelId]   = useState(null)
@@ -54,6 +70,18 @@ export default function EquipoHistorialPage() {
   const [busquedaAgregarTorneo, setBusquedaAgregarTorneo] = useState('')
   const [agregandoJugadorId, setAgregandoJugadorId] = useState(null)
   const [quitandoJugadorId,  setQuitandoJugadorId]  = useState(null)
+  // Cierre de inscripción de jugadores de cada torneo (lo calcula el servidor) y formulario de jugador NUEVO
+  const [estadoInsc,    setEstadoInsc]    = useState({})
+  const [mostrarNuevo,  setMostrarNuevo]  = useState(false)
+  const NUEVO_VACIO = { cedula: '', nombre: '', telefono: '', city: '', genero: '', nacimiento: '', posicion: '', autorizacion: false }
+  const [nuevoJug,      setNuevoJug]      = useState(NUEVO_VACIO)
+  // 'nuevo' = la cédula no existe (formulario completo) · 'existente' = ya está en Golmebol (solo confirmar)
+  const [pasoNuevo,     setPasoNuevo]     = useState(null)
+  const [jugExistente,  setJugExistente]  = useState(null)
+  const [buscandoNuevo, setBuscandoNuevo] = useState(false)
+  const [fotosNuevo,    setFotosNuevo]    = useState({ perfil: null, frente: null, atras: null })
+  const [guardandoNuevo, setGuardandoNuevo] = useState(false)
+  const [errorNuevo,    setErrorNuevo]    = useState('')
 
   const [equipo,                setEquipo]                = useState(null)
   const [torneos,               setTorneos]               = useState([])
@@ -130,17 +158,19 @@ export default function EquipoHistorialPage() {
   async function fetchTorneos() {
     const { data: tt } = await supabase.from('tournament_teams').select('*, tournaments(*)').eq('team_id', id)
     setTorneos(tt || [])
-    const jugMap = {}, posMap = {}
+    const jugMap = {}, posMap = {}, estMap = {}
 
     // Un torneo no depende del otro — se piden todos en paralelo en vez de
     // uno por uno (eso era lo que hacía lenta la navegación a esta página).
     await Promise.all((tt || []).map(async t => {
-      const [{ data: jug }, { data: equiposTorneo }, { data: partidosTorneo }] = await Promise.all([
+      const [{ data: jug }, { data: equiposTorneo }, { data: partidosTorneo }, { data: estInsc }] = await Promise.all([
         supabase.from('tournament_player_registrations').select('*, players(*)').eq('tournament_id', t.tournament_id).eq('team_id', id).eq('activo', true),
         supabase.from('tournament_teams').select('team_id').eq('tournament_id', t.tournament_id),
         supabase.from('matches').select('home_team_id, away_team_id, home_score, away_score, fase').eq('tournament_id', t.tournament_id).eq('status', 'finished'),
+        supabase.rpc('inscripcion_jugadores_estado', { p_tournament: t.tournament_id, p_team: id }), // si falta correr la migración, viene vacío y todo sigue como antes
       ])
       jugMap[t.tournament_id] = jug || []
+      estMap[t.tournament_id] = estInsc || null
 
       // Posición en la tabla general del torneo (best-effort — solo fase de grupos)
       const Ppts = getPuntosTorneo(t.tournaments)
@@ -158,6 +188,7 @@ export default function EquipoHistorialPage() {
 
     setJugadoresPorTorneo(jugMap)
     setPosicionPorTorneo(posMap)
+    setEstadoInsc(estMap)
   }
 
   async function fetchPartidos() {
@@ -209,17 +240,18 @@ export default function EquipoHistorialPage() {
   }
   function getRival(partido) { return partido.home_team_id === id ? partido.away : partido.home }
 
-  function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), 3000) }
+  function showMsg(text, type = 'ok') { setMsg({ text, type }); setTimeout(() => setMsg(null), type === 'error' ? 7000 : 3000) }
 
   // Quitar (desactivar) a un jugador de ESTE torneo puntual — libera un
   // cupo del límite de jugadores del torneo. No lo elimina del equipo ni
   // de otros torneos donde también esté inscrito.
   async function handleQuitarDeTorneo(reg, torneoId) {
     if (!esDueno || !reg) return
+    if (estadoInsc[torneoId]?.abierta === false) return showMsg(estadoInsc[torneoId].motivo || 'La inscripción de jugadores está cerrada', 'error')
     setQuitandoJugadorId(reg.player_id)
     const { error } = await supabase.from('tournament_player_registrations').update({ activo: false }).eq('id', reg.id)
     setQuitandoJugadorId(null)
-    if (error) return showMsg('No se pudo quitar del torneo', 'error')
+    if (error) return showMsg(mensajeInscripcion(error, 'No se pudo quitar del torneo'), 'error')
     showMsg(`${reg.players?.name} quitado del torneo — se liberó un cupo`)
     fetchTorneos()
   }
@@ -229,6 +261,7 @@ export default function EquipoHistorialPage() {
   // hay cupo, no se agrega — se ofrece pedir cupo extra por WhatsApp.
   async function handleAgregarJugadorTorneo(jugador, torneoId) {
     if (!esDueno) return
+    if (estadoInsc[torneoId]?.abierta === false) return showMsg(estadoInsc[torneoId].motivo || 'La inscripción de jugadores está cerrada', 'error')
     const t = torneos.find(x => x.tournament_id === torneoId)
     const limite = t?.tournaments?.limite_jugadores_equipo
     const actuales = (jugadoresPorTorneo[torneoId] || []).length
@@ -240,10 +273,118 @@ export default function EquipoHistorialPage() {
       ? await supabase.from('tournament_player_registrations').update({ activo: true }).eq('id', existente.id)
       : await supabase.from('tournament_player_registrations').insert({ tournament_id: torneoId, team_id: id, player_id: jugador.id, activo: true })
     setAgregandoJugadorId(null)
-    if (error) return showMsg('No se pudo agregar', 'error')
+    if (error) return showMsg(mensajeInscripcion(error, 'No se pudo agregar'), 'error')
     showMsg(`${jugador.name} agregado al torneo ✓`)
     setBusquedaAgregarTorneo('')
     fetchTorneos()
+  }
+
+  // Mensaje del servidor (cupo lleno, inscripción cerrada, ya inscrito…) o uno genérico si fue un error técnico
+  function mensajeInscripcion(error, porDefecto) {
+    const m = String(error?.message || '').trim()
+    if (!m || m.length > 240 || /row-level security|permission denied|violates|duplicate key|function .* does not exist/i.test(m)) return porDefecto
+    return m
+  }
+
+  // ── Jugador NUEVO desde el perfil del equipo: pide lo mismo que el link de registro (cédula, nombre, posición,
+  // foto de perfil, nacimiento, teléfono, ciudad, género y fotos de la cédula). El servidor revisa que la inscripción
+  // siga abierta, el cupo, sanciones, deudas y que no esté ya en otro equipo del torneo. ──
+  function resetNuevo() {
+    setNuevoJug(NUEVO_VACIO); setPasoNuevo(null); setJugExistente(null)
+    setFotosNuevo({ perfil: null, frente: null, atras: null }); setErrorNuevo('')
+  }
+  // El aviso de error se borra apenas el dueño corrige algo del formulario
+  useEffect(() => { setErrorNuevo('') }, [nuevoJug.nombre, nuevoJug.posicion, nuevoJug.nacimiento, nuevoJug.autorizacion, nuevoJug.telefono, nuevoJug.city, nuevoJug.genero, fotosNuevo])
+  const esMenorFecha = (f) => !!f && new Date(f + 'T12:00:00') > new Date(new Date().setFullYear(new Date().getFullYear() - 18))
+
+  async function handleBuscarCedulaNuevo(torneoId) {
+    const cedula = nuevoJug.cedula.trim()
+    if (!cedula) return setErrorNuevo('Escribe la cédula del jugador.')
+    setBuscandoNuevo(true); setErrorNuevo('')
+    const { data: res, error } = await supabase.rpc('buscar_jugador_por_cedula', { p_cedula: cedula, p_tournament_id: torneoId })
+    setBuscandoNuevo(false)
+    if (error) return setErrorNuevo(mensajeInscripcion(error, 'No se pudo buscar la cédula. Intenta de nuevo.'))
+    if (!res?.encontrado) { setJugExistente(null); setPasoNuevo('nuevo'); return }
+    if (res.ya_en_torneo) return setErrorNuevo(`${res.name || 'Esa persona'} ya está inscrita en este torneo con ${res.equipo_en_torneo ? `el equipo "${res.equipo_en_torneo}"` : 'otro equipo'}.`)
+    setJugExistente(res); setPasoNuevo('existente')
+  }
+
+  // Sube las fotos DESPUÉS de crear al jugador (igual que el link). Nunca lanza: si falla, se avisa y el jugador ya quedó inscrito.
+  async function subirFotosNuevo(playerId, fotos, subirCedula) {
+    const fallos = []
+    try {
+      if (fotos.perfil) {
+        const archivo = await comprimirImagen(fotos.perfil)
+        const ext = (archivo.name.split('.').pop() || 'jpg').toLowerCase()
+        const { error: eUp } = await supabase.storage.from('players').upload(`fotos/${playerId}_cara.${ext}`, archivo, { upsert: true })
+        if (eUp) throw eUp
+        const { error: eRpc } = await supabase.rpc('confirmar_foto_perfil', { p_player_id: playerId, p_ext: ext })
+        if (eRpc) throw eRpc
+      }
+    } catch { fallos.push('la foto de perfil') }
+    try {
+      if (subirCedula && (fotos.frente || fotos.atras)) {
+        const subir = async (file, cara) => {
+          if (!file) return null
+          const archivo = await comprimirImagen(file, { maxSize: 1600, calidad: 0.85 })
+          const ext = archivo.name.split('.').pop()
+          const { error } = await supabase.storage.from('cedulas').upload(`${playerId}_${cara}.${ext}`, archivo, { upsert: true })
+          if (error) throw error
+          return ext
+        }
+        const [fe, te] = await Promise.all([subir(fotos.frente, 'frontal'), subir(fotos.atras, 'trasera')])
+        const { error } = await supabase.rpc('confirmar_cedula_urls', { p_player_id: playerId, p_frontal_ext: fe, p_trasera_ext: te })
+        if (error) throw error
+      }
+    } catch { fallos.push('las fotos de la cédula') }
+    if (fallos.length) showMsg(`El jugador quedó inscrito, pero no se pudieron subir ${fallos.join(' y ')}. Súbelas de nuevo desde su ficha.`, 'error')
+  }
+
+  async function handleInscribirNuevo(torneoId, torneoInfo) {
+    if (!esDueno) return
+    const cedula = nuevoJug.cedula.trim()
+    if (!cedula) return setErrorNuevo('Escribe la cédula del jugador.')
+    const simple = !!torneoInfo?.registro_simple
+    const pideCedula = !simple && torneoInfo?.requiere_cedula !== false
+    const f = nuevoJug, ft = fotosNuevo
+    if (pasoNuevo === 'nuevo') {
+      if (!f.nombre.trim())  return setErrorNuevo('El nombre es obligatorio.')
+      if (!f.posicion)       return setErrorNuevo('Selecciona la posición.')
+      if (!ft.perfil)        return setErrorNuevo('La foto del jugador es obligatoria.')
+      if (!f.nacimiento)     return setErrorNuevo('La fecha de nacimiento es obligatoria.')
+      if (esMenorFecha(f.nacimiento) && !f.autorizacion) return setErrorNuevo('Falta marcar la autorización de un adulto responsable: el jugador es menor de edad.')
+      if (!simple) {
+        if (!f.telefono.trim()) return setErrorNuevo('El teléfono es obligatorio.')
+        if (!f.city.trim())     return setErrorNuevo('La ciudad es obligatoria.')
+        if (!f.genero)          return setErrorNuevo('El género es obligatorio.')
+      }
+      if (pideCedula) {
+        if (!ft.frente) return setErrorNuevo('La foto frontal de la cédula es obligatoria.')
+        if (!ft.atras)  return setErrorNuevo('La foto trasera de la cédula es obligatoria.')
+      }
+    } else if (pasoNuevo === 'existente') {
+      if (!jugExistente?.photo_face_url && !ft.perfil) return setErrorNuevo('Esta persona aún no tiene foto de perfil: súbela para continuar.')
+    } else {
+      return setErrorNuevo('Primero busca la cédula.')
+    }
+    setGuardandoNuevo(true); setErrorNuevo('')
+    const esNuevo = pasoNuevo === 'nuevo'
+    const { data, error } = await supabase.rpc('dueno_inscribir_jugador_nuevo', {
+      p_tournament_id: torneoId, p_team_id: id, p_cedula: cedula,
+      p_name: esNuevo ? f.nombre.trim() : null,
+      p_telefono: esNuevo ? (f.telefono.trim() || null) : null,
+      p_fecha_nacimiento: esNuevo ? (f.nacimiento || null) : null,
+      p_autorizacion_menor: esNuevo ? !!f.autorizacion : false,
+      p_city: esNuevo ? (f.city.trim() || null) : null,
+      p_genero: esNuevo ? (f.genero || null) : null,
+      p_posicion: esNuevo ? (f.posicion === 'Arquero' ? 'Portero' : f.posicion) : null,
+    })
+    if (error) { setGuardandoNuevo(false); return setErrorNuevo(mensajeInscripcion(error, 'No se pudo inscribir. Revisa los datos e intenta de nuevo.')) }
+    if (data?.player_id) await subirFotosNuevo(data.player_id, ft, pideCedula || (!simple && esNuevo === false))
+    setGuardandoNuevo(false)
+    showMsg(`${data?.name || 'Jugador'} inscrito en el torneo ✓`)
+    resetNuevo(); setMostrarNuevo(false)
+    await Promise.all([fetchTorneos(), fetchJugadoresGlobal()])
   }
 
   async function handleGuardarTelefono(jugador) {
@@ -505,7 +646,7 @@ export default function EquipoHistorialPage() {
               )}
               {esDueno && (
                 <div style={{ fontSize:'.7rem', color:S.gold, marginTop:'6px', fontWeight:'700' }}>
-                  👑 Eres el encargado de este equipo — puedes desactivar jugadores y corregir su teléfono/foto en la pestaña Jugadores.
+                  👑 Eres el encargado de este equipo — en la pestaña Jugadores puedes inscribir y quitar jugadores de cada torneo (dentro del cupo y mientras la inscripción esté abierta) y corregir su teléfono/foto.
                 </div>
               )}
             </div>
@@ -749,6 +890,19 @@ export default function EquipoHistorialPage() {
               const limiteTorneo = tInfo?.tournaments?.limite_jugadores_equipo || null
               const cupoUsado = regsActivasTorneo.length
               const cupoLleno = !!(limiteTorneo && cupoUsado >= limiteTorneo)
+              // Inscripción de jugadores: abierta o cerrada según el torneo (fecha o fase de grupos). Cerrada = no se agrega ni se quita.
+              const estadoSel = torneoSel ? estadoInsc[torneoSel] : null
+              const inscCerrada = estadoSel?.abierta === false
+              const fechaCierre = estadoSel?.modo === 'fecha' && estadoSel?.hasta
+                ? new Date(String(estadoSel.hasta) + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+              const textoInsc = inscCerrada ? (estadoSel.motivo || 'La inscripción de jugadores está cerrada.')
+                : fechaCierre ? `Inscripción de jugadores abierta hasta el ${fechaCierre} (todo ese día).`
+                : estadoSel?.modo === 'fase_grupos' ? 'Inscripción de jugadores abierta hasta que empiecen las eliminatorias.' : ''
+              const menorNuevo = esMenorFecha(nuevoJug.nacimiento)
+              const torneoInfoNuevo = tInfo?.tournaments || {}
+              const simpleNuevo = !!torneoInfoNuevo.registro_simple
+              const pideCedulaNuevo = !simpleNuevo && torneoInfoNuevo.requiere_cedula !== false
+              const campoNuevo = { width:'100%', boxSizing:'border-box', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'8px', padding:'9px 10px', color:S.text, fontSize:'.8rem', outline:'none' }
               const candidatosAgregar = torneoSel
                 ? jugadoresEquipoGlobal.filter(j => !regEnTorneo(j.id) &&
                     (!busquedaAgregarTorneo.trim() || j.name?.toLowerCase().includes(busquedaAgregarTorneo.toLowerCase()) || j.numero_cedula?.includes(busquedaAgregarTorneo)))
@@ -763,23 +917,125 @@ export default function EquipoHistorialPage() {
                     <div style={{ fontWeight:'700', fontSize:'.82rem', color:S.text }}>
                       Cupo de {tInfo?.tournaments?.name}: <span style={{ color: cupoLleno ? S.loss : S.cyan }}>{cupoUsado}{limiteTorneo ? ` / ${limiteTorneo}` : ''}</span>
                     </div>
-                    {!cupoLleno && (
-                      <button onClick={() => setMostrarAgregarTorneo(v => !v)}
-                        style={{ background: mostrarAgregarTorneo ? 'none' : S.cyan, border: mostrarAgregarTorneo ? `1px solid ${S.border}` : 'none', borderRadius:'8px', padding:'6px 12px', cursor:'pointer', color: mostrarAgregarTorneo ? S.text2 : '#000', fontSize:'.76rem', fontWeight:'700' }}>
-                        {mostrarAgregarTorneo ? 'Cerrar' : '+ Agregar jugador'}
-                      </button>
+                    {!cupoLleno && !inscCerrada && (
+                      <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                        <button onClick={() => { setMostrarAgregarTorneo(v => !v); setMostrarNuevo(false) }}
+                          style={{ background: mostrarAgregarTorneo ? 'none' : S.cyan, border: mostrarAgregarTorneo ? `1px solid ${S.border}` : 'none', borderRadius:'8px', padding:'6px 12px', cursor:'pointer', color: mostrarAgregarTorneo ? S.text2 : '#000', fontSize:'.76rem', fontWeight:'700' }}>
+                          {mostrarAgregarTorneo ? 'Cerrar' : '+ Agregar jugador'}
+                        </button>
+                        <button onClick={() => { setMostrarNuevo(v => !v); setMostrarAgregarTorneo(false); resetNuevo() }}
+                          style={{ background: mostrarNuevo ? 'none' : S.win, border: mostrarNuevo ? `1px solid ${S.border}` : 'none', borderRadius:'8px', padding:'6px 12px', cursor:'pointer', color: mostrarNuevo ? S.text2 : '#fff', fontSize:'.76rem', fontWeight:'700' }}>
+                          {mostrarNuevo ? 'Cerrar' : '+ Jugador nuevo'}
+                        </button>
+                      </div>
                     )}
                   </div>
 
-                  {/* Nota fija: "+ Agregar jugador" de acá abajo solo sirve para
-                      sumar a ESTE torneo a alguien que YA es del equipo (ya
-                      tiene foto, teléfono, etc. cargados de antes). La ÚNICA
-                      forma de inscribir a una persona totalmente nueva es con
-                      el link de registro — este portal no lo genera, hay que
-                      pedírselo al organizador del torneo. */}
-                  <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'8px', lineHeight:1.5 }}>
-                    ℹ️ Acá solo puedes sumar jugadores que <b>ya hacen parte del equipo</b>. La única manera de inscribir a alguien nuevo (que nunca ha jugado con este equipo) es con el <b>link de registro</b> — pedíselo al organizador del torneo.
-                  </div>
+                  {textoInsc && (
+                    <div style={{ marginTop:'10px', borderRadius:'10px', padding:'9px 11px', fontSize:'.76rem', lineHeight:1.45, fontWeight:'600',
+                      background: inscCerrada ? `${S.loss}1f` : S.card2, color: inscCerrada ? S.loss : S.text2, border:`1px solid ${inscCerrada ? S.loss + '55' : S.border}` }}>
+                      {inscCerrada ? '🔒 ' : '🗓️ '}{textoInsc}
+                    </div>
+                  )}
+
+                  {/* «+ Agregar jugador»: suma a este torneo a alguien que YA es del equipo. «+ Jugador nuevo»: inscribe a alguien nuevo
+                      con su cédula (si ya está en Golmebol, con la cédula basta). El servidor vigila el cupo y que la inscripción siga abierta. */}
+                  {!inscCerrada && <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'8px', lineHeight:1.5 }}>
+                    ℹ️ <b>+ Agregar jugador</b> suma a alguien que ya es de tu equipo. <b>+ Jugador nuevo</b> inscribe a una persona nueva con su cédula. Con <b>Quitar del torneo</b> liberas un cupo.
+                  </div>}
+
+                  {!cupoLleno && !inscCerrada && mostrarNuevo && (
+                    <div style={{ marginTop:'10px', background:S.card2, borderRadius:'10px', padding:'12px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                      <div style={{ fontSize:'.74rem', color:S.muted, lineHeight:1.4 }}>Paso 1: escribe la cédula y toca <b>Buscar</b>. Te pediremos los mismos datos que el link de registro.</div>
+                      <div style={{ display:'flex', gap:'6px' }}>
+                        <input value={nuevoJug.cedula} onChange={e => { setNuevoJug(f => ({ ...f, cedula: e.target.value })); if (pasoNuevo) { setPasoNuevo(null); setJugExistente(null) } }}
+                          inputMode="numeric" placeholder="Cédula" style={{ ...campoNuevo, flex:1 }}/>
+                        <button onClick={() => handleBuscarCedulaNuevo(torneoSel)} disabled={buscandoNuevo}
+                          style={{ background:S.cyan, border:'none', borderRadius:'8px', padding:'0 14px', cursor:'pointer', color:'#000', fontSize:'.8rem', fontWeight:'800', opacity: buscandoNuevo ? .7 : 1 }}>
+                          {buscandoNuevo ? '…' : 'Buscar'}
+                        </button>
+                      </div>
+
+                      {pasoNuevo === 'existente' && jugExistente && (
+                        <div style={{ background:`${S.win}1f`, border:`1px solid ${S.win}55`, borderRadius:'8px', padding:'9px 10px', fontSize:'.78rem', color:S.text, lineHeight:1.45 }}>
+                          ✅ <b>{jugExistente.name}</b> ya está en Golmebol. Se inscribirá con sus mismos datos.
+                          {!jugExistente.photo_face_url && <div style={{ marginTop:'4px', color:S.muted }}>Todavía no tiene foto de perfil: súbela abajo para continuar.</div>}
+                        </div>
+                      )}
+
+                      {pasoNuevo === 'nuevo' && (
+                        <>
+                          <div style={{ fontSize:'.74rem', color:S.muted, lineHeight:1.4 }}>Esa cédula no está registrada: llena los datos del jugador nuevo.</div>
+                          <input value={nuevoJug.nombre} onChange={e => setNuevoJug(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre completo *" style={campoNuevo}/>
+                          <select value={nuevoJug.posicion} onChange={e => setNuevoJug(f => ({ ...f, posicion: e.target.value }))} style={campoNuevo}>
+                            <option value="">Posición *</option>
+                            <option value="Arquero">Arquero</option>
+                            <option value="Jugador">Jugador</option>
+                          </select>
+                        </>
+                      )}
+
+                      {(pasoNuevo === 'nuevo' || (pasoNuevo === 'existente' && jugExistente && !jugExistente.photo_face_url)) && (
+                        <FotoNueva label="Foto del jugador *" hint="La cara del jugador, no del documento" file={fotosNuevo.perfil} onPick={file => setFotosNuevo(x => ({ ...x, perfil: file }))} S={S}/>
+                      )}
+
+                      {pasoNuevo === 'nuevo' && (
+                        <>
+                          <label style={{ fontSize:'.72rem', color:S.muted }}>Fecha de nacimiento *
+                            <input type="date" value={nuevoJug.nacimiento} onChange={e => setNuevoJug(f => ({ ...f, nacimiento: e.target.value, autorizacion: false }))} style={{ ...campoNuevo, marginTop:'4px' }}/>
+                          </label>
+                          {menorNuevo && (
+                            <label style={{ display:'flex', gap:'8px', alignItems:'flex-start', fontSize:'.76rem', color:S.text, lineHeight:1.4 }}>
+                              <input type="checkbox" checked={nuevoJug.autorizacion} onChange={e => setNuevoJug(f => ({ ...f, autorizacion: e.target.checked }))} style={{ marginTop:'2px' }}/>
+                              Es menor de edad y tengo la autorización de un adulto responsable para que juegue.
+                            </label>
+                          )}
+                          {!simpleNuevo && (
+                            <>
+                              <input value={nuevoJug.telefono} onChange={e => setNuevoJug(f => ({ ...f, telefono: e.target.value }))} inputMode="tel" placeholder="Teléfono / WhatsApp *" style={campoNuevo}/>
+                              <input value={nuevoJug.city} onChange={e => setNuevoJug(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad *" style={campoNuevo}/>
+                              <select value={nuevoJug.genero} onChange={e => setNuevoJug(f => ({ ...f, genero: e.target.value }))} style={campoNuevo}>
+                                <option value="">Género *</option>
+                                <option value="Masculino">Masculino</option>
+                                <option value="Femenino">Femenino</option>
+                              </select>
+                            </>
+                          )}
+                        </>
+                      )}
+
+                      {pasoNuevo === 'nuevo' && pideCedulaNuevo && (
+                        <>
+                          <div style={{ fontSize:'.76rem', fontWeight:'700', color:S.text }}>📸 Fotos del documento de identidad *</div>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                            <FotoNueva label="Frente" hint="Foto del documento" file={fotosNuevo.frente} onPick={file => setFotosNuevo(x => ({ ...x, frente: file }))} S={S}/>
+                            <FotoNueva label="Atrás" hint="Foto del documento" file={fotosNuevo.atras} onPick={file => setFotosNuevo(x => ({ ...x, atras: file }))} S={S}/>
+                          </div>
+                          <div style={{ background:`${S.loss}1f`, color:S.loss, borderRadius:'8px', padding:'8px 10px', fontSize:'.72rem', lineHeight:1.45 }}>
+                            ⚠️ Deben ser fotos reales del documento. Si el organizador ve que no lo son, no autorizará al jugador.
+                          </div>
+                        </>
+                      )}
+
+                      {pasoNuevo === 'existente' && jugExistente && !simpleNuevo && (!jugExistente.tiene_cedula_frontal || !jugExistente.tiene_cedula_trasera) && (
+                        <>
+                          <div style={{ fontSize:'.74rem', color:S.muted, lineHeight:1.4 }}>📸 Si quieres, aprovecha para subir la foto de su documento (opcional).</div>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                            {!jugExistente.tiene_cedula_frontal && <FotoNueva label="Frente" hint="Foto del documento" file={fotosNuevo.frente} onPick={file => setFotosNuevo(x => ({ ...x, frente: file }))} S={S}/>}
+                            {!jugExistente.tiene_cedula_trasera && <FotoNueva label="Atrás" hint="Foto del documento" file={fotosNuevo.atras} onPick={file => setFotosNuevo(x => ({ ...x, atras: file }))} S={S}/>}
+                          </div>
+                        </>
+                      )}
+
+                      {errorNuevo && <div style={{ background:`${S.loss}1f`, color:S.loss, borderRadius:'8px', padding:'8px 10px', fontSize:'.76rem', fontWeight:'600', lineHeight:1.4 }}>{errorNuevo}</div>}
+                      {pasoNuevo && (
+                        <button onClick={() => handleInscribirNuevo(torneoSel, torneoInfoNuevo)} disabled={guardandoNuevo}
+                          style={{ background:S.win, border:'none', borderRadius:'10px', padding:'12px', cursor: guardandoNuevo ? 'default' : 'pointer', color:'#fff', fontSize:'.86rem', fontWeight:'800', opacity: guardandoNuevo ? .7 : 1 }}>
+                          {guardandoNuevo ? 'Inscribiendo y subiendo fotos…' : 'Paso 2: inscribir en el torneo'}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {cupoLleno && (
                     <div style={{ marginTop:'10px' }}>
@@ -791,7 +1047,7 @@ export default function EquipoHistorialPage() {
                     </div>
                   )}
 
-                  {!cupoLleno && mostrarAgregarTorneo && (
+                  {!cupoLleno && !inscCerrada && mostrarAgregarTorneo && (
                     <div style={{ marginTop:'10px' }}>
                       <input value={busquedaAgregarTorneo} onChange={e => setBusquedaAgregarTorneo(e.target.value)}
                         placeholder="Buscar jugador del equipo por nombre o cédula..."
@@ -891,7 +1147,7 @@ export default function EquipoHistorialPage() {
                               <Pencil size={12}/> {j.telefono || 'Sin teléfono'}
                             </button>
                           )}
-                          {regJugadorTorneo && (
+                          {regJugadorTorneo && !inscCerrada && (
                             <button onClick={() => handleQuitarDeTorneo(regJugadorTorneo, torneoSel)} disabled={quitandoJugadorId === j.id}
                               style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'6px', background:'none', border:`1px solid ${S.loss}66`, borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:S.loss, fontSize:'.76rem', fontWeight:'600' }}>
                               <Power size={12}/> {quitandoJugadorId === j.id ? 'Quitando...' : 'Quitar del torneo'}
