@@ -11,6 +11,7 @@ import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { useAuthStore } from '../store/authStore'
 import { comprimirImagen } from '../lib/imageCompress'
 import { compararPosiciones } from '../lib/torneoTablas'
+import { FASES } from '../lib/palmaresJugador'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -921,10 +922,10 @@ export default function EquipoHistorialPage() {
                 {logros.map(l => (
                   <div key={l.id} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'14px 16px', display:'flex', alignItems:'center', gap:'14px' }}>
                     <div style={{ fontSize:'1.6rem', width:'48px', height:'48px', borderRadius:'14px', background:S.card2, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      {l.tipo === 'campeon' ? '🏆' : l.tipo === 'subcampeon' ? '🥈' : l.tipo === 'tercer_puesto' ? '🥉' : l.tipo === 'goleador' ? '⚽' : l.tipo === 'mejor_jugador' ? '⭐' : '🎖️'}
+                      {l.tipo === 'campeon' ? '🏆' : (l.tipo === 'subcampeon' || l.tipo === 'final') ? '🥈' : l.tipo === 'tercer_puesto' ? '🥉' : l.tipo === 'goleador' ? '⚽' : l.tipo === 'mejor_jugador' ? '⭐' : FASES[l.tipo] ? '🎽' : '🎖️'}
                     </div>
                     <div>
-                      <div style={{ fontWeight:'700', color:S.text, fontSize:'.85rem', textTransform:'capitalize' }}>{l.tipo?.replace(/_/g, ' ')}</div>
+                      <div style={{ fontWeight:'700', color:S.text, fontSize:'.85rem', textTransform:'capitalize' }}>{({ semifinal: 'Eliminado en semifinal', cuartos: 'Eliminado en cuartos', octavos: 'Eliminado en octavos', fase_grupos: 'Eliminado en fase de grupos', final: 'Finalista' })[l.tipo] || l.tipo?.replace(/_/g, ' ')}</div>
                       <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'2px' }}>{l.tournaments?.name}</div>
                     </div>
                   </div>

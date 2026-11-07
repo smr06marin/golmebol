@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { hydratePlayersPublico } from './playersPublico'
 import { contarMarcasGoles, nombreMarcaGoles } from './marcasGoles'
+import { FASES } from './palmaresJugador'
 
 // ── Datos de los perfiles PÚBLICOS de equipo (/e/:id) y jugador (/j/:id) ────
 //
@@ -112,7 +113,21 @@ export async function cargarEquipoPublico(id) {
   const subcampeonatos = logros.filter(l => l.tipo === 'subcampeon')
   const terceros = logros.filter(l => l.tipo === 'tercer_puesto')
 
-  return { equipo, totales: tot, forma, jugados, proximos, torneos, plantilla, campeonatos, subcampeonatos, terceros }
+  // Hasta qué fase llegó en cada torneo (campeón, final, semifinal, cuartos, octavos, fase de grupos…).
+  // Se queda con la mejor fase por torneo, ordenada de la más alta a la más baja.
+  const mejorFase = {}
+  logros.forEach(l => {
+    const f = FASES[l.tipo]
+    if (!f) return
+    const k = l.tournament_id || l.id
+    if (mejorFase[k] && mejorFase[k].rango <= f.rango) return
+    mejorFase[k] = { ...l, etiqueta: f.etiqueta, rango: f.rango, metal: f.metal }
+  })
+  const fases = Object.values(mejorFase).sort((a, b) => a.rango - b.rango
+    || String(b.tournaments?.season || '').localeCompare(String(a.tournaments?.season || ''))
+    || String(a.tournaments?.name || '').localeCompare(String(b.tournaments?.name || '')))
+
+  return { equipo, totales: tot, forma, jugados, proximos, torneos, plantilla, campeonatos, subcampeonatos, terceros, fases }
 }
 
 // ── ARQUERO ─────────────────────────────────────────────────────────────────

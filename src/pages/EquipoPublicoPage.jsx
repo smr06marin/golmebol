@@ -61,13 +61,12 @@ function FilaPartido({ p, equipoId, navigate }) {
   )
 }
 
-function Palmares({ campeonatos, subcampeonatos, terceros, navigate }) {
-  const items = [
-    ...campeonatos.map(l => ({ ...l, icono: '🏆', texto: 'Campeón' })),
-    ...subcampeonatos.map(l => ({ ...l, icono: '🥈', texto: 'Subcampeón' })),
-    ...terceros.map(l => ({ ...l, icono: '🥉', texto: 'Tercer puesto' })),
-  ]
-  if (items.length === 0) return <Vacio>Aún no tiene títulos registrados</Vacio>
+const TEXTO_FASE = { campeon: 'Campeón', campeonato: 'Campeón', subcampeon: 'Subcampeón', final: 'Finalista', tercer_puesto: 'Tercer puesto', semifinal: 'Eliminado en semifinal', cuartos: 'Eliminado en cuartos', octavos: 'Eliminado en octavos', fase_grupos: 'Eliminado en fase de grupos' }
+const ICONO_FASE = { campeon: '🏆', campeonato: '🏆', subcampeon: '🥈', final: '🥈', tercer_puesto: '🥉' }
+
+function Palmares({ fases, navigate }) {
+  const items = (fases || []).map(l => ({ ...l, icono: ICONO_FASE[l.tipo] || '🎽', texto: TEXTO_FASE[l.tipo] || l.etiqueta }))
+  if (items.length === 0) return <Vacio>Aún no tiene torneos terminados</Vacio>
   return items.map(l => (
     <div key={l.id} role="link" tabIndex={0} onClick={() => l.tournament_id && navigate(`/t/${l.tournament_id}`)}
       style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 16px', borderBottom: `1px solid ${C.soft}`, cursor: 'pointer' }}>
@@ -142,7 +141,7 @@ export default function EquipoPublicoPage() {
   if (error && !datos) return <NoEncontrado que="este equipo (revisa tu conexión e intenta de nuevo)"/>
   if (!datos?.equipo) return <NoEncontrado que="este equipo"/>
 
-  const { equipo, totales, forma, jugados, proximos, torneos, plantilla, campeonatos, subcampeonatos, terceros } = datos
+  const { equipo, totales, forma, jugados, proximos, torneos, plantilla, campeonatos, fases } = datos
   const titulos = campeonatos.length
   const dif = totales.gf - totales.gc
   const PL = puestos?.plataforma || {}            // puestos entre todos los equipos
@@ -200,7 +199,7 @@ export default function EquipoPublicoPage() {
               </Tarjeta>
             )}
             <Tarjeta titulo={`Palmarés${titulos ? ` · ${titulos} ${titulos === 1 ? 'título' : 'títulos'}` : ''}`} aside={<ChipPuesto p={PL.camp}/>}>
-              <Palmares campeonatos={campeonatos} subcampeonatos={subcampeonatos} terceros={terceros} navigate={navigate}/>
+              <Palmares fases={fases} navigate={navigate}/>
             </Tarjeta>
             <Tarjeta titulo="Últimos resultados" aside={jugados.length > 5 ? <button onClick={() => setTab('partidos')} style={{ border: 'none', background: 'none', color: C.green, fontWeight: 800, fontSize: '.72rem', cursor: 'pointer', fontFamily: 'inherit', textTransform: 'none' }}>Ver todos</button> : null}>
               {jugados.length === 0 ? <Vacio>Aún no ha jugado partidos</Vacio> : jugados.slice(0, 5).map(p => <FilaPartido key={p.id} p={p} equipoId={equipo.id} navigate={navigate}/>)}
