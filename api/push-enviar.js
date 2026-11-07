@@ -194,7 +194,18 @@ export function avisosParaDispositivo(items) {
 }
 
 // ── Handler ───────────────────────────────────────────────────
+// Un solo archivo para el cron y para la prueba del botón de Avisos (límite de 12 funciones de Vercel Hobby)
 export default async function handler(req, res) {
+  let accion = ''
+  try { accion = new URL(req.url, 'http://x').searchParams.get('accion') || '' } catch { /* sin accion */ }
+  if (accion === 'probar') {
+    const { probar } = await import('./_pushProbar.js')
+    return probar(req, res)
+  }
+  return enviarCola(req, res)
+}
+
+async function enviarCola(req, res) {
   const secreto = process.env.PUSH_CRON_SECRET
   const recibido = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   if (!secreto || recibido !== secreto) return res.status(401).json({ error: 'No autorizado' })

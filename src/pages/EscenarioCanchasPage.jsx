@@ -19,18 +19,44 @@ const BTN = { boxSizing:'border-box', display:'flex', alignItems:'center', justi
 const BTN_SUAVE = { boxSizing:'border-box', display:'flex', alignItems:'center', justifyContent:'center', width:'100%', minHeight:'46px', borderRadius:'12px', cursor:'pointer', fontWeight:800, fontSize:'.88rem', fontFamily:'inherit', background:'none' }
 
 // Ventana que sube desde abajo (en el celular se alcanza con el pulgar). Siempre trae un título y un botón visible para cerrar.
-function Hoja({ titulo, subtitulo, onClose, children }) {
+// `completa`: ocupa toda la pantalla, con título fijo arriba, el contenido que se desplaza en medio y los botones
+// (`pie`) fijos abajo. Así al arrastrar para subir o bajar no se "pega" ni se mueve la página de atrás.
+function Hoja({ titulo, subtitulo, onClose, completa, pie, children }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+  const cabecera = (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'10px' }}>
+      <div style={{ minWidth:0 }}>
+        <div style={{ fontWeight:900, fontSize:'1.12rem', lineHeight:1.25 }}>{titulo}</div>
+        {subtitulo && <div style={{ fontSize:'.82rem', color:S.muted, marginTop:'3px' }}>{subtitulo}</div>}
+      </div>
+      <button onClick={onClose} aria-label="Cerrar" style={{ flexShrink:0, width:'44px', height:'44px', borderRadius:'12px', background:S.card2, border:`1px solid ${S.border}`, cursor:'pointer', color:S.text2, display:'flex', alignItems:'center', justifyContent:'center' }}><X size={20}/></button>
+    </div>
+  )
+  if (completa) return (
+    <div role="dialog" aria-modal="true" aria-label={titulo}
+      style={{ position:'fixed', top:0, left:0, right:0, bottom:0, height:'100dvh', zIndex:500, background:S.navy, display:'flex', flexDirection:'column', touchAction:'manipulation' }}>
+      <div style={{ flexShrink:0, padding:'max(12px, env(safe-area-inset-top)) 16px 12px', borderBottom:`1px solid ${S.border}`, background:S.card }}>
+        <div style={{ maxWidth:'520px', margin:'0 auto' }}>{cabecera}</div>
+      </div>
+      <div style={{ flex:1, minHeight:0, overflowY:'auto', WebkitOverflowScrolling:'touch', overscrollBehavior:'contain', padding:'18px 16px 24px' }}>
+        <div style={{ maxWidth:'520px', margin:'0 auto' }}>{children}</div>
+      </div>
+      {pie && (
+        <div style={{ flexShrink:0, maxHeight:'50vh', overflowY:'auto', overscrollBehavior:'contain', padding:'12px 16px calc(14px + env(safe-area-inset-bottom))', borderTop:`1px solid ${S.border}`, background:S.card }}>
+          <div style={{ maxWidth:'520px', margin:'0 auto', display:'grid', gap:'10px' }}>{pie}</div>
+        </div>
+      )}
+    </div>
+  )
   return (
     <div role="dialog" aria-modal="true" aria-label={titulo} onClick={e => { if (e.target === e.currentTarget) onClose() }}
-      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.68)', zIndex:500, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'22px 22px 0 0', width:'100%', maxWidth:'480px', maxHeight:'92vh', overflowY:'auto', padding:'18px 18px 24px', boxSizing:'border-box' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'10px', marginBottom:'14px' }}>
-          <div style={{ minWidth:0 }}>
-            <div style={{ fontWeight:900, fontSize:'1.12rem', lineHeight:1.25 }}>{titulo}</div>
-            {subtitulo && <div style={{ fontSize:'.82rem', color:S.muted, marginTop:'3px' }}>{subtitulo}</div>}
-          </div>
-          <button onClick={onClose} aria-label="Cerrar" style={{ flexShrink:0, width:'44px', height:'44px', borderRadius:'12px', background:S.card2, border:`1px solid ${S.border}`, cursor:'pointer', color:S.text2, display:'flex', alignItems:'center', justifyContent:'center' }}><X size={20}/></button>
-        </div>
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'22px 22px 0 0', width:'100%', maxWidth:'480px', maxHeight:'92vh', overflowY:'auto', overscrollBehavior:'contain', padding:'18px 18px 24px', boxSizing:'border-box' }}>
+        <div style={{ marginBottom:'14px' }}>{cabecera}</div>
         {children}
       </div>
     </div>
@@ -147,7 +173,11 @@ function ModalReserva({ escenario, canchas, reservas, horas, cancha, fecha, hora
   const chip = activo => ({ flex:1, minHeight:'46px', borderRadius:'12px', cursor:'pointer', fontWeight:800, fontSize:'.9rem', fontFamily:'inherit', border: activo ? `2px solid ${S.cyan}` : `1px solid ${S.border}`, background: activo ? S.cyanDim : S.card2, color: activo ? S.cyan : S.text2 })
 
   return (
-    <Hoja titulo="Anotar una reserva" subtitulo={`${nombreCancha(canchas, cancha)} · ${fmtDate(fecha)} · ${fmtHora12(hora)}`} onClose={onClose}>
+    <Hoja completa titulo="Anotar una reserva" subtitulo={`${nombreCancha(canchas, cancha)} · ${fmtDate(fecha)} · ${fmtHora12(hora)}`} onClose={onClose}
+      pie={<>
+        {error && <div style={{ color:'#ff7b72', fontSize:'.86rem', fontWeight:700, textAlign:'center' }}>{error}</div>}
+        <button onClick={handleReservar} disabled={guardando} style={{ ...BTN, background:S.cyan, color:'#0a1a05', opacity:guardando?.7:1 }}>{guardando ? 'Guardando…' : 'Guardar reserva'}</button>
+      </>}>
       <div style={{ display:'grid', gap:'14px' }}>
         <div><label style={lbl}>¿Quién reserva?</label><input value={nombre} onChange={e=>setNombre(e.target.value)} style={inp} placeholder="Nombre" autoComplete="off"/></div>
         <div><label style={lbl}>Teléfono</label><input value={telefono} onChange={e=>setTelefono(e.target.value)} style={inp} placeholder="300 123 4567" inputMode="tel" autoComplete="off"/></div>
@@ -171,8 +201,6 @@ function ModalReserva({ escenario, canchas, reservas, horas, cancha, fecha, hora
           <span><b style={{ fontSize:'.9rem' }}>Repetir cada semana</b><br/><span style={{ fontSize:'.76rem', color:S.muted }}>Lo anota el mismo día y hora por 8 semanas</span></span>
         </button>
         {monto > 0 && <div style={{ fontSize:'.88rem', color:S.text2, textAlign:'center' }}>Valor{nHoras > 1 ? ` de ${nHoras} horas` : ' de la cancha'}: <b style={{ color:S.gold }}>{fmtMoney(monto)}</b></div>}
-        {error && <div style={{ color:'#ff7b72', fontSize:'.86rem', fontWeight:700, textAlign:'center' }}>{error}</div>}
-        <button onClick={handleReservar} disabled={guardando} style={{ ...BTN, background:S.cyan, color:'#0a1a05', opacity:guardando?.7:1 }}>{guardando ? 'Guardando…' : 'Guardar reserva'}</button>
         <button onClick={handleBloquear} disabled={guardando} style={{ ...BTN_SUAVE, border:`1px solid ${S.border}`, color:S.muted, fontSize:'.8rem', opacity:guardando?.7:1 }}>
           <Wrench size={15} style={{ marginRight:6 }}/> Mejor cerrar este horario (mantenimiento)
         </button>

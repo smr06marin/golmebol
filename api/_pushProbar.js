@@ -1,3 +1,4 @@
+// (Se llama desde api/push-enviar.js con ?accion=probar: Vercel Hobby solo deja 12 funciones, por eso no es un archivo propio.)
 // Prueba de avisos desde el celular: el botón «Enviarme una prueba» (hoja de Avisos) llama aquí.
 // Manda UNA notificación de prueba a ESE celular y dice qué encontró el servidor (si está registrado, cuántos equipos
 // y torneos sigue, si el envío funcionó o por qué no). Sirve para saber en 20 segundos si los avisos de verdad llegan.
@@ -19,7 +20,7 @@ function cabeceras(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 }
 
-export default async function handler(req, res) {
+export async function probar(req, res) {
   cabeceras(res)
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' })

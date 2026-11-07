@@ -123,14 +123,14 @@ export async function sincronizarAvisos() {
   return { ok: true }
 }
 
-// Manda una notificación de prueba a ESTE celular (api/push-probar.js) y devuelve qué encontró el servidor.
+// Manda una notificación de prueba a ESTE celular (api/_pushProbar.js) y devuelve qué encontró el servidor.
 // Primero vuelve a registrar el celular, para que la prueba sea con lo que de verdad está guardado.
 export async function probarAvisos() {
   const reg = await sincronizarAvisos()
   const token = esNativo() ? leer(K_TOKEN, null) : (await suscripcionWebActual())?.endpoint
   if (!token) return { error: 'sin_token', registroError: reg.error }
   try {
-    const url = esNativo() ? 'https://golmebol.com/api/push-probar' : '/api/push-probar'
+    const url = esNativo() ? 'https://golmebol.com/api/push-enviar?accion=probar' : '/api/push-enviar?accion=probar'
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
     const j = await r.json().catch(() => ({}))
     if (!r.ok && !j.registrado && !j.error) return { error: 'servidor', registroError: reg.error }
