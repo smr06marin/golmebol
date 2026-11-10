@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { leerPerfilPrevio, guardarPerfilPrevio, leerCopiaPerfil, guardarCopiaPerfil, olvidarPerfilGuardado } from '../lib/perfilPrevio'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import StatRankingModal from '../components/card/StatRankingModal'
@@ -72,8 +73,10 @@ function NotifBanner({ notifs, onDismiss }) {
   )
 }
 
-// Perfil ya cargado en esta sesión (en memoria, se pierde al recargar la página)
-let CACHE_PERFIL = null
+// Perfil ya cargado: en memoria para volver rápido dentro de la sesión, y copiado en el celular
+// (atado al usuario) para que la próxima vez que entre se vea de inmediato mientras se actualiza.
+let CACHE_PERFIL = leerCopiaPerfil()
+function guardarCopiaEnCelular() { if (CACHE_PERFIL) guardarCopiaPerfil(CACHE_PERFIL) }
 
 export default function PlayerHomePage() {
   const navigate   = useNavigate()
@@ -126,8 +129,50 @@ export default function PlayerHomePage() {
     // Supabase (era una ida y vuelta extra en cada entrada).
     if (!user) { navigate('/jugador/login'); return }
 
+    // Todo lo que depende del jugador se pide junto (solo necesita su id y cédula).
+    function pedirDependientes(pid, cedula) {
+      return Promise.all([
+      // Solo las columnas que usan las estadísticas (antes traía todas), de la más reciente a la más vieja (para la racha)
+      supabase.from('player_match_stats').select('goals_scored, goals_conceded, team_result, yellow_cards, red_cards, blue_cards, fue_arquero').eq('player_id', pid).order('created_at', { ascending: false }),
+      supabase.from('tournament_logros').select('tipo').eq('player_id', pid).eq('tipo', 'campeon'),
+      supabase.from('sponsors').select('*').eq('activo', true),
+      supabase
+        .from('player_card_level_progress')
+        .select('*, card_levels(card_design_id, card_id, logros_requeridos)')
+        .eq('player_id', pid),
+      supabase.from('cards').select('*, card_levels(*)').gt('orden', 4).order('orden'),
+      supabase
+        .from('tournament_player_registrations')
+        .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
+        .eq('player_id', pid).eq('activo', true),
+      supabase.from('team_players').select('id').eq('player_id', pid).limit(1),
+      supabase.from('predicciones').select('puntos_ganados, match_id').eq('player_id', pid).eq('resuelta', true).gt('puntos_ganados', 0),
+      supabase.from('player_notifications').select('*').eq('player_id', pid).eq('tipo', 'predix_ronda').eq('leida', false),
+      // ¿Es DUEÑO de algún equipo? Va en el mismo Promise.all (no encadenado
+      // después) para que "sinEquipo" ya lo tenga en cuenta abajo — si no, un
+      // dueño que no está en ninguna plantilla quedaba atrapado en la
+      // pantalla de "solo PREDIX" antes de que esto terminara de llegar.
+      cedula
+        ? (async () => {
+            const r = await supabase.rpc('mis_equipos_dueno')
+            if (!r.error) return r
+            // base sin migrar: consulta directa de antes
+            return supabase.from('teams').select('id, name, created_at').eq('representante_cedula', String(cedula))
+          })()
+        : Promise.resolve({ data: [] }),
+      supabase.from('player_notifications').select('*').eq('player_id', pid).eq('tipo', 'nueva_tarjeta').eq('leida', false),
+      ])
+    }
+
+    // Con el id del jugador guardado al iniciar sesión, las consultas salen AL MISMO TIEMPO que el perfil
+    // (antes esperaban a que el perfil llegara: dos viajes seguidos a la base).
+    const previo = leerPerfilPrevio(user.id)
+    let depPromise = previo ? pedirDependientes(previo.playerId, previo.cedula) : null
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
     if (!p) { navigate('/jugador/login'); return }
+    // Si el id guardado no era el de este perfil (no debería pasar), se piden de nuevo con el correcto
+    if (depPromise && p.id !== previo.playerId) { depPromise.catch(() => {}); depPromise = null }
+    guardarPerfilPrevio(user.id, p.id, p.numero_cedula)
     // Árbitro puro (no es también jugador): este portal no es para él, va directo a su portal
     if (p.rol === 'arbitro') { navigate(p.es_arbitro_lider ? '/arbitro/lider' : '/arbitro'); return }
     // Acudiente puro (no es también jugador): este portal no es para él, va directo al suyo
@@ -158,37 +203,7 @@ export default function PlayerHomePage() {
       { data: rondaNotifs },
       { data: equiposDuenoData },
       { data: playerNotifs },
-    ] = await Promise.all([
-      // Solo las columnas que usan las estadísticas (antes traía todas), de la más reciente a la más vieja (para la racha)
-      supabase.from('player_match_stats').select('goals_scored, goals_conceded, team_result, yellow_cards, red_cards, blue_cards, fue_arquero').eq('player_id', p.id).order('created_at', { ascending: false }),
-      supabase.from('tournament_logros').select('tipo').eq('player_id', p.id).eq('tipo', 'campeon'),
-      supabase.from('sponsors').select('*').eq('activo', true),
-      supabase
-        .from('player_card_level_progress')
-        .select('*, card_levels(card_design_id, card_id, logros_requeridos)')
-        .eq('player_id', p.id),
-      supabase.from('cards').select('*, card_levels(*)').gt('orden', 4).order('orden'),
-      supabase
-        .from('tournament_player_registrations')
-        .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
-        .eq('player_id', p.id).eq('activo', true),
-      supabase.from('team_players').select('id').eq('player_id', p.id).limit(1),
-      supabase.from('predicciones').select('puntos_ganados, match_id').eq('player_id', p.id).eq('resuelta', true).gt('puntos_ganados', 0),
-      supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'predix_ronda').eq('leida', false),
-      // ¿Es DUEÑO de algún equipo? Va en el mismo Promise.all (no encadenado
-      // después) para que "sinEquipo" ya lo tenga en cuenta abajo — si no, un
-      // dueño que no está en ninguna plantilla quedaba atrapado en la
-      // pantalla de "solo PREDIX" antes de que esto terminara de llegar.
-      p.numero_cedula
-        ? (async () => {
-            const r = await supabase.rpc('mis_equipos_dueno')
-            if (!r.error) return r
-            // base sin migrar: consulta directa de antes
-            return supabase.from('teams').select('id, name, created_at').eq('representante_cedula', String(p.numero_cedula))
-          })()
-        : Promise.resolve({ data: [] }),
-      supabase.from('player_notifications').select('*').eq('player_id', p.id).eq('tipo', 'nueva_tarjeta').eq('leida', false),
-    ])
+    ] = await (depPromise || pedirDependientes(p.id, p.numero_cedula))
 
     const raw       = rawStats || []
     const pj        = raw.length
@@ -244,7 +259,7 @@ export default function PlayerHomePage() {
       ;(pr.data || []).forEach(x => { progresoMap[x.achievement_id] = x })
       const ld = { achievements: a.data || [], progresoMap, cache: ca.data || {}, cardLevels: cl.data || [] }
       setLogrosData(ld)
-      if (CACHE_PERFIL?.userId === user.id) CACHE_PERFIL.logrosData = ld
+      if (CACHE_PERFIL?.userId === user.id) { CACHE_PERFIL.logrosData = ld; guardarCopiaEnCelular() }
     }).catch(() => {})
 
     // NOTIFICACIONES
@@ -365,12 +380,13 @@ export default function PlayerHomePage() {
       .eq('player_id', p.id)
       .order('created_at', { ascending: false })
       .limit(5)
-      .then(({ data }) => { setHistorial(data || []); if (CACHE_PERFIL?.userId === user.id) CACHE_PERFIL.historial = data || [] })
+      .then(({ data }) => { setHistorial(data || []); if (CACHE_PERFIL?.userId === user.id) { CACHE_PERFIL.historial = data || []; guardarCopiaEnCelular() } })
       .catch(() => {})
 
     // Guarda lo cargado en memoria: al volver a esta pantalla en la misma
     // sesión (desde Predix, historial, etc.) aparece al instante y se refresca atrás.
     CACHE_PERFIL = { userId: user.id, player: p, stats: statsCalc, torneos: regs || [], sponsors: spons || [], clp: clp || [], tarjetasCustom: customCards || [], equiposDueno: equiposDuenoData || [], sinEquipo: (regs || []).length === 0 && (tps || []).length === 0 && (equiposDuenoData || []).length === 0, historial: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.historial : [], logrosData: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.logrosData : null }
+    guardarCopiaEnCelular()
   }
 
   function dismissNotif(id) {
@@ -392,6 +408,7 @@ export default function PlayerHomePage() {
   }
 
   async function handleLogout() {
+    olvidarPerfilGuardado()
     await supabase.auth.signOut(); navigate('/jugador/login')
   }
 

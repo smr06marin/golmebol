@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { olvidarPerfilGuardado } from '../lib/perfilPrevio'
 
 export const useAuthStore = create((set) => ({
   user: null,
@@ -12,5 +13,5 @@ export const useAuthStore = create((set) => ({
   setLoading: (loading) => set({ loading }),
   setRol: (rol) => set({ rol, rolCargado: true }),
   empezarCargaRol: () => set({ rolCargado: false }),
-  logout: () => set({ user: null, player: null, rol: null, rolCargado: false }),
+  logout: () => { olvidarPerfilGuardado(); set({ user: null, player: null, rol: null, rolCargado: false }) },
 }))

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { registrarSesionDispositivo, marcarInicioLogin } from '../lib/deviceSession'
 import { conTimeout } from '../lib/conTimeout'
+import { guardarPerfilPrevio } from '../lib/perfilPrevio'
 
 const MSG_TIMEOUT = 'Esto está tardando demasiado. Revisa tu internet e intenta de nuevo.'
 const MSG_CONEXION = 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'
@@ -397,8 +398,10 @@ export default function PlayerLoginPage() {
       // "Ingresando..." para siempre — por eso todo esto va con un límite de
       // tiempo (conTimeout): si pasa, se avisa y se libera el botón.
       await conTimeout((async () => {
-        const { error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email: `${cedula.trim()}@golmebol.com`, password: pass })
         if (authError) { setError('Contraseña incorrecta'); return }
+        // Deja anotado quién es el jugador: la pantalla de destino pide sus datos de una, sin esperar el perfil primero
+        guardarPerfilPrevio(authData?.user?.id, player?.id, cedula.trim())
         // Mientras se verifica lo demás, ya se va bajando la pantalla de destino.
         const ruta = rutaDeCuenta(player)
         precargarDestino(ruta)
