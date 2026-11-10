@@ -13,21 +13,23 @@ import { abrirChatAyuda } from '../lib/abrirChat'
 // Letra del sistema (clara y grande): la fuente angosta de la app se leía muy chica en el celular de varias personas
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 
+// Oscuro y limpio, igual que el resto de los paneles de Golmebol: un solo color de acento (verde) y mucho aire.
+const VERDE = '#6fcf3d'
 const inp = {
-  width: '100%', background: '#fff', border: '2px solid #9aa0a6',
-  borderRadius: '14px', padding: '16px', minHeight: '60px', color: '#202124',
-  fontSize: '1.25rem', fontWeight: 600, outline: 'none', boxSizing: 'border-box',
-  fontFamily: FONT, transition: 'border-color .15s, box-shadow .15s',
+  width: '100%', background: '#161616', border: '1.5px solid #333',
+  borderRadius: '14px', padding: '16px', minHeight: '60px', color: '#fff',
+  fontSize: '1.2rem', fontWeight: 600, outline: 'none', boxSizing: 'border-box',
+  fontFamily: FONT, transition: 'border-color .15s',
 }
-const lbl = { display: 'block', fontSize: '1.05rem', fontWeight: 700, color: '#202124', marginBottom: '8px' }
-const foco  = e => { e.target.style.borderColor = '#1a73e8'; e.target.style.boxShadow = '0 0 0 4px rgba(26,115,232,.18)' }
-const sinFoco = e => { e.target.style.borderColor = '#9aa0a6'; e.target.style.boxShadow = 'none' }
-const btnGrande = (color, deshabilitado) => ({
-  width: '100%', minHeight: '60px', padding: '16px', background: deshabilitado ? '#bdc1c6' : color, border: 'none',
-  borderRadius: '14px', cursor: deshabilitado ? 'not-allowed' : 'pointer', color: '#fff', fontWeight: 800,
-  fontSize: '1.2rem', fontFamily: FONT,
+const lbl = { display: 'block', fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '8px' }
+const foco  = e => { e.target.style.borderColor = VERDE }
+const sinFoco = e => { e.target.style.borderColor = '#333' }
+const btnGrande = (deshabilitado) => ({
+  width: '100%', minHeight: '60px', padding: '16px', background: deshabilitado ? '#2a2a2a' : VERDE, border: 'none',
+  borderRadius: '14px', cursor: deshabilitado ? 'not-allowed' : 'pointer', color: deshabilitado ? '#777' : '#0a1a05', fontWeight: 900,
+  fontSize: '1.15rem', fontFamily: FONT,
 })
-const btnTexto = { background: 'none', border: 'none', cursor: 'pointer', color: '#3c4043', fontSize: '1.02rem', fontWeight: 600, fontFamily: FONT, padding: '12px 6px', textDecoration: 'underline' }
+const btnTexto = { background: 'none', border: 'none', cursor: 'pointer', color: '#8a8a8a', fontSize: '1rem', fontWeight: 600, fontFamily: FONT, padding: '12px 6px', textDecoration: 'underline' }
 
 // Cédula recordada en este celular: así no hay que escribirla cada vez
 const CLAVE_CEDULA = 'golmebol_jugador_cedula'
@@ -38,22 +40,22 @@ const olvidarCedula = () => { try { localStorage.removeItem(CLAVE_CEDULA) } catc
 function ErrorBox({ error }) {
   if (!error) return null
   return (
-    <div role="alert" style={{ background: '#fce8e6', border: '2px solid #f3b5ae', borderRadius: '12px', padding: '14px 16px', fontSize: '1.02rem', lineHeight: 1.4, color: '#b3261e', fontWeight: 600 }}>
+    <div role="alert" style={{ background: 'rgba(229,67,61,.14)', borderRadius: '12px', padding: '14px 16px', fontSize: '1rem', lineHeight: 1.4, color: '#ff8a80', fontWeight: 600 }}>
       {error}
     </div>
   )
 }
 
-// Campo de contraseña con botón para VER lo que se escribe (a mucha gente se le complica acertar la clave a ciegas)
+// Campo de contraseña con botón para VER lo que se escribe
 function CampoClave({ value, onChange, placeholder, autoComplete = 'current-password', autoFocus = false }) {
   const [ver, setVer] = useState(false)
   return (
     <div style={{ position: 'relative' }}>
-      <input value={value} onChange={onChange} placeholder={placeholder} type={ver ? 'text' : 'password'} style={{ ...inp, paddingRight: '104px' }}
+      <input value={value} onChange={onChange} placeholder={placeholder} aria-label={placeholder} type={ver ? 'text' : 'password'} style={{ ...inp, paddingRight: '92px' }}
         autoComplete={autoComplete} autoFocus={autoFocus} autoCapitalize="none" autoCorrect="off" spellCheck={false}
         onFocus={foco} onBlur={sinFoco}/>
       <button type="button" onClick={() => setVer(v => !v)} aria-label={ver ? 'Ocultar contraseña' : 'Ver contraseña'}
-        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: '#e8f0fe', border: 'none', borderRadius: '10px', padding: '10px 14px', minHeight: '44px', color: '#174ea6', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', fontFamily: FONT }}>
+        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', borderRadius: '10px', padding: '10px 12px', minHeight: '44px', color: VERDE, fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', fontFamily: FONT }}>
         {ver ? 'Ocultar' : 'Ver'}
       </button>
     </div>
@@ -90,12 +92,11 @@ function ModalCambiarPass({ cedula, onCambiada }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '420px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.4)', fontFamily: FONT, WebkitTextSizeAdjust: '100%' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.88)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#161616', border: '1px solid #2a2a2a', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '420px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.4)', fontFamily: FONT, WebkitTextSizeAdjust: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-          <div style={{ fontSize: '2.4rem', marginBottom: '8px' }}>🔐</div>
-          <div style={{ fontWeight: 800, color: '#202124', fontSize: '1.4rem' }}>Crea tu contraseña</div>
-          <div style={{ fontSize: '1.02rem', color: '#3c4043', marginTop: '8px', lineHeight: 1.45 }}>
+          <div style={{ fontWeight: 800, color: '#fff', fontSize: '1.4rem' }}>Crea tu contraseña</div>
+          <div style={{ fontSize: '1.02rem', color: '#8a8a8a', marginTop: '8px', lineHeight: 1.45 }}>
             Por seguridad debes crear una contraseña personal antes de continuar
           </div>
         </div>
@@ -110,7 +111,7 @@ function ModalCambiarPass({ cedula, onCambiada }) {
           </div>
           <ErrorBox error={error}/>
           <button type="submit" disabled={loading}
-            style={btnGrande('#1a73e8', loading)}>
+            style={btnGrande(loading)}>
             {loading ? 'Guardando...' : 'Guardar y entrar →'}
           </button>
         </form>
@@ -143,11 +144,11 @@ function ModalRecuperarPass({ onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-      <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '420px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)', fontFamily: FONT, WebkitTextSizeAdjust: '100%' }}>
+      <div style={{ background: '#161616', border: '1px solid #2a2a2a', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '420px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)', fontFamily: FONT, WebkitTextSizeAdjust: '100%' }}>
         {!enviado ? (
           <>
-            <div style={{ fontWeight: 800, color: '#202124', fontSize: '1.4rem', marginBottom: '6px' }}>Recuperar contraseña</div>
-            <div style={{ fontSize: '1.02rem', color: '#3c4043', marginBottom: '20px', lineHeight: 1.45 }}>Escribe tu cédula y te ayudamos a recuperar el acceso</div>
+            <div style={{ fontWeight: 800, color: '#fff', fontSize: '1.4rem', marginBottom: '6px' }}>Recuperar contraseña</div>
+            <div style={{ fontSize: '1.02rem', color: '#8a8a8a', marginBottom: '20px', lineHeight: 1.45 }}>Escribe tu cédula y te ayudamos a recuperar el acceso</div>
             <form onSubmit={handleRecuperar} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
                 <label style={lbl}>Número de cédula</label>
@@ -155,7 +156,7 @@ function ModalRecuperarPass({ onClose }) {
                   onFocus={foco} onBlur={sinFoco}/>
               </div>
               <ErrorBox error={error}/>
-              <button type="submit" disabled={loading} style={btnGrande('#1a73e8', loading)}>
+              <button type="submit" disabled={loading} style={btnGrande(loading)}>
                 {loading ? 'Buscando...' : 'Recuperar acceso'}
               </button>
               <button type="button" onClick={onClose} style={btnTexto}>Cancelar</button>
@@ -163,13 +164,12 @@ function ModalRecuperarPass({ onClose }) {
           </>
         ) : (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '2.4rem', marginBottom: '12px' }}>📲</div>
-            <div style={{ fontWeight: 800, color: '#202124', fontSize: '1.4rem', marginBottom: '8px' }}>Escríbenos por el chat</div>
-            <div style={{ fontSize: '1.02rem', color: '#3c4043', marginBottom: '20px', lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 800, color: '#fff', fontSize: '1.4rem', marginBottom: '8px' }}>Escríbenos por el chat</div>
+            <div style={{ fontSize: '1.02rem', color: '#8a8a8a', marginBottom: '20px', lineHeight: 1.5 }}>
               Dinos tu cédula <b>{cedula}</b> y te ayudamos a recuperar el acceso
             </div>
             <button type="button" onClick={() => { abrirChatAyuda(`Hola! Olvidé mi contraseña de PREDIX Golmebol. Mi cédula es ${cedula}. Ayúdenme a recuperar el acceso 🙏`); onClose() }}
-              style={{ display: 'block', width: '100%', border: 'none', cursor: 'pointer', fontFamily: FONT, padding: '16px', background: '#1a73e8', borderRadius: '14px', color: '#fff', fontWeight: 800, fontSize: '1.15rem', marginBottom: '10px' }}>
+              style={{ display: 'block', width: '100%', border: 'none', cursor: 'pointer', fontFamily: FONT, padding: '16px', background: '#6fcf3d', borderRadius: '14px', color: '#0a1a05', fontWeight: 900, fontSize: '1.15rem', marginBottom: '10px' }}>
               💬 Abrir el chat de ayuda
             </button>
             <button onClick={onClose} style={btnTexto}>Cerrar</button>
@@ -481,30 +481,15 @@ export default function PlayerLoginPage() {
     <input type="text" name="username" autoComplete="username" value={cedula} readOnly tabIndex={-1} aria-hidden="true"
       style={{ position: 'absolute', opacity: 0, height: 0, width: 0, border: 0, padding: 0, pointerEvents: 'none' }}/>
   )
-
-  const cabeceraPersona = (icono, fondo, titulo, subtitulo, colorSub = '#3c4043') => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
-      <div style={{ width: '58px', height: '58px', borderRadius: '50%', background: fondo, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.7rem', flexShrink: 0 }}>{icono}</div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 800, color: '#202124', fontSize: '1.3rem', lineHeight: 1.2, wordBreak: 'break-word' }}>{titulo}</div>
-        <div style={{ fontSize: '1rem', color: colorSub, marginTop: '3px', fontWeight: 600 }}>{subtitulo}</div>
-      </div>
-    </div>
-  )
-  const cajaAviso = { fontSize: '1.02rem', color: '#202124', marginBottom: '18px', background: '#f1f3f4', borderRadius: '12px', padding: '14px 16px', lineHeight: 1.5 }
-  const botonChat = (mensaje, texto) => (
-    <button type="button" onClick={() => abrirChatAyuda(mensaje, { nombre: player?.name || '' })}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', border: 'none', cursor: 'pointer', fontFamily: FONT, padding: '15px', background: '#1a73e8', borderRadius: '14px', color: '#fff', fontWeight: 800, fontSize: '1.1rem', textAlign: 'center' }}>
-      {texto}
-    </button>
-  )
-
-  const formStyle = { display: 'flex', flexDirection: 'column', gap: '18px' }
+  const Titulo = ({ children }) => <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-.02em', lineHeight: 1.15, margin: '0 0 10px', color: '#fff' }}>{children}</h1>
+  const Sub = ({ children }) => <p style={{ fontSize: '1.05rem', color: '#8a8a8a', lineHeight: 1.5, margin: '0 0 28px' }}>{children}</p>
+  const formStyle = { display: 'flex', flexDirection: 'column', gap: '14px' }
+  const ayudaChat = (mensaje) => abrirChatAyuda(mensaje, { nombre: player?.name || '' })
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f6f8', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '64px 18px 40px', boxSizing: 'border-box', fontFamily: FONT, WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' }}>
-      <BotonVolverLogin tema="claro"/>
-      <div style={{ width: '100%', maxWidth: '440px' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', justifyContent: 'center', padding: '110px 22px 40px', boxSizing: 'border-box', fontFamily: FONT, WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%', color: '#fff' }}>
+      <BotonVolverLogin tema="oscuro"/>
+      <div style={{ width: '100%', maxWidth: '400px' }}>
 
         {showCambiarPass && (
           <ModalCambiarPass cedula={cedula} onCambiada={async () => {
@@ -514,154 +499,97 @@ export default function PlayerLoginPage() {
             navigate(rutaDeCuenta(player))
           }}/>
         )}
-
         {showRecuperar && <ModalRecuperarPass onClose={() => setShowRecuperar(false)}/>}
 
-        <div style={{ textAlign: 'center', marginBottom: '26px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '76px', height: '76px', borderRadius: '20px', background: '#1a73e8', marginBottom: '14px' }}>
-            <span style={{ fontSize: '2.3rem' }}>⚽</span>
+        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: VERDE, marginBottom: '44px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '1.4rem' }}>⚽</span> Golmebol
+        </div>
+
+        {entrandoAuto && (
+          <div>
+            <Titulo>Buscando tu cuenta…</Titulo>
+            <Sub>Un momento</Sub>
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: '#202124' }}>Golmebol</div>
-          <div style={{ fontSize: '1.1rem', color: '#3c4043', marginTop: '4px', fontWeight: 600 }}>Portal del Jugador</div>
-        </div>
+        )}
 
-        <div style={{ background: '#fff', borderRadius: '22px', padding: '26px 22px', boxShadow: '0 1px 3px rgba(0,0,0,.1), 0 6px 20px rgba(0,0,0,.07)' }}>
+        {!entrandoAuto && step === 'cedula' && (
+          <>
+            <Titulo>Entra con tu cédula</Titulo>
+            <Sub>Escribe solo los números.</Sub>
+            <form onSubmit={handleBuscarCedula} style={formStyle}>
+              <input id="cedula-jugador" name="username" aria-label="Número de cédula" value={cedula} onChange={e => setCedula(e.target.value.replace(/\D/g, ''))}
+                placeholder="Número de cédula" type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={15}
+                style={{ ...inp, fontSize: '1.4rem', letterSpacing: '1px', minHeight: '64px' }} onFocus={foco} onBlur={sinFoco}/>
+              <ErrorBox error={error}/>
+              <button type="submit" disabled={loading} style={btnGrande(loading)}>{loading ? 'Buscando…' : 'Continuar'}</button>
+            </form>
+          </>
+        )}
 
-          {/* Abriendo con la cédula recordada: se busca sola */}
-          {entrandoAuto && (
-            <div style={{ textAlign: 'center', padding: '28px 0' }}>
-              <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>⚽</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#202124' }}>Buscando tu cuenta...</div>
-              <div style={{ fontSize: '1.02rem', color: '#3c4043', marginTop: '6px' }}>Un momento</div>
+        {!entrandoAuto && step === 'login' && (
+          <>
+            <Titulo>Hola{player?.name ? `, ${player.name}` : ''}</Titulo>
+            <Sub>Cédula {cedula} · <button type="button" onClick={volver} style={{ ...btnTexto, padding: 0, fontSize: 'inherit' }}>No soy yo</button></Sub>
+            <form onSubmit={handleLogin} style={formStyle}>
+              {campoUsuarioOculto}
+              <CampoClave value={pass} onChange={e => setPass(e.target.value)} placeholder="Contraseña" autoFocus/>
+              <ErrorBox error={error}/>
+              <button type="submit" disabled={loading} style={btnGrande(loading)}>{loading ? 'Ingresando…' : 'Ingresar'}</button>
+            </form>
+            <div style={{ textAlign: 'center', marginTop: '14px' }}>
+              <button type="button" onClick={() => setShowRecuperar(true)} style={btnTexto}>¿Olvidaste tu contraseña?</button>
             </div>
-          )}
+          </>
+        )}
 
-          {!entrandoAuto && step === 'cedula' && (
-            <>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#202124', marginBottom: '6px', lineHeight: 1.2 }}>Entra con tu cédula</div>
-              <div style={{ fontSize: '1.05rem', color: '#3c4043', marginBottom: '22px', lineHeight: 1.45 }}>Escribe tu número de cédula, <b>sin puntos ni espacios</b>.</div>
-              <form onSubmit={handleBuscarCedula} style={formStyle}>
-                <div>
-                  <label htmlFor="cedula-jugador" style={lbl}>Tu número de cédula</label>
-                  <input id="cedula-jugador" name="username" value={cedula} onChange={e => setCedula(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ej: 1094948981" type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} maxLength={15}
-                    style={{ ...inp, fontSize: '1.5rem', letterSpacing: '1px', minHeight: '66px' }} onFocus={foco} onBlur={sinFoco}/>
-                </div>
-                <ErrorBox error={error}/>
-                <button type="submit" disabled={loading} style={btnGrande('#1a73e8', loading)}>
-                  {loading ? 'Buscando...' : 'Continuar →'}
-                </button>
-              </form>
-              <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e8eaed', fontSize: '1rem', color: '#3c4043', textAlign: 'center', lineHeight: 1.5 }}>
-                ¿Es tu primera vez? Escribe tu cédula y te vamos guiando.
-                <div style={{ marginTop: '8px' }}>
-                  <button type="button" onClick={() => abrirChatAyuda('Hola! Necesito ayuda para entrar a Golmebol 🙏')} style={{ ...btnTexto, color: '#174ea6', fontWeight: 800 }}>💬 ¿Necesitas ayuda? Escríbenos por el chat</button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {!entrandoAuto && step === 'login' && (
-            <>
-              {cabeceraPersona('👤', '#e8f0fe', player?.name ? `Hola, ${player.name}` : 'Hola', `Cédula ${cedula}`)}
-              <form onSubmit={handleLogin} style={formStyle}>
-                {campoUsuarioOculto}
-                <div>
-                  <label style={lbl}>Escribe tu contraseña</label>
-                  <CampoClave value={pass} onChange={e => setPass(e.target.value)} placeholder="Tu contraseña" autoFocus/>
-                </div>
-                <ErrorBox error={error}/>
-                <button type="submit" disabled={loading} style={btnGrande('#1a73e8', loading)}>
-                  {loading ? 'Ingresando...' : 'Ingresar'}
-                </button>
-                <div style={{ fontSize: '.95rem', color: '#3c4043', textAlign: 'center' }}>✓ Tu cédula se recuerda en este celular para la próxima vez</div>
-                <button type="button" onClick={() => setShowRecuperar(true)}
-                  style={{ ...btnGrande('#fff', false), color: '#174ea6', border: '2px solid #1a73e8', minHeight: '54px', fontSize: '1.05rem', fontWeight: 700 }}>
-                  ¿Olvidaste tu contraseña?
-                </button>
-                <button type="button" onClick={volver} style={btnTexto}>No soy yo · usar otra cédula</button>
-              </form>
-            </>
-          )}
-
-          {!entrandoAuto && step === 'verificar_nombre' && (
-            <>
-              {cabeceraPersona('🛡️', '#e8f0fe', '¡Ya estás registrado!', `Cédula ${cedula}`)}
-              <div style={cajaAviso}>
-                Para saber que eres tú, escribe tu <b>nombre y primer apellido</b> tal como te registraron.
-              </div>
-              <form onSubmit={handleVerificarNombre} style={formStyle}>
-                <div>
-                  <label style={lbl}>Nombre y primer apellido</label>
-                  <input value={nombreVerif} onChange={e => setNombreVerif(e.target.value)} placeholder="Ej: Juan Pérez" type="text" style={inp} autoFocus autoComplete="name"
-                    onFocus={foco} onBlur={sinFoco}/>
-                </div>
-                {error && (
-                  <div role="alert" style={{ background: '#fce8e6', border: '2px solid #f3b5ae', borderRadius: '12px', padding: '14px 16px', fontSize: '1.02rem', lineHeight: 1.4, color: '#b3261e', fontWeight: 600 }}>
-                    {error}
-                    <div style={{ marginTop: '12px' }}>
-                      {botonChat(`Hola! Estoy intentando activar mi cuenta de Golmebol con la cédula ${cedula} pero no me deja verificar mi nombre. ¿Me ayudan? 🙏`, '💬 Escribir por el chat')}
-                    </div>
-                  </div>
-                )}
-                <button type="submit" style={btnGrande('#1a73e8', false)}>Verificar →</button>
-                <button type="button" onClick={volver} style={btnTexto}>← Usar otra cédula</button>
-              </form>
-            </>
-          )}
-
-          {!entrandoAuto && step === 'crear_pass' && (
-            <>
-              {cabeceraPersona('✅', '#e6f4ea', player?.name || 'Listo', 'Identidad verificada · Crea tu contraseña', '#137333')}
-              <div style={cajaAviso}>
-                Tu perfil ya existe. Crea una contraseña para entrar al portal. <b>Mínimo 6 caracteres</b>.
-              </div>
-              <form onSubmit={handleCrearCuenta} style={formStyle}>
-                {campoUsuarioOculto}
-                <div>
-                  <label style={lbl}>Contraseña</label>
-                  <CampoClave value={pass} onChange={e => setPass(e.target.value)} placeholder="Mínimo 6 caracteres" autoComplete="new-password" autoFocus/>
-                </div>
-                <div>
-                  <label style={lbl}>Repite la contraseña</label>
-                  <CampoClave value={pass2} onChange={e => setPass2(e.target.value)} placeholder="Escríbela otra vez" autoComplete="new-password"/>
-                </div>
-                <ErrorBox error={error}/>
-                <button type="submit" disabled={loading} style={btnGrande('#1e8e3e', loading)}>
-                  {loading ? 'Creando cuenta...' : 'Crear cuenta y entrar'}
-                </button>
-                <button type="button" onClick={volver} style={btnTexto}>← Volver</button>
-              </form>
-              <div style={{ marginTop: '14px' }}>
-                <button type="button" onClick={() => abrirChatAyuda(`Hola! Soy ${player?.name}, cédula ${cedula}. Estoy activando mi cuenta de Golmebol ✅`, { nombre: player?.name || '' })}
-                  style={{ ...btnTexto, display: 'block', margin: '0 auto', color: '#174ea6', fontWeight: 700 }}>
-                  💬 Avisar a Golmebol por el chat
-                </button>
-              </div>
-            </>
-          )}
-
-          {!entrandoAuto && step === 'no_registrado' && (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '2.8rem', marginBottom: '10px' }}>🔍</div>
-              <div style={{ fontWeight: 800, color: '#202124', fontSize: '1.5rem', marginBottom: '10px' }}>Cédula no registrada</div>
-              <div style={{ fontSize: '1.05rem', color: '#3c4043', lineHeight: 1.55, marginBottom: '16px' }}>
-                La cédula <b>{cedula}</b> no está registrada en Golmebol. Solo puede entrar quien ya esté inscrito por su equipo o por Golmebol. Es gratis.
-              </div>
-              <div style={{ ...cajaAviso, textAlign: 'left' }}>
-                📋 Pídele a tu equipo que te inscriba con el link de registro, o escríbenos por el chat para ayudarte.
-              </div>
-              {botonChat(`Hola! Mi cédula ${cedula} no aparece registrada en Golmebol. ¿Me ayudan a quedar inscrito? 🙏`, '💬 Escribir por el chat')}
-              <button onClick={volver} style={{ ...btnTexto, marginTop: '8px' }}>← Probar con otra cédula</button>
+        {!entrandoAuto && step === 'verificar_nombre' && (
+          <>
+            <Titulo>Confirma que eres tú</Titulo>
+            <Sub>Escribe tu nombre y primer apellido, como te registraron.</Sub>
+            <form onSubmit={handleVerificarNombre} style={formStyle}>
+              <input aria-label="Nombre y primer apellido" value={nombreVerif} onChange={e => setNombreVerif(e.target.value)} placeholder="Ej: Juan Pérez" type="text" style={inp} autoFocus autoComplete="name"
+                onFocus={foco} onBlur={sinFoco}/>
+              <ErrorBox error={error}/>
+              <button type="submit" style={btnGrande(false)}>Continuar</button>
+            </form>
+            <div style={{ textAlign: 'center', marginTop: '14px' }}>
+              {error && <button type="button" onClick={() => ayudaChat(`Hola! Estoy intentando activar mi cuenta de Golmebol con la cédula ${cedula} pero no me deja verificar mi nombre. ¿Me ayudan? 🙏`)} style={btnTexto}>Pedir ayuda por el chat</button>}
+              <button type="button" onClick={volver} style={btnTexto}>Usar otra cédula</button>
             </div>
-          )}
+          </>
+        )}
 
+        {!entrandoAuto && step === 'crear_pass' && (
+          <>
+            <Titulo>Crea tu contraseña</Titulo>
+            <Sub>Listo, {player?.name}. Mínimo 6 caracteres.</Sub>
+            <form onSubmit={handleCrearCuenta} style={formStyle}>
+              {campoUsuarioOculto}
+              <CampoClave value={pass} onChange={e => setPass(e.target.value)} placeholder="Contraseña" autoComplete="new-password" autoFocus/>
+              <CampoClave value={pass2} onChange={e => setPass2(e.target.value)} placeholder="Repite la contraseña" autoComplete="new-password"/>
+              <ErrorBox error={error}/>
+              <button type="submit" disabled={loading} style={btnGrande(loading)}>{loading ? 'Creando…' : 'Crear cuenta y entrar'}</button>
+            </form>
+            <div style={{ textAlign: 'center', marginTop: '14px' }}>
+              <button type="button" onClick={volver} style={btnTexto}>Volver</button>
+            </div>
+          </>
+        )}
+
+        {!entrandoAuto && step === 'no_registrado' && (
+          <>
+            <Titulo>No encontramos tu cédula</Titulo>
+            <Sub>La cédula {cedula} no está registrada. Pídele a tu equipo que te inscriba con su link de registro.</Sub>
+            <button type="button" onClick={volver} style={btnGrande(false)}>Probar con otra cédula</button>
+            <div style={{ textAlign: 'center', marginTop: '14px' }}>
+              <button type="button" onClick={() => ayudaChat(`Hola! Mi cédula ${cedula} no aparece registrada en Golmebol. ¿Me ayudan a quedar inscrito? 🙏`)} style={btnTexto}>Necesito ayuda</button>
+            </div>
+          </>
+        )}
+
+        <div style={{ textAlign: 'center', marginTop: '36px' }}>
+          <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#555', fontSize: '.85rem', padding: '12px', fontFamily: FONT }}>Acceso administrador</button>
         </div>
-
-        <button onClick={() => navigate('/login')}
-          style={{ display: 'block', margin: '18px auto 0', background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.95rem', padding: '12px', fontFamily: FONT }}>
-          Acceso administrador →
-        </button>
       </div>
     </div>
   )
