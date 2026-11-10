@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { cargarAliasTorneo, aplicarAlias } from './nombresTorneo'
 
 // Columnas de `matches` que de verdad usan las páginas públicas. Se pide esta
 // lista en vez de '*' porque `matches` también guarda las FIRMAS de la planilla
@@ -22,15 +23,21 @@ export function consultaPartidosTorneo(torneoId) {
     .eq('tournament_id', torneoId).order('played_at', { ascending: true })
 }
 
-export async function resolverPartidosTorneo(resultado, torneoId) {
-  if (resultado && !resultado.error) return resultado.data || []
-  const { data } = await supabase.from('matches').select(`*, ${EMBED_EQUIPOS}`)
-    .eq('tournament_id', torneoId).order('played_at', { ascending: true })
-  return data || []
+// `alias`: nombres de los equipos SOLO en este torneo (Map team_id → nombre). Si no se pasa, se piden.
+export async function resolverPartidosTorneo(resultado, torneoId, alias) {
+  let partidos
+  if (resultado && !resultado.error) partidos = resultado.data || []
+  else {
+    const { data } = await supabase.from('matches').select(`*, ${EMBED_EQUIPOS}`)
+      .eq('tournament_id', torneoId).order('played_at', { ascending: true })
+    partidos = data || []
+  }
+  return aplicarAlias(partidos, alias || await cargarAliasTorneo(torneoId, { publico: true }))
 }
 
 export async function traerPartidosTorneo(torneoId) {
-  return resolverPartidosTorneo(await consultaPartidosTorneo(torneoId), torneoId)
+  const [res, alias] = await Promise.all([consultaPartidosTorneo(torneoId), cargarAliasTorneo(torneoId, { publico: true })])
+  return resolverPartidosTorneo(res, torneoId, alias)
 }
 
 // Árbol de eliminatorias: son los mismos partidos que ya se descargaron, solo

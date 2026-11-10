@@ -14,7 +14,9 @@ import TablaPosiciones from '../../components/TablaPosiciones'
 import VallaEquipos from '../../components/VallaEquipos'
 import FlyerTorneo from '../../components/FlyerTorneo'
 import FlyerProgramacion from '../../components/FlyerProgramacion'
-import { buscarEquiposParecidos } from '../../lib/equiposParecidos'
+import { buscarEquiposParecidos, buscarEquiposFicha, esCedulaValida } from '../../lib/equiposParecidos'
+import FichaEquipo from '../../components/FichaEquipo'
+import { cargarAliasTorneo, aplicarAlias } from '../../lib/nombresTorneo'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 import PlanillaEquipoModal from '../../components/PlanillaEquipoModal'
@@ -914,6 +916,10 @@ export default function AdminTorneoDetallePage() {
   const busquedaEquipoTimeoutRef = useRef(null)
   const [mostrarCrearEquipo, setMostrarCrearEquipo] = useState(false)
   const [parecidosCrear,     setParecidosCrear]     = useState([]) // equipos ya existentes con nombre parecido
+  const [equiposDeCedula,    setEquiposDeCedula]    = useState([]) // equipos que ya tienen como dueño a la cédula escrita
+  const [pasoCrear,          setPasoCrear]          = useState('cedula') // crear equipo: 'cedula' (paso 1) → 'datos' (paso 2)
+  const [cedulaConsultada,   setCedulaConsultada]   = useState(false)   // ya se buscó esa cédula (paso 1)
+  const [consultandoCedula,  setConsultandoCedula]  = useState(false)
   const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
   const [personaCedulaNuevoEquipo, setPersonaCedulaNuevoEquipo] = useState(null) // jugador/árbitro ya registrado con esa cédula
   // Si el celular mata la pestaña al salir a otra app mientras se llena este
@@ -1249,6 +1255,12 @@ export default function AdminTorneoDetallePage() {
   const [savingSponsorId,    setSavingSponsorId]    = useState(null)
 
   useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
+  // Nombre del equipo SOLO en este torneo (tournament_teams.nombre_torneo): se carga una vez y se aplica a partidos, grupos, finanzas...
+  const aliasRef = useRef(null)
+  const getAlias = () => { if (!aliasRef.current) aliasRef.current = cargarAliasTorneo(id); return aliasRef.current }
+  const [renombrarEquipo,  setRenombrarEquipo]  = useState(null)  // equipo al que se le cambia el nombre en este torneo
+  const [nombreTorneoForm, setNombreTorneoForm] = useState('')
+  const [guardandoNombreT, setGuardandoNombreT] = useState(false)
   const [menuEquipoId,     setMenuEquipoId]     = useState(null)
   // Dónde dibujar el menú de ··· del equipo (se calcula al abrirlo para que siempre quede completo en pantalla)
   const [menuEquipoPos,    setMenuEquipoPos]    = useState(null)
@@ -1297,7 +1309,7 @@ export default function AdminTorneoDetallePage() {
       supabase.from('matches')
         .select('*, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
         .eq('id', matchId).single()
-        .then(({ data }) => { if (data) setPlanillaPartido(data) })
+        .then(async ({ data }) => { if (data) setPlanillaPartido(aplicarAlias([data], await getAlias())[0]) })
     } else {
       // Respaldo por si la URL no la trae (ej. entrada vieja ya guardada)
       recuperarPlanillaAbierta().then(p => { if (p) abrirPlanilla(p) })
@@ -1331,7 +1343,7 @@ export default function AdminTorneoDetallePage() {
   useEffect(() => {
     if (tab !== 'calendario') return
     supabase.from('torneo_finanzas').select('*, teams(name), players(name)').eq('tournament_id', id).order('created_at', { ascending: false })
-      .then(({ data }) => { if (data) setMovimientos(data) })
+      .then(async ({ data }) => { if (data) setMovimientos(aplicarAlias(data, await getAlias())) })
   }, [tab, id])
   useEffect(() => {
     if (tab !== 'personalizacion' || !torneo) return
@@ -1540,7 +1552,7 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchEquipos() {
     const { data } = await supabase.from('tournament_teams').select('*, teams(id, name, city, logo_url, modalidad, genero, registro_token)').eq('tournament_id', id)
-    setEquipos((data || []).map(d => ({ ...d.teams, tournament_team_id: d.id, dias_preferidos: d.dias_preferidos || [], hora_preferida: d.hora_preferida ? d.hora_preferida.slice(0, 5) : '' })))
+    setEquipos((data || []).map(d => ({ ...d.teams, name: (d.nombre_torneo || '').trim() || d.teams?.name, nombre_base: d.teams?.name, nombre_torneo: (d.nombre_torneo || '').trim(), tournament_team_id: d.id, dias_preferidos: d.dias_preferidos || [], hora_preferida: d.hora_preferida ? d.hora_preferida.slice(0, 5) : '' })))
   }
 
   // Preferencia de días/hora de un equipo PARA ESTE TORNEO — se usa al
@@ -1600,6 +1612,25 @@ export default function AdminTorneoDetallePage() {
   }
 
 
+  // Cambia el nombre del equipo SOLO en este torneo (no toca el nombre de siempre en la base principal).
+  // Si se deja igual al nombre de siempre (o vacío), se quita el cambio.
+  async function guardarNombreEnTorneo(quitar = false) {
+    const e = renombrarEquipo
+    if (!e || guardandoNombreT) return
+    const nuevo = quitar ? '' : nombreTorneoForm.trim()
+    const valor = (!nuevo || nuevo === (e.nombre_base || '').trim()) ? null : nuevo
+    if (!quitar && !nuevo) return showMsg('Escribe el nombre que va a tener en este torneo', 'error')
+    setGuardandoNombreT(true)
+    const { data: filas, error } = await supabase.from('tournament_teams').update({ nombre_torneo: valor }).eq('id', e.tournament_team_id).select('id')
+    setGuardandoNombreT(false)
+    if (error) return showMsg((error.message || '').includes('nombre_torneo') ? 'Falta correr migracion_nombre_equipo_por_torneo.sql en Supabase' : errorAmigable(error, 'No se pudo cambiar el nombre'), 'error')
+    if (!filas || filas.length === 0) return showMsg('No se pudo guardar: sin permiso para editar este torneo', 'error')
+    setRenombrarEquipo(null)
+    aliasRef.current = null            // se vuelven a leer los nombres del torneo
+    showMsg(valor ? `Listo: en este torneo se llama «${valor}» ✓` : `Listo: volvió a llamarse «${e.nombre_base || e.name}» ✓`)
+    fetchEquipos(); fetchPartidos(); fetchBracket(); fetchGrupos(); fetchJugadores()
+  }
+
   async function guardarPreferenciaEquipo(equipo, cambios) {
     setGuardandoPref(equipo.tournament_team_id)
     setEquipos(prev => prev.map(e => e.tournament_team_id === equipo.tournament_team_id ? { ...e, ...cambios } : e))
@@ -1621,7 +1652,7 @@ export default function AdminTorneoDetallePage() {
       .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
       .eq('tournament_id', id)
       .order('played_at', { ascending: true })
-    setPartidos(data || [])
+    setPartidos(aplicarAlias(data || [], await getAlias()))
   }
 
   // Cambiar la foto de perfil de un jugador (organizador o admin). La comprime
@@ -1653,7 +1684,7 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchJugadores() {
     const { data } = await supabase.from('tournament_player_registrations').select('*, players(*), teams(name)').eq('tournament_id', id)
-    setJugadores(data || [])
+    setJugadores(aplicarAlias(data || [], await getAlias()))
   }
 
   // Sanciones vigentes que aplican a este torneo: las creadas específicamente
@@ -1734,7 +1765,10 @@ export default function AdminTorneoDetallePage() {
   async function fetchGoleadores() {
     setLoadingStats(true)
     const { data, error } = await supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).order('total_goals', { ascending: false })
-    if (!error) setGoleadores(data || [])
+    if (!error) {
+      const alias = await getAlias()
+      setGoleadores(alias.size ? (data || []).map(g => (g.team_id && alias.has(g.team_id)) ? { ...g, team_name: alias.get(g.team_id) } : g) : (data || []))
+    }
 
     // Valla menos vencida: todos los partidos de arqueros
     const { data: statsPorteros } = await supabase
@@ -1744,7 +1778,7 @@ export default function AdminTorneoDetallePage() {
 
     // Agrupar por jugador
     const mapPorteros = {}
-    ;(statsPorteros || []).forEach(s => {
+    ;aplicarAlias(statsPorteros || [], await getAlias()).forEach(s => {
       const esPortero = s.players?.posicion_futbol5 === 'Portero' || s.players?.posicion_futbol7 === 'Portero' || s.players?.posicion_futbol11 === 'Portero'
       if (!esPortero) return
       if (!mapPorteros[s.player_id]) {
@@ -1793,7 +1827,7 @@ export default function AdminTorneoDetallePage() {
     setGrupos(grps || [])
     if (grps && grps.length > 0) {
       const { data: ge } = await supabase.from('grupo_equipos').select('*, teams(id,name,logo_url)').in('grupo_id', grps.map(g => g.id))
-      setGrupoEquipos(ge || [])
+      setGrupoEquipos(aplicarAlias(ge || [], await getAlias()))
     }
   }
 
@@ -1804,7 +1838,7 @@ export default function AdminTorneoDetallePage() {
       .eq('tournament_id', id)
       .neq('fase', 'grupo')
       .order('ronda').order('played_at', { ascending: true })
-    setBracket(data || [])
+    setBracket(aplicarAlias(data || [], await getAlias()))
   }
 
   // ── GRUPOS ──────────────────────────────────────────
@@ -2779,7 +2813,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       traerTodas(() => supabase.from('player_match_stats').select('match_id, player_id, team_id, yellow_cards, yellow_paid, blue_cards, blue_paid, red_cards, red_paid, players(name)')
         .eq('tournament_id', id).order('match_id').order('player_id')),
     ])
-    setMovimientos(movs || [])
+    setMovimientos(aplicarAlias(movs || [], await getAlias()))
 
     // Tarjetas de este jugador que todavía no se han marcado como pagadas
     // (independiente del saldo del equipo) — para el botón "Pagar" y para
@@ -4773,9 +4807,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
   async function ejecutarBusquedaEquipos(q) {
     setLoadingEquipos(true)
-    const { data } = await supabase.from('teams').select('*').ilike('name', `%${q}%`).limit(10)
-    const idsInscritos = equipos.map(e => e.id)
-    setEquiposDisponibles((data || []).filter(e => !idsInscritos.includes(e.id)))
+    // Búsqueda con ficha (nombre o cédula del dueño). Si la función de la base
+    // todavía no existe, se usa la búsqueda de antes (solo por nombre).
+    const { data: conFicha, error: errFicha } = await buscarEquiposFicha(q, id)
+    if (!errFicha) {
+      setEquiposDisponibles(conFicha)
+    } else {
+      const { data } = await supabase.from('teams').select('*').ilike('name', `%${q}%`).limit(10)
+      const idsInscritos = equipos.map(e => e.id)
+      setEquiposDisponibles((data || []).filter(e => !idsInscritos.includes(e.id)))
+    }
     setLoadingEquipos(false)
   }
 
@@ -4804,10 +4845,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   function abrirCrearEquipo() {
-    setNuevoEquipoForm({ name: busquedaEquipo, city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
+    // Si lo que se buscó fue una cédula, va al campo de cédula (no al nombre del equipo)
+    const buscoCedula = /^[0-9 .,]+$/.test((busquedaEquipo || '').trim())
+    setNuevoEquipoForm({ name: buscoCedula ? '' : busquedaEquipo, city: '', representante_nombre: '', representante_cedula: buscoCedula ? busquedaEquipo.replace(/\D/g, '') : '', representante_telefono: '' })
+    setEquiposDeCedula([])
+    setPasoCrear('cedula'); setCedulaConsultada(false)
     setPersonaCedulaNuevoEquipo(null)
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
     setMostrarCrearEquipo(true)
+    // Si lo que se buscó ya era una cédula, se consulta de una vez
+    if (buscoCedula && esCedulaValida(busquedaEquipo)) continuarConCedula(busquedaEquipo)
   }
 
   // La cédula solo debe tener UN nombre en toda la plataforma. Primero se
@@ -4815,19 +4862,46 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   // otro equipo. En cualquier caso se autocompletan nombre y teléfono.
   async function buscarDuenoPorCedulaNuevoEquipo(cedula) {
     const c = (cedula || '').trim()
-    if (!c) { setPersonaCedulaNuevoEquipo(null); return }
+    if (!c) { setPersonaCedulaNuevoEquipo(null); setEquiposDeCedula([]); return [] }
+    // ¿Esa cédula ya es dueña de uno o varios equipos? Se muestran ANTES de
+    // pedir el nombre, para escoger el que es (o agregar uno nuevo a esa
+    // cédula). Una cédula de relleno (0000000...) no cuenta.
+    let lista = []
+    if (esCedulaValida(c)) {
+      const { data: delDueno } = await buscarEquiposFicha(c.replace(/\D/g, ''), id)
+      lista = (delDueno || []).filter(e => e.por_cedula)
+    }
+    setEquiposDeCedula(lista)
     const persona = await buscarPersonaPorCedula(c)
     if (persona) {
       setPersonaCedulaNuevoEquipo(persona)
       setNuevoEquipoForm(f => ({ ...f, representante_nombre: persona.name || '', representante_telefono: persona.telefono || '' }))
       showMsg(`👤 ${persona.name} ya está registrado en Golmebol — datos completados`)
-      return
+      return lista
     }
     setPersonaCedulaNuevoEquipo(null)
     const equipo = await buscarDuenoEquipoPorCedula(c)
     if (equipo) {
       setNuevoEquipoForm(f => ({ ...f, representante_nombre: equipo.representante_nombre || '', representante_telefono: equipo.representante_telefono || '' }))
       showMsg(`👤 Dueño encontrado: ${equipo.representante_nombre} — datos completados`)
+    }
+    return lista
+  }
+
+  // PASO 1 de crear equipo: se pide primero la cédula del dueño. Si ya tiene
+  // equipos, se muestran para escoger uno (o agregar otro nuevo a esa cédula);
+  // si no tiene ninguno, se pasa directo a los datos del equipo.
+  async function continuarConCedula(cedulaParam) {
+    const c = String(cedulaParam ?? nuevoEquipoForm.representante_cedula ?? '').replace(/\D/g, '')
+    if (!c) return showMsg('Escribe la cédula del dueño del equipo', 'error')
+    setConsultandoCedula(true)
+    try {
+      setNuevoEquipoForm(f => ({ ...f, representante_cedula: c }))
+      const lista = await buscarDuenoPorCedulaNuevoEquipo(c)
+      setCedulaConsultada(true)
+      if (lista.length === 0) setPasoCrear('datos')
+    } finally {
+      setConsultandoCedula(false)
     }
   }
 
@@ -4863,7 +4937,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   function cerrarModalEquipo() {
     if (busquedaEquipoTimeoutRef.current) clearTimeout(busquedaEquipoTimeoutRef.current)
     setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([])
-    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }); setPersonaCedulaNuevoEquipo(null)
+    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }); setPersonaCedulaNuevoEquipo(null); setEquiposDeCedula([]); setPasoCrear('cedula'); setCedulaConsultada(false)
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
   }
 
@@ -4896,7 +4970,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       // Crear un duplicado hace que la historia anterior (partidos, palmarés,
       // jugadores) quede huérfana en el equipo viejo.
       if (!forzar) {
-        const parecidos = await buscarEquiposParecidos(nuevoEquipoForm.name)
+        // La cédula ya se revisó en el paso 1 (y si el dueño eligió «otro equipo» no se le vuelve a preguntar): aquí solo se compara el NOMBRE
+        const parecidos = await buscarEquiposParecidos(nuevoEquipoForm.name, { torneoId: id })
         if (parecidos.length > 0) { setParecidosCrear(parecidos); return }
       }
       setParecidosCrear([])
@@ -5428,7 +5503,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
       {showAgregarEquipo && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '28px', width: '440px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
+          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px 20px', width: '440px', maxWidth: 'calc(100vw - 16px)', boxSizing: 'border-box', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem' }}>Agregar equipo al torneo</div>
               <button onClick={cerrarModalEquipo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
@@ -5436,42 +5511,95 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
             {!mostrarCrearEquipo && (
               <>
-                <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Buscar equipo por nombre..." style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
+                <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Nombre del equipo o cédula del dueño" style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
+                {!busquedaEquipo.trim() && (
+                  <div style={{ background: '#e8f0fe', borderRadius: '10px', padding: '10px 12px', fontSize: '.8rem', color: '#174ea6', lineHeight: 1.45 }}>
+                    <b>Primero busca si el equipo ya existe.</b> Si el equipo ya jugó otro torneo en Golmebol, usa el mismo: así se guarda toda su historia. Lo más seguro es buscar por la <b>cédula del dueño</b>.
+                  </div>
+                )}
                 {loadingEquipos && equiposDisponibles.length === 0 && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>Buscando...</div>}
                 {!loadingEquipos && busquedaEquipo && equiposDisponibles.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '16px 4px' }}>
-                    <div style={{ color: '#9aa0a6', fontSize: '.875rem', marginBottom: '12px' }}>No se encontró ningún equipo con ese nombre</div>
+                    <div style={{ color: '#9aa0a6', fontSize: '.875rem', marginBottom: '12px' }}>No se encontró ningún equipo con eso. Si es un equipo nuevo, créalo.</div>
                     <button onClick={abrirCrearEquipo} style={{ padding: '8px 18px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '600' }}>+ Crear equipo nuevo</button>
                   </div>
                 )}
                 {equiposDisponibles.length > 0 && (
                   <>
-                    <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginBottom: '8px' }}>Revisá el escudo y el representante antes de agregar — puede haber equipos con nombres parecidos.</div>
-                    <div style={{ border: '1px solid #e8eaed', borderRadius: '10px', overflow: 'hidden', marginBottom: '12px' }}>
-                      {equiposDisponibles.map((e, i) => (
-                        <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderBottom: i < equiposDisponibles.length - 1 ? '1px solid #f1f3f4' : 'none' }}>
-                          <div style={{ width: '36px', height: '36px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}><TeamLogo logo_url={e.logo_url} name={e.name} size={36}/></div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: '600', color: '#202124', fontSize: '.875rem' }}>{e.name}</div>
-                            {e.city && <div style={{ fontSize: '.72rem', color: '#9aa0a6' }}>📍 {e.city}</div>}
-                            <div style={{ fontSize: '.72rem', color: e.representante_nombre ? '#1a73e8' : '#d93025', marginTop: '1px' }}>
-                              {e.representante_nombre ? `👤 ${e.representante_nombre}` : '⚠️ Sin representante registrado'}
-                            </div>
-                          </div>
-                          <button onClick={() => handleAgregarEquipo(e)} style={{ padding: '6px 14px', background: '#1a73e8', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500', flexShrink: 0 }}>+ Agregar</button>
-                        </div>
+                    <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '10px', lineHeight: 1.4 }}>
+                      Mira el <b>escudo</b>, el <b>dueño</b> y los <b>torneos</b> que ya jugó. Si es <b>el mismo equipo</b>, tócalo: así conserva toda su historia.
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
+                      {equiposDisponibles.map(e => (
+                        <FichaEquipo key={e.id} equipo={e}>
+                          {e.en_este_torneo || e.desactivado_en_este_torneo ? null : (
+                            <button onClick={() => handleAgregarEquipo(e)} style={{ width: '100%', padding: '11px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '800' }}>✓ Es este equipo — inscribirlo</button>
+                          )}
+                        </FichaEquipo>
                       ))}
                     </div>
-                    <button onClick={abrirCrearEquipo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.78rem', textDecoration: 'underline' }}>¿No es ninguno de estos? Crear equipo nuevo</button>
+                    <button onClick={abrirCrearEquipo} style={{ width: '100%', padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.82rem' }}>Ninguno es mi equipo — crear uno nuevo</button>
                   </>
                 )}
               </>
             )}
 
-            {mostrarCrearEquipo && (
+            {mostrarCrearEquipo && pasoCrear === 'cedula' && (
               <div>
-                <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '14px' }}>
-                  Se crea el equipo y queda inscrito en este torneo de una vez.
+                <div style={{ display: 'inline-block', background: '#e8f0fe', color: '#174ea6', borderRadius: '8px', padding: '3px 10px', fontSize: '.72rem', fontWeight: 800, marginBottom: '10px' }}>PASO 1 DE 2</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#202124', marginBottom: '4px' }}>¿Cuál es la cédula del dueño?</div>
+                <div style={{ fontSize: '.8rem', color: '#5f6368', marginBottom: '14px', lineHeight: 1.45 }}>
+                  Así vemos si el dueño ya tiene equipos en Golmebol, y no se repite ninguno.
+                </div>
+                <input
+                  value={nuevoEquipoForm.representante_cedula}
+                  onChange={e => { setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value.replace(/\D/g, '') })); setCedulaConsultada(false); setEquiposDeCedula([]); setPersonaCedulaNuevoEquipo(null) }}
+                  onKeyDown={e => { if (e.key === 'Enter') continuarConCedula() }}
+                  placeholder="Número de cédula" inputMode="numeric" autoComplete="off" autoFocus
+                  style={{ ...inputStyle, fontSize: '1.1rem', fontWeight: 700, letterSpacing: '.5px' }}/>
+                {!cedulaConsultada && (
+                  <div style={{ fontSize: '.7rem', color: '#9aa0a6', marginTop: '6px' }}>Si no tienes la cédula todavía, escribe 0000000 y sigue.</div>
+                )}
+
+                {cedulaConsultada && equiposDeCedula.length > 0 && (
+                  <div style={{ marginTop: '14px' }}>
+                    <div style={{ fontSize: '.9rem', fontWeight: 800, color: '#202124', marginBottom: '4px' }}>
+                      {personaCedulaNuevoEquipo?.name ? `${personaCedulaNuevoEquipo.name} ya tiene` : 'Esta cédula ya tiene'} {equiposDeCedula.length === 1 ? 'este equipo' : `estos ${equiposDeCedula.length} equipos`}
+                    </div>
+                    <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '10px' }}>¿Es uno de estos? Tócalo. Si es otro equipo distinto, agrégalo abajo.</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {equiposDeCedula.map(e => (
+                        <FichaEquipo key={e.id} equipo={e} resaltado>
+                          {e.en_este_torneo || e.desactivado_en_este_torneo ? null : (
+                            <button type="button" onClick={() => usarEquipoExistente(e)} disabled={agregandoEquipoRef.current} style={{ width: '100%', padding: '12px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.92rem', fontWeight: '800' }}>✓ Es este equipo — inscribirlo</button>
+                          )}
+                        </FichaEquipo>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+                  {cedulaConsultada && equiposDeCedula.length > 0 ? (
+                    <button onClick={() => setPasoCrear('datos')} style={{ width: '100%', padding: '12px', background: '#fff', border: '2px solid #1a73e8', borderRadius: '10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.9rem', fontWeight: '800' }}>+ Es otro equipo: agregar un equipo nuevo a esta cédula</button>
+                  ) : (
+                    <button onClick={() => continuarConCedula()} disabled={consultandoCedula || !nuevoEquipoForm.representante_cedula} style={{ width: '100%', padding: '12px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.92rem', fontWeight: '800', opacity: (consultandoCedula || !nuevoEquipoForm.representante_cedula) ? .6 : 1 }}>{consultandoCedula ? 'Buscando...' : 'Continuar →'}</button>
+                  )}
+                  <button onClick={() => { setMostrarCrearEquipo(false); setParecidosCrear([]) }} style={{ width: '100%', padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Volver</button>
+                </div>
+              </div>
+            )}
+
+            {mostrarCrearEquipo && pasoCrear === 'datos' && (
+              <div>
+                <div style={{ display: 'inline-block', background: '#e8f0fe', color: '#174ea6', borderRadius: '8px', padding: '3px 10px', fontSize: '.72rem', fontWeight: 800, marginBottom: '10px' }}>PASO 2 DE 2</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#202124', marginBottom: '10px' }}>Datos del equipo nuevo</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f1f3f4', borderRadius: '10px', padding: '8px 12px', marginBottom: '14px' }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: '.8rem', color: '#3c4043' }}>
+                    Cédula del dueño: <b>{nuevoEquipoForm.representante_cedula}</b>
+                    {equiposDeCedula.length > 0 && <div style={{ fontSize: '.72rem', color: '#1a73e8', marginTop: '2px' }}>Ya tiene {equiposDeCedula.length} {equiposDeCedula.length === 1 ? 'equipo' : 'equipos'} · este será otro más</div>}
+                  </div>
+                  <button onClick={() => setPasoCrear('cedula')} style={{ background: 'none', border: 'none', color: '#1a73e8', fontWeight: 700, fontSize: '.78rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>Cambiar</button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -5489,27 +5617,20 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Nombre del equipo *</label>
-                    <input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={inputStyle} autoComplete="off"/>
+                    <input value={nuevoEquipoForm.name} onChange={e => setNuevoEquipoForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del equipo" style={inputStyle} autoComplete="off" autoFocus/>
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Ciudad</label>
                     <input value={nuevoEquipoForm.city} onChange={e => setNuevoEquipoForm(f => ({ ...f, city: e.target.value }))} placeholder="Ciudad" style={inputStyle}/>
                   </div>
                   <div>
-                    <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Cédula del dueño *</label>
-                    <input value={nuevoEquipoForm.representante_cedula} onChange={e => { setNuevoEquipoForm(f => ({ ...f, representante_cedula: e.target.value })); setPersonaCedulaNuevoEquipo(null) }} onBlur={e => buscarDuenoPorCedulaNuevoEquipo(e.target.value)} placeholder="Número de cédula" type="number" style={inputStyle}/>
-                    {personaCedulaNuevoEquipo ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '8px 10px', marginTop: '6px' }}>
-                        <span style={{ fontSize: '.78rem', color: '#202124' }}>👤 <strong>{personaCedulaNuevoEquipo.name}</strong> ya está registrado como {rolActualLabel(personaCedulaNuevoEquipo)}</span>
-                        <a href={`/admin/jugadores/${personaCedulaNuevoEquipo.id}`} target="_blank" rel="noreferrer" style={{ fontSize: '.72rem', color: '#1a73e8', fontWeight: '700', textDecoration: 'none', marginLeft: 'auto', whiteSpace: 'nowrap' }}>Ver perfil →</a>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '3px' }}>Es la cédula de quien responde por el equipo. Si ya está registrada en Golmebol (jugador, árbitro o dueño de otro equipo), se completan el nombre y teléfono solos</div>
-                    )}
-                  </div>
-                  <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Dueño / representante del equipo *</label>
                     <input value={nuevoEquipoForm.representante_nombre} onChange={e => setNuevoEquipoForm(f => ({ ...f, representante_nombre: e.target.value }))} placeholder="Nombre completo" style={inputStyle}/>
+                    {personaCedulaNuevoEquipo && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#e8f0fe', border: '1px solid #aecbfa', borderRadius: '10px', padding: '8px 10px', marginTop: '6px' }}>
+                        <span style={{ fontSize: '.78rem', color: '#202124' }}>👤 <strong>{personaCedulaNuevoEquipo.name}</strong> ya está registrado como {rolActualLabel(personaCedulaNuevoEquipo)}</span>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ fontSize: '.75rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Teléfono del dueño *</label>
@@ -5526,10 +5647,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                   />
                 )}
                 <div style={{ display: 'flex', gap: '8px', marginTop: '18px' }}>
-                  <button onClick={() => handleCrearEquipoYAgregar()} disabled={creandoEquipo} style={{ flex: 1, padding: '10px', background: '#1e8e3e', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.875rem', fontWeight: '600', opacity: creandoEquipo ? .7 : 1 }}>
+                  <button onClick={() => handleCrearEquipoYAgregar()} disabled={creandoEquipo} style={{ flex: 1, padding: '12px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '800', opacity: creandoEquipo ? .7 : 1 }}>
                     {creandoEquipo ? 'Creando...' : '+ Crear e inscribir en el torneo'}
                   </button>
-                  <button onClick={() => { setMostrarCrearEquipo(false); setParecidosCrear([]) }} style={{ padding: '10px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
+                  <button onClick={() => { setPasoCrear('cedula'); setParecidosCrear([]) }} style={{ padding: '12px 16px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368' }}>Volver</button>
                 </div>
               </div>
             )}
@@ -6890,7 +7011,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               { label: 'Descargar escudo', icon: '⬇️', action: () => { descargarEscudo(e); setMenuEquipoId(null) } },
                             ] },
                             { titulo: 'Equipo', ops: [
-                              { label: 'Editar equipo', icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
+                              { label: 'Cambiar nombre en este torneo', icon: '🏷️', action: () => { setNombreTorneoForm(e.name || ''); setRenombrarEquipo(e); setMenuEquipoId(null) } },
+                              { label: 'Editar equipo (datos generales)', icon: '✏️', action: () => { setMenuEquipoId(null); navigate(`/admin/equipos/${e.id}`) } },
                             ] },
                             { titulo: '', ops: [
                               { label: 'Quitar equipo del torneo', icon: '🚫', action: () => { handleDesactivarEquipo(e); setMenuEquipoId(null) }, color: '#d93025' },
@@ -9152,6 +9274,32 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       {flyerTabla && <FlyerTablaPosiciones torneo={torneo} filas={flyerTabla.filas} subtitulo={flyerTabla.subtitulo} onClose={() => setFlyerTabla(null)}/>}
       {planillaEquipo && <PlanillaEquipoModal datos={planillaEquipo} onClose={() => setPlanillaEquipo(null)}/>}
       {/* Modal compartir link de registro — elegir cuánto dura antes de vencer */}
+      {renombrarEquipo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+          onClick={e => e.target === e.currentTarget && setRenombrarEquipo(null)}>
+          <div style={{ background: '#fff', borderRadius: '16px', width: '100%', maxWidth: '400px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 12px 40px rgba(0,0,0,.25)', fontFamily: 'system-ui, sans-serif', WebkitTextSizeAdjust: '100%' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: '800', color: '#202124', fontSize: '1rem' }}>🏷️ Nombre en este torneo</div>
+              <button onClick={() => setRenombrarEquipo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', display: 'flex' }}><X size={19}/></button>
+            </div>
+            <div style={{ padding: '18px 20px' }}>
+              <div style={{ background: '#e8f0fe', borderRadius: '10px', padding: '10px 12px', fontSize: '.82rem', color: '#174ea6', lineHeight: 1.45, marginBottom: '14px' }}>
+                Este cambio es <b>solo para este torneo</b>. En los demás torneos y en la historia del equipo sigue llamándose <b>«{renombrarEquipo.nombre_base || renombrarEquipo.name}»</b>.
+              </div>
+              <label style={{ fontSize: '.78rem', color: '#5f6368', display: 'block', marginBottom: '4px' }}>Nombre en este torneo</label>
+              <input value={nombreTorneoForm} onChange={e => setNombreTorneoForm(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') guardarNombreEnTorneo() }} placeholder="Nombre del equipo" autoFocus autoComplete="off" style={{ ...inputStyle, fontSize: '1rem', fontWeight: 700 }}/>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+                <button onClick={() => guardarNombreEnTorneo()} disabled={guardandoNombreT} style={{ width: '100%', padding: '12px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.92rem', fontWeight: '800', opacity: guardandoNombreT ? .7 : 1 }}>{guardandoNombreT ? 'Guardando...' : 'Guardar nombre en este torneo'}</button>
+                {renombrarEquipo.nombre_torneo && (
+                  <button onClick={() => guardarNombreEnTorneo(true)} disabled={guardandoNombreT} style={{ width: '100%', padding: '11px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem', fontWeight: 600 }}>Volver al nombre de siempre («{renombrarEquipo.nombre_base}»)</button>
+                )}
+                <button onClick={() => setRenombrarEquipo(null)} style={{ width: '100%', padding: '9px', background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '.82rem' }}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {linkRegistroEquipo && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
           onClick={e => e.target === e.currentTarget && setLinkRegistroEquipo(null)}>

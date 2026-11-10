@@ -1073,6 +1073,9 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   style={{ ...glassBtn('#868e96', false), padding: '8px 14px', fontSize: '.8rem' }}>
                   Cancelar
                 </button>
+                <div style={{ flexBasis: '100%', fontSize: '.75rem', lineHeight: 1.4, color: '#ffd43b', fontWeight: 600 }}>
+                  ⚠️ Esto cambia el nombre en TODOS los torneos y en su historia. Si solo lo quieres cambiar en un torneo, hazlo desde ese torneo: ··· del equipo → «Cambiar nombre en este torneo».
+                </div>
               </div>
             ) : (
               <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: TXT, margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '8px' }}>

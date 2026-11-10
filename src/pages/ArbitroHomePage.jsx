@@ -8,6 +8,7 @@ import InformeSolo from '../components/planillaRapida/InformeSolo'
 import BannerCaja, { BotonCuentaDelDia } from '../components/CajaDelDia'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { aplicarAliasMultiTorneo } from '../lib/nombresTorneo'
 
 function ModalCambiarContrasena({ onClose }) {
   const [actual,  setActual]  = useState('')
@@ -150,7 +151,7 @@ export default function ArbitroHomePage() {
       const { data } = await supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
         .eq('id', p.id).single()
-      fresco = data
+      fresco = data ? (await aplicarAliasMultiTorneo([data]))[0] : data
     } catch (e) {}
     abrirPlanilla({ ...(fresco || p), status: 'finished' })
   }
@@ -178,7 +179,8 @@ export default function ArbitroHomePage() {
       supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
         .eq('id', matchId).single()
-        .then(({ data }) => {
+        .then(async ({ data: dataBruta }) => {
+          const data = dataBruta ? (await aplicarAliasMultiTorneo([dataBruta]))[0] : dataBruta
           // Una planilla ya cerrada solo se restaura si el árbitro la volvió a abrir a propósito
           // ("Volver a abrir planilla" deja ?reabierta=1 en la URL); si no, se cierra sola.
           if (data && (data.status !== 'finished' || searchParams.get('reabierta') === '1')) {
@@ -243,9 +245,9 @@ export default function ArbitroHomePage() {
     if (porNombre2.error) console.error('Error cargando partidos por arbitro2:', porNombre2.error)
 
     const vistos = new Set()
-    const lista = [...(porId.data||[]), ...(porNombre1.data||[]), ...(porNombre2.data||[])]
+    const lista = await aplicarAliasMultiTorneo([...(porId.data||[]), ...(porNombre1.data||[]), ...(porNombre2.data||[])]
       .filter(m => { if (vistos.has(m.id)) return false; vistos.add(m.id); return true })
-      .sort((a,b) => new Date(b.played_at||0) - new Date(a.played_at||0))
+      .sort((a,b) => new Date(b.played_at||0) - new Date(a.played_at||0)))
     setPartidos(lista)
     setStats({ total:lista.length, jugados:lista.filter(m=>m.status==='finished').length, torneos:new Set(lista.map(m=>m.tournament_id)).size })
     // Notificaciones no leídas

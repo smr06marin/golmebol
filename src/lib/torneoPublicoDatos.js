@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { consultaPartidosTorneo, resolverPartidosTorneo } from './partidosPublicos'
 import { guardarCacheRapido } from './cacheRapido'
+import { cargarAliasTorneo, aplicarAlias } from './nombresTorneo'
 
 // Datos de la página pública de un torneo, en un solo lugar para poder
 // ADELANTARLOS: cuando alguien pasa el dedo/mouse por la tarjeta de un torneo
@@ -31,22 +32,23 @@ export function cargarTorneoPublico(id) {
     const qG  = supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).gt('total_goals', 0).order('total_goals', { ascending: false })
     const qSp = supabase.from('tournament_sponsors').select('*').eq('tournament_id', id).order('orden', { ascending: true })
 
-    let [rT, rTe, rP, rGr] = await Promise.all([qT, qTe, qP, qGr])
+    const qAl = cargarAliasTorneo(id, { publico: true }) // nombres de equipos SOLO en este torneo
+    let [rT, rTe, rP, rGr, alias] = await Promise.all([qT, qTe, qP, qGr, qAl])
     if (faltaVista(rT.error))  rT  = await supabase.from('tournaments').select('*').eq('id', id).single()
     if (faltaVista(rTe.error)) rTe = await supabase.from('tournament_teams').select('*, teams(*)').eq('tournament_id', id)
-    const partidos = await resolverPartidosTorneo(rP, id)
+    const partidos = await resolverPartidosTorneo(rP, id, alias)
     const grupos = rGr.data || []
     let grupoEquipos = []
     if (grupos.length) {
       const { data: ge } = await supabase.from('grupo_equipos').select('*, teams(id,name,logo_url)').in('grupo_id', grupos.map(g => g.id))
-      grupoEquipos = ge || []
+      grupoEquipos = aplicarAlias(ge || [], alias)
     }
     const base = {
       t: rT.data,
-      equipos: (rTe.data || []).map(d => ({ ...d.teams })),
+      equipos: (rTe.data || []).map(d => ({ ...d.teams, name: (d.nombre_torneo || '').trim() || d.teams?.name })),
       partidos, grupos, grupoEquipos,
     }
-    const extras = Promise.all([qG, qSp]).then(([rG, rSp]) => ({ goleadores: rG.data || [], sponsors: rSp.data || [] }))
+    const extras = Promise.all([qG, qSp]).then(([rG, rSp]) => ({ goleadores: alias.size ? (rG.data || []).map(g => (g.team_id && alias.has(g.team_id)) ? { ...g, team_name: alias.get(g.team_id) } : g) : (rG.data || []), sponsors: rSp.data || [] }))
     // Copia para la próxima visita (se completa cuando llegan los extras).
     if (base.t) extras.then(ex => guardarCacheRapido(`torneo_${id}`, { ...base, ...ex })).catch(() => {})
     return { base, extras, errorTorneo: rT.error || null }

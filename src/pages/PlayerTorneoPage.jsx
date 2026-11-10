@@ -8,6 +8,7 @@ import TablaPosiciones from '../components/TablaPosiciones'
 import VallaEquipos from '../components/VallaEquipos'
 import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { cargarAliasTorneo, aplicarAlias } from '../lib/nombresTorneo'
 import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGoleadoresConVivo, enVivoDe, compararPosiciones, aplicarDescuentos, crearDetectorIntergrupo } from '../lib/torneoTablas'
 
 const TABS = [
@@ -508,7 +509,7 @@ export default function PlayerTorneoPage() {
     setGrupos(grps || [])
     if (grps && grps.length > 0) {
       const { data: ge } = await supabase.from('grupo_equipos').select('*, teams(id,name,logo_url)').in('grupo_id', grps.map(g => g.id))
-      setGrupoEquipos(ge || [])
+      setGrupoEquipos(aplicarAlias(ge || [], await cargarAliasTorneo(id)))
     }
   }
 
@@ -579,7 +580,7 @@ export default function PlayerTorneoPage() {
 
   async function fetchEquipos() {
     const { data } = await supabase.from('tournament_teams').select('*, teams(*)').eq('tournament_id', id)
-    setEquipos((data || []).map(d => ({ ...d.teams, tournament_team_id: d.id })))
+    setEquipos((data || []).map(d => ({ ...d.teams, name: (d.nombre_torneo || '').trim() || d.teams?.name, tournament_team_id: d.id })))
   }
 
   async function fetchPartidos() {
@@ -589,7 +590,7 @@ export default function PlayerTorneoPage() {
       .eq('tournament_id', id)
       .order('played_at', { ascending: false })
 
-    const lista = data || []
+    const lista = aplicarAlias(data || [], await cargarAliasTorneo(id))
     if (lista.length > 0) {
       const { data: mvps } = await supabase
         .from('tournament_logros')
@@ -620,11 +621,11 @@ export default function PlayerTorneoPage() {
       // Arqueros REGISTRADOS de cada equipo del torneo (para la valla por equipo)
       supabase.from('tournament_teams').select('team_id').eq('tournament_id', id),
     ])
-    setGoleadores(data || [])
+    { const al = await cargarAliasTorneo(id); setGoleadores(al.size ? (data || []).map(g => (g.team_id && al.has(g.team_id)) ? { ...g, team_name: al.get(g.team_id) } : g) : (data || [])) }
 
     // Agrupar por jugador
     const mapPorteros = {}
-    ;(statsPorteros || []).forEach(s => {
+    ;aplicarAlias(statsPorteros || [], await cargarAliasTorneo(id)).forEach(s => {
       const esPortero = s.players?.posicion_futbol5 === 'Portero' || s.players?.posicion_futbol7 === 'Portero' || s.players?.posicion_futbol11 === 'Portero'
       if (!esPortero) return
       if (!mapPorteros[s.player_id]) {
