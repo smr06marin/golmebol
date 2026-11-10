@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { diaBogota, pesos, resumenCaja } from '../../lib/cobrosCancha'
-import { FotoComprobante } from '../../components/CobrosCancha'
+import { FotoComprobante, CarruselFotos } from '../../components/CobrosCancha'
 
 // CUADRE DE CANCHA (para el dueño del torneo / administrador)
 //  1) CUADRE POR DÍA Y POR CANCHA (todo automático): lo recogido (arbitrajes + tarjetas), lo que ya llegó a tu cuenta por
@@ -86,17 +86,8 @@ function CuentaCancha({ g }) {
         {g.fotos.length > 0 && (
           <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${LINE}` }}>
             <div style={{ fontSize: '.74rem', fontWeight: '800', color: AZUL, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '8px' }}>📲 Fotos de las transferencias de esta cancha ({g.fotos.length})</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-              {g.fotos.map(f => (
-                <div key={f.id} style={{ width: '92px' }}>
-                  <FotoComprobante ruta={f.ruta} size={92}/>
-                  <div style={{ fontSize: '.9rem', fontWeight: '900', marginTop: '4px' }}>{pesos(f.monto)}</div>
-                  <div style={{ fontSize: '.66rem', color: MUTED, lineHeight: 1.3 }}>{f.partido.home?.name} vs {f.partido.away?.name}</div>
-                  <div style={{ fontSize: '.66rem', color: MUTED }}>{hora(f.hora)}{f.por ? ` · ${f.por}` : ''}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: '.68rem', color: MUTED, marginTop: '8px' }}>Toca una foto para verla grande.</div>
+            <CarruselFotos fotos={g.fotos.map(f => ({ id: f.id, ruta: f.ruta, monto: f.monto, titulo: `${f.partido.home?.name || '?'} vs ${f.partido.away?.name || '?'}`, sub: `${hora(f.hora)}${f.por ? ' · ' + f.por : ''}` }))}/>
+            <div style={{ fontSize: '.68rem', color: MUTED, marginTop: '8px' }}>Desliza para ver las demás. Toca una foto para verla grande.</div>
           </div>
         )}
       </div>
