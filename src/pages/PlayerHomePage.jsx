@@ -48,27 +48,27 @@ function NotifBanner({ notifs, onDismiss }) {
   if (!notifs || notifs.length === 0) return null
   const n = notifs[idx]
   return (
-    <div style={{ background: n.bg, borderBottom: `2px solid ${n.color}`, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-      <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{n.icon}</span>
+    <div style={{ background: '#161616', borderBottom: `2px solid ${n.color}`, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <span style={{ fontSize: '1.3rem', flexShrink: 0 }}>{n.icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '.8rem', fontWeight: '700', color: n.color }}>{n.titulo}</div>
-        <div style={{ fontSize: '.73rem', color: '#5f6368', marginTop: '1px' }}>{n.texto}</div>
+        <div style={{ fontSize: '.95rem', fontWeight: '800', color: '#fff' }}>{n.titulo}</div>
+        <div style={{ fontSize: '.85rem', color: '#c9c9c9', marginTop: '2px', lineHeight: 1.35 }}>{n.texto}</div>
       </div>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
         {n.accion && (
           <button onClick={n.accion.fn}
-            style={{ padding: '5px 10px', background: n.color, border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+            style={{ padding: '8px 12px', minHeight: '36px', background: n.color, border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.82rem', fontWeight: '800', whiteSpace: 'nowrap' }}>
             {n.accion.label}
           </button>
         )}
         {notifs.length > 1 && idx < notifs.length - 1 && (
           <button onClick={() => setIdx(i => i + 1)}
-            style={{ padding: '5px 8px', background: 'rgba(0,0,0,.08)', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '.72rem' }}>
+            style={{ padding: '8px 10px', minHeight: '36px', background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#c9c9c9', fontSize: '.82rem' }}>
             {idx + 1}/{notifs.length} →
           </button>
         )}
         <button onClick={() => onDismiss(n.id)}
-          style={{ padding: '5px 8px', background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6', fontSize: '1rem', lineHeight: 1 }}>✕</button>
+          style={{ padding: '8px 10px', minHeight: '36px', background: 'none', border: 'none', cursor: 'pointer', color: '#8a8a8a', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
       </div>
     </div>
   )
@@ -646,7 +646,7 @@ export default function PlayerHomePage() {
   const tarjetaNotif = nuevasTarjetas[notifIndex]
 
   return (
-    <div style={{ minHeight: '100vh', background: tab === 'inicio' ? G.bg : '#f8f9fa', ...(tab === 'inicio' ? { fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif', color: G.text, WebkitTextSizeAdjust: '100%', paddingBottom: '48px' } : {}) }}>
+    <div style={{ minHeight: '100vh', background: (tab === 'inicio' || tab === 'tarjeta') ? G.bg : '#f8f9fa', ...((tab === 'inicio' || tab === 'tarjeta') ? { fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif', color: G.text, WebkitTextSizeAdjust: '100%', paddingBottom: '48px' } : {}) }}>
 
       {/* NOTIFICACIÓN TARJETA NUEVA */}
       {tarjetaNotif && (
@@ -976,12 +976,12 @@ export default function PlayerHomePage() {
       )}
       {tab !== 'inicio' && <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>}
       {tab !== 'inicio' && equiposDueno.length > 0 && (
-        <div style={{ background: 'linear-gradient(90deg, #fff8e1, #fff)', borderBottom: '1px solid #ffe082', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '1rem' }}>👑</span>
+        <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '.85rem', color: G.muted, fontWeight: 700 }}>👑 Eres dueño de</span>
           {equiposDueno.map(eq => (
             <button key={eq.id || eq.name} onClick={() => eq.id && navigate(`/equipos/${eq.id}`)}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: eq.id ? 'pointer' : 'default', fontSize: '.8rem', color: '#8a5a00', fontWeight: '700', textDecoration: eq.id ? 'underline' : 'none' }}>
-              Dueño de {eq.name}
+              style={{ background: G.goldBg, border: `1px solid ${G.gold}55`, borderRadius: '999px', padding: '8px 14px', minHeight: '38px', cursor: eq.id ? 'pointer' : 'default', fontSize: '.9rem', color: G.gold, fontWeight: 800 }}>
+              {eq.name}
             </button>
           ))}
         </div>
@@ -990,15 +990,14 @@ export default function PlayerHomePage() {
       {/* MI TARJETA */}
       {tab === 'tarjeta' && (
         <div>
-          <div style={{ position: 'relative', overflow: 'hidden', padding: '12px 16px 20px' }}>
+          <div style={{ position: 'relative', overflow: 'hidden', padding: '18px 16px 24px' }}>
             <CardStageBackground color={cardColor}/>
-            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.3)', letterSpacing: '.06em' }}>
-                {torneos.length > 0 ? 'Toca el escudo para ver el torneo' : ''}
-              </span>
+            <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
               <button onClick={() => setShowSelector(true)}
-                style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.2)', borderRadius: '20px', padding: '4px 12px', cursor: 'pointer', color: 'rgba(255,255,255,.7)', fontSize: '.68rem', fontWeight: '500' }}>
-                🃏 {cardDesign?.nombre || 'Cambiar'} {guardandoCard ? '...' : ''}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', minHeight: '46px', padding: '0 16px', background: 'rgba(0,0,0,.55)', border: `1.5px solid ${G.border}`, borderRadius: '999px', cursor: 'pointer', color: G.text, fontSize: '.95rem', fontWeight: 700, fontFamily: 'inherit' }}>
+                <Layers size={18} color={G.green}/>
+                <span>Diseño: <b>{cardDesign?.nombre || 'Mi tarjeta'}</b>{guardandoCard ? '…' : ''}</span>
+                <span style={{ color: G.green, fontWeight: 800 }}>Cambiar</span>
               </button>
             </div>
             <div style={{ position: 'relative', zIndex: 1, width: '100%' }}>
@@ -1010,18 +1009,26 @@ export default function PlayerHomePage() {
                 onFotoSubida={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
               />
             </div>
+            {torneos.length > 0 && (
+              <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', margin: '18px auto 0', maxWidth: '360px', fontSize: '.95rem', color: G.text2, lineHeight: 1.5 }}>
+                Toca el escudo para ver el torneo o el equipo.
+                {(torneosData.length > 1 || equiposData.length > 1) && <> Si juegas en varios, toca el botón verde <b style={{ color: G.green }}>⇅</b> junto al escudo para elegir cuál se ve en tu tarjeta.</>}
+              </div>
+            )}
           </div>
 
-          <div style={{ padding: '0 16px 8px', display: 'grid', gap: '10px' }}>
+          <div style={{ maxWidth: '600px', margin: '0 auto', padding: '4px 16px 8px', display: 'grid', gap: '12px' }}>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: G.text, margin: '6px 2px 0' }}>Mis fotos</div>
             {(player.foto_cambiar_cedula_frontal || player.foto_cambiar_cedula_trasera) && (
-              <div style={{ background: '#fce8e6', border: '1px solid #fad2cf', borderRadius: '10px', padding: '10px 14px', fontSize: '.76rem', color: '#d93025', fontWeight: '600' }}>
-                ⚠️ Tu foto de cédula no sirvió — acércate con el administrador para tomarte una nueva.
+              <div style={{ background: G.lossBg, border: `1px solid ${G.loss}66`, borderRadius: '14px', padding: '12px 14px', fontSize: '.9rem', color: '#ff8a80', fontWeight: 700, lineHeight: 1.4 }}>
+                Tu foto de cédula no sirvió. Acércate con el administrador para tomarte una nueva.
               </div>
             )}
             <SubidaFotoJugador
               playerId={player.id} campo="photo_face_url" url={player.photo_face_url || null}
               flagged={!!player.foto_cambiar_perfil}
-              titulo="Foto de perfil" recomendacion="Que se te vea del pecho para arriba, de frente y con buena luz."
+              bloqueada={false}
+              titulo="Foto de perfil" recomendacion="Del pecho para arriba, de frente y con buena luz."
               ejemplo={<EjemploFotoPerfil/>}
               onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_face_url: nuevaUrl, foto_cambiar_perfil: false }))}
             />
@@ -1041,21 +1048,24 @@ export default function PlayerHomePage() {
             posicionDetallada={player.posicion_futbol5 || player.posicion_futbol7 || player.posicion_futbol11}
           />
 
-          <div style={{ padding: '0 16px 8px' }}>
-            <button onClick={handleImprimirAcrilico}
-              style={{ width: '100%', padding: '11px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              🖨️ Imprimir en acrílico
-            </button>
-          </div>
-
-          <div style={{ padding: '0 16px 24px' }}>
-            <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,.06)', cursor: 'pointer' }}
-              onClick={() => setShowSelector(true)}>
-              <div style={{ fontSize: '.78rem', color: '#5f6368' }}>
-                Tarjetas desbloqueadas: <span style={{ fontWeight: '600', color: '#1a73e8' }}>{tarjetasDesbloqueadas.length}</span> / {CARD_DESIGNS.length + tarjetasCustom.length}
+          <div style={{ maxWidth: '600px', margin: '0 auto', padding: '8px 16px 28px', display: 'grid', gap: '12px' }}>
+            <button onClick={() => setShowSelector(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', minHeight: '64px', padding: '12px 16px', boxSizing: 'border-box', background: G.card, border: `1px solid ${G.border}`, borderRadius: '16px', cursor: 'pointer', color: G.text, textAlign: 'left', fontFamily: 'inherit' }}>
+              <Layers size={22} color={G.green}/>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '1rem', fontWeight: 800 }}>Mis tarjetas</div>
+                <div style={{ fontSize: '.88rem', color: G.muted, marginTop: '2px' }}>{tarjetasDesbloqueadas.length} desbloqueadas de {CARD_DESIGNS.length + tarjetasCustom.length}</div>
               </div>
-              <span style={{ fontSize: '.75rem', color: '#1a73e8', fontWeight: '500' }}>Ver todas →</span>
-            </div>
+              <span style={{ color: G.green, fontWeight: 800, fontSize: '.95rem' }}>Ver todas</span>
+            </button>
+            <button onClick={handleImprimirAcrilico}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', minHeight: '64px', padding: '12px 16px', boxSizing: 'border-box', background: G.card, border: `1px solid ${G.border}`, borderRadius: '16px', cursor: 'pointer', color: G.text, textAlign: 'left', fontFamily: 'inherit' }}>
+              <Printer size={22} color={G.green}/>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '1rem', fontWeight: 800 }}>Imprimir mi tarjeta en acrílico</div>
+                <div style={{ fontSize: '.88rem', color: G.muted, marginTop: '2px' }}>Te ayudamos por el chat</div>
+              </div>
+            </button>
           </div>
         </div>
       )}

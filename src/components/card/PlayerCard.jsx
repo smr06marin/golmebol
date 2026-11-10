@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
 import CardBackground from './CardBackground'
@@ -60,20 +61,80 @@ function Escudo({ item, color, isPremium, size = 62 }) {
   )
 }
 
-// Flechas verticales al lado del escudo
-function FlechasVerticales({ onPrev, onNext, color, isPremium }) {
-  const btnStyle = {
-    width: '14px', height: '14px', borderRadius: '3px',
-    background: 'rgba(0,0,0,.7)', border: `1px solid ${isPremium ? '#D6B65D66' : `${color}66`}`,
-    color: '#fff', cursor: 'pointer', fontSize: '.55rem',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    lineHeight: 1, padding: 0,
-  }
+// Elección guardada en el celular: la próxima vez la tarjeta muestra el torneo/equipo que la persona dejó
+function leerSeleccion(playerId, clave, lista) {
+  if (!playerId || !lista || lista.length === 0) return 0
+  try {
+    const id = JSON.parse(localStorage.getItem('gm_card_sel_' + playerId) || '{}')[clave]
+    const i = lista.findIndex(x => String(x.id) === String(id))
+    return i >= 0 ? i : 0
+  } catch { return 0 }
+}
+function guardarSeleccion(playerId, clave, id) {
+  if (!playerId) return
+  try {
+    const actual = JSON.parse(localStorage.getItem('gm_card_sel_' + playerId) || '{}')
+    localStorage.setItem('gm_card_sel_' + playerId, JSON.stringify({ ...actual, [clave]: id }))
+  } catch { /* sin almacenamiento: solo se pierde la memoria de la elección */ }
+}
+
+// Botón redondo y grande al lado del escudo: toca para elegir entre todos los torneos/equipos.
+// Late unas veces al abrir para que se note; el número dice cuántos hay.
+function BotonCambiar({ total, actual, onClick, color, isPremium }) {
+  const acento = isPremium ? '#D6B65D' : color
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', justifyContent: 'center' }}>
-      <button onClick={onPrev} style={btnStyle}>▲</button>
-      <button onClick={onNext} style={btnStyle}>▼</button>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+      <style>{`@keyframes gmPulsoElegir { 0% { box-shadow: 0 0 0 0 ${acento}aa } 70% { box-shadow: 0 0 0 9px ${acento}00 } 100% { box-shadow: 0 0 0 0 ${acento}00 } }`}</style>
+      <button type="button" onClick={onClick} aria-label="Elegir otro"
+        style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(0,0,0,.72)', border: `2px solid ${acento}`, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, fontSize: '1.15rem', fontWeight: 900, lineHeight: 1, animation: 'gmPulsoElegir 1.6s ease-out 4' }}>
+        ⇅
+      </button>
+      <span style={{ fontFamily: 'system-ui, sans-serif', fontSize: '.62rem', fontWeight: 800, color: '#fff', letterSpacing: '.03em' }}>{actual + 1}/{total}</span>
     </div>
+  )
+}
+
+// Hoja que sube desde abajo con todas las opciones, grandes y con su nombre. Se dibuja fuera de la tarjeta
+// (portal) porque la tarjeta tiene sombra/filtro y eso descolocaría una capa fija.
+function HojaElegir({ titulo, items, indice, onElegir, onCerrar }) {
+  const VERDE = '#6fcf3d'
+  const letra = 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'
+  return createPortal(
+    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,.72)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', fontFamily: letra }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: '480px', maxHeight: '82vh', display: 'flex', flexDirection: 'column', background: '#161616', border: '1px solid #2a2a2a', borderBottom: 'none', borderRadius: '22px 22px 0 0', padding: '10px 16px calc(16px + env(safe-area-inset-bottom))', boxSizing: 'border-box' }}>
+        <div style={{ width: '44px', height: '5px', borderRadius: '3px', background: '#3a3a3a', margin: '0 auto 14px' }}/>
+        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#fff', textAlign: 'center' }}>{titulo}</div>
+        <div style={{ fontSize: '.95rem', color: '#a8a8a8', textAlign: 'center', margin: '4px 0 14px' }}>Toca el que quieres que se vea en tu tarjeta</div>
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', WebkitOverflowScrolling: 'touch' }}>
+          {items.map((it, i) => {
+            const activo = i === indice
+            const nombre = it.nombre || it.name || ''
+            return (
+              <button key={it.id ?? i} type="button" onClick={() => onElegir(i)}
+                style={{ display: 'flex', alignItems: 'center', gap: '14px', width: '100%', minHeight: '72px', padding: '10px 14px', boxSizing: 'border-box', textAlign: 'left', cursor: 'pointer', fontFamily: letra, background: activo ? 'rgba(111,207,61,.13)' : '#1c1c1c', border: `2px solid ${activo ? VERDE : '#2a2a2a'}`, borderRadius: '16px', color: '#fff' }}>
+                <div style={{ width: '52px', height: '52px', borderRadius: '12px', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                  {it.logo_url
+                    ? <img src={it.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                    : it.svg
+                      ? <div style={{ width: '44px', height: '44px' }} dangerouslySetInnerHTML={{ __html: it.svg }}/>
+                      : <span style={{ fontWeight: 900, color: '#fff' }}>{nombre.substring(0, 2).toUpperCase()}</span>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0, fontSize: '1.1rem', fontWeight: 800, lineHeight: 1.25 }}>{nombre}</div>
+                {activo
+                  ? <div style={{ flexShrink: 0, fontSize: '.8rem', fontWeight: 800, color: '#07110a', background: VERDE, borderRadius: '999px', padding: '6px 10px' }}>✓ En tu tarjeta</div>
+                  : <div style={{ flexShrink: 0, fontSize: '.85rem', fontWeight: 700, color: VERDE }}>Elegir</div>}
+              </button>
+            )
+          })}
+        </div>
+        <button type="button" onClick={onCerrar}
+          style={{ marginTop: '14px', minHeight: '52px', background: 'transparent', border: '1px solid #3a3a3a', borderRadius: '14px', color: '#fff', fontSize: '1rem', fontWeight: 700, cursor: 'pointer', fontFamily: letra }}>
+          Cerrar
+        </button>
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -96,8 +157,9 @@ export default function PlayerCard({
   // en vez de las de un jugador de club (P.G/P.E/P.P no aplican).
   modoEscuela     = false,
 }) {
-  const [tI, setTI] = useState(0)
-  const [eI, setEI] = useState(0)
+  const [tI, setTI] = useState(() => leerSeleccion(playerId, 't', torneosData))
+  const [eI, setEI] = useState(() => leerSeleccion(playerId, 'e', equiposData))
+  const [hoja, setHoja] = useState(null) // 'torneo' | 'equipo' | null: hoja para elegir
   const [photoLocal, setPhotoLocal] = useState(null)
   const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [errorFoto, setErrorFoto] = useState('')
@@ -194,6 +256,14 @@ export default function PlayerCard({
 
   return (
     <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto', filter: `drop-shadow(0 10px 30px rgba(0,0,0,.75)) drop-shadow(0 0 10px ${color}55)` }}>
+      {hoja === 'torneo' && (
+        <HojaElegir titulo="Elige el torneo" items={TORNEOS} indice={tI}
+          onElegir={i => { setTI(i); guardarSeleccion(playerId, 't', TORNEOS[i]?.id); setHoja(null) }} onCerrar={() => setHoja(null)}/>
+      )}
+      {hoja === 'equipo' && (
+        <HojaElegir titulo={modoEscuela ? 'Elige la escuela' : 'Elige tu equipo'} items={EQUIPOS} indice={eI}
+          onElegir={i => { setEI(i); guardarSeleccion(playerId, 'e', EQUIPOS[i]?.id); setHoja(null) }} onCerrar={() => setHoja(null)}/>
+      )}
       <div style={{ position: 'relative', width: '100%', paddingBottom: '155%' }}>
 
         {isPremium ? (
@@ -312,16 +382,12 @@ export default function PlayerCard({
                   <>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                       <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)} style={{ cursor: 'pointer' }}>
                           <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={60}/>
                         </div>
                         {TORNEOS.length > 1 && (
-                          <FlechasVerticales
-                            onPrev={() => setTI(i => (i - 1 + TORNEOS.length) % TORNEOS.length)}
-                            onNext={() => setTI(i => (i + 1) % TORNEOS.length)}
-                            color={color} isPremium={isPremium}
-                          />
+                          <BotonCambiar total={TORNEOS.length} actual={tI} onClick={() => setHoja('torneo')} color={color} isPremium={isPremium}/>
                         )}
                       </div>
                     </div>
@@ -333,16 +399,12 @@ export default function PlayerCard({
                 {/* EQUIPO (o ESCUELA en modo escuela) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontFamily: 'var(--font-display)', fontSize: '.rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>{modoEscuela ? 'ESCUELA' : 'EQUIPO'}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <div onClick={() => onStatClick?.(EQUIPOS[eI]?.id)} style={{ cursor: 'pointer' }}>
                       <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={60}/>
                     </div>
                     {EQUIPOS.length > 1 && (
-                      <FlechasVerticales
-                        onPrev={() => setEI(i => (i - 1 + EQUIPOS.length) % EQUIPOS.length)}
-                        onNext={() => setEI(i => (i + 1) % EQUIPOS.length)}
-                        color={color} isPremium={isPremium}
-                      />
+                      <BotonCambiar total={EQUIPOS.length} actual={eI} onClick={() => setHoja('equipo')} color={color} isPremium={isPremium}/>
                     )}
                   </div>
                 </div>

@@ -3,15 +3,15 @@ import { supabase } from '../../lib/supabase'
 import { abrirChatAyuda } from '../../lib/abrirChat'
 
 const S = {
-  navy:    '#07070e',
-  card:    '#111827',
-  border:  '#1e2d3d',
-  cyan:    '#00ddd0',
-  cyanDim: 'rgba(0,221,208,.12)',
-  gold:    '#f9a825',
-  text:    '#e8f4fd',
-  text2:   '#b8d4e8',
-  muted:   '#7a9ab5',
+  navy:    '#0a0a0a',
+  card:    '#161616',
+  border:  '#2a2a2a',
+  cyan:    '#6fcf3d',
+  cyanDim: 'rgba(111,207,61,.13)',
+  gold:    '#f5a623',
+  text:    '#ffffff',
+  text2:   '#c9c9c9',
+  muted:   '#a8a8a8',
   win:     '#1e8e3e',
   winDim:  'rgba(30,142,62,.12)',
 }

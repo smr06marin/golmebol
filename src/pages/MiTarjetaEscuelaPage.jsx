@@ -211,6 +211,7 @@ export default function MiTarjetaEscuelaPage() {
           <SubidaFotoJugador
             playerId={jugador.id} campo="photo_face_url" url={jugador.photo_face_url || null}
             flagged={!!jugador.foto_cambiar_perfil}
+            bloqueada
             titulo="Foto de perfil" recomendacion="Que se te vea del pecho para arriba, de frente y con buena luz."
             ejemplo={<EjemploFotoPerfil/>}
             onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_face_url: nuevaUrl, foto_cambiar_perfil: false }))}
