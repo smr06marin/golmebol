@@ -13,6 +13,21 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 // dispara al final, solo cuando la operación ya resolvió sin error.
 const cliente = createClient(url, key)
 
+// auth.getUser() sin argumentos SIEMPRE viaja a la red (una espera de más en cada pantalla que lo usa, y con la
+// plataforma cargada se nota). Aquí se contesta con la sesión guardada en el propio celular (getSession, que además
+// renueva el token si ya venció). La seguridad no cambia: lo que protege los datos son las reglas del servidor.
+// Si no hay sesión guardada, o se pide validar un token concreto, se hace la consulta normal por red.
+const getUserRed = cliente.auth.getUser.bind(cliente.auth)
+cliente.auth.getUser = async (jwt) => {
+  if (jwt === undefined) {
+    try {
+      const { data: { session } } = await cliente.auth.getSession()
+      if (session?.user) return { data: { user: session.user }, error: null }
+    } catch { /* se intenta por red */ }
+  }
+  return getUserRed(jwt)
+}
+
 const MENSAJES = {
   insert: 'Cambios guardados ✓',
   update: 'Cambios guardados ✓',

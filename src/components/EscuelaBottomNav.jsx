@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Home, BarChart3 } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../store/authStore'
+import { leerCopia, guardarCopia } from '../lib/perfilPrevio'
 
 // Barra fija de abajo para todas las páginas del portal de escuela — el
 // botón del medio siempre vuelve al panel principal (/escuela), sin
@@ -12,7 +14,8 @@ import { supabase } from '../lib/supabase'
 // definir más adelante).
 export default function EscuelaBottomNav() {
   const navigate = useNavigate()
-  const [logoUrl, setLogoUrl] = useState(null)
+  const uid = useAuthStore.getState().user?.id
+  const [logoUrl, setLogoUrl] = useState(() => leerCopia(uid, 'escuela_logo', 7 * 24 * 60 * 60 * 1000)?.logo || null)
 
   useEffect(() => {
     let cancelado = false
@@ -23,6 +26,7 @@ export default function EscuelaBottomNav() {
       if (!p?.escuela_id || cancelado) return
       const { data: esc } = await supabase.from('teams').select('logo_url').eq('id', p.escuela_id).single()
       if (!cancelado) setLogoUrl(esc?.logo_url || null)
+      guardarCopia(user.id, 'escuela_logo', { logo: esc?.logo_url || null })
     }
     fetchLogo()
     return () => { cancelado = true }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { leerCacheRapido, guardarCacheRapido } from '../lib/cacheRapido'
 import { Building2, MapPin, ArrowLeft, CalendarCheck } from 'lucide-react'
 
 const S = {
@@ -14,8 +15,10 @@ const S = {
 // invisibles para el público. Esta página es el "VER ESCENARIOS" real.
 export default function EscenariosPublicoPage() {
   const navigate = useNavigate()
-  const [escenarios, setEscenarios] = useState([])
-  const [loading, setLoading] = useState(true)
+  // Lo último que se vio se muestra de inmediato; la lista nueva llega detrás
+  const [copia] = useState(() => leerCacheRapido('escenarios_publicos', 12 * 60 * 60 * 1000))
+  const [escenarios, setEscenarios] = useState(copia || [])
+  const [loading, setLoading] = useState(!copia)
 
   useEffect(() => { fetchEscenarios() }, [])
 
@@ -26,6 +29,7 @@ export default function EscenariosPublicoPage() {
       .order('name', { ascending: true })
     setEscenarios(data || [])
     setLoading(false)
+    if (data) guardarCacheRapido('escenarios_publicos', data)
   }
 
   return (

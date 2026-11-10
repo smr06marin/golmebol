@@ -43,6 +43,7 @@ const AdminUsuariosPage       = lazy(() => import('./pages/admin/AdminUsuariosPa
 const AdminPredixPage         = lazy(() => import('./pages/admin/AdminPredixPage'))
 const PlayerTorneoPage        = lazy(() => import('./pages/PlayerTorneoPage'))
 import { PREDIX_ACTIVO } from './lib/funcionesActivas'
+import { portalConocido, marcarPortal, olvidarPortal, olvidarPerfilGuardado } from './lib/perfilPrevio'
 const PlayerApuestasPage      = lazy(() => import('./pages/PlayerApuestasPage'))
 const PlayerNoticiasPage      = lazy(() => import('./pages/PlayerNoticiasPage'))
 const PlayerHistorialPage     = lazy(() => import('./pages/PlayerHistorialPage'))
@@ -218,8 +219,7 @@ function ArbitroRoute({ children }) {
   // Si en este mismo teléfono ya se comprobó que esta cuenta es de árbitro, la pantalla se muestra DE UNA
   // (sin esperar la consulta) y la comprobación sigue por detrás: si resultara que ya no lo es, lo saca.
   // Antes cada entrada esperaba una consulta completa a la base solo para decidir si mostrar la página.
-  let conocido = false
-  try { conocido = !!user && sessionStorage.getItem('gm_arbitro_ok') === user.id } catch {}
+  const conocido = !!user && portalConocido(user.id, 'arbitro')
 
   useEffect(() => {
     if (loading) return
@@ -230,10 +230,10 @@ function ArbitroRoute({ children }) {
         if (cancelado) return
         if (!p) setEstado('sin_perfil')
         else if (p.rol === 'arbitro' || p.es_arbitro || p.es_arbitro_lider) {
-          try { sessionStorage.setItem('gm_arbitro_ok', user.id) } catch {}
+          marcarPortal(user.id, 'arbitro')
           setEstado('ok')
         } else {
-          try { sessionStorage.removeItem('gm_arbitro_ok') } catch {}
+          olvidarPortal(user.id, 'arbitro')
           setEstado('no_arbitro')
         }
       })
@@ -252,22 +252,25 @@ function ArbitroRoute({ children }) {
 function EscuelaRoute({ children }) {
   const { user, loading } = useAuthStore()
   const [estado, setEstado] = useState('cargando') // cargando | ok | no_profesor | sin_perfil
+  // Si ya se comprobó que esta cuenta es de escuela, la pantalla se abre DE UNA y la comprobación sigue por detrás.
+  const conocido = !!user && portalConocido(user.id, 'escuela')
 
   useEffect(() => {
     if (loading) return
     if (!user) { setEstado('sin_perfil'); return }
     let cancelado = false
     supabase.from('players').select('rol, es_profesor, es_profesor_coordinador').eq('user_id', user.id).maybeSingle()
-      .then(({ data: p }) => {
+      .then(({ data: p, error }) => {
         if (cancelado) return
-        if (!p) setEstado('sin_perfil')
-        else if (p.rol === 'profesor' || p.es_profesor || p.es_profesor_coordinador) setEstado('ok')
-        else setEstado('no_profesor')
+        if (!p && error && conocido) return // falla de conexión: no se saca a quien ya estaba adentro
+        if (!p) { olvidarPortal(user.id, 'escuela'); setEstado('sin_perfil') }
+        else if (p.rol === 'profesor' || p.es_profesor || p.es_profesor_coordinador) { marcarPortal(user.id, 'escuela'); setEstado('ok') }
+        else { olvidarPortal(user.id, 'escuela'); setEstado('no_profesor') }
       })
     return () => { cancelado = true }
   }, [loading, user])
 
-  if (loading || estado === 'cargando') return <PantallaCargando/>
+  if (!conocido && (loading || estado === 'cargando')) return <PantallaCargando/>
   if (estado === 'sin_perfil')  return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_profesor') return <Navigate to="/jugador" replace/>
   // La barra de abajo (con el balón que vuelve al panel de /escuela) va en
@@ -286,22 +289,24 @@ function EscuelaRoute({ children }) {
 function EscenarioRoute({ children }) {
   const { user, loading } = useAuthStore()
   const [estado, setEstado] = useState('cargando') // cargando | ok | no_encargado | sin_perfil
+  const conocido = !!user && portalConocido(user.id, 'escenario') // ya comprobado: se abre de una
 
   useEffect(() => {
     if (loading) return
     if (!user) { setEstado('sin_perfil'); return }
     let cancelado = false
     supabase.from('players').select('es_encargado_escenario').eq('user_id', user.id).maybeSingle()
-      .then(({ data: p }) => {
+      .then(({ data: p, error }) => {
         if (cancelado) return
-        if (!p) setEstado('sin_perfil')
-        else if (p.es_encargado_escenario) setEstado('ok')
-        else setEstado('no_encargado')
+        if (!p && error && conocido) return // falla de conexión: no se saca a quien ya estaba adentro
+        if (!p) { olvidarPortal(user.id, 'escenario'); setEstado('sin_perfil') }
+        else if (p.es_encargado_escenario) { marcarPortal(user.id, 'escenario'); setEstado('ok') }
+        else { olvidarPortal(user.id, 'escenario'); setEstado('no_encargado') }
       })
     return () => { cancelado = true }
   }, [loading, user])
 
-  if (loading || estado === 'cargando') return <PantallaCargando/>
+  if (!conocido && (loading || estado === 'cargando')) return <PantallaCargando/>
   if (estado === 'sin_perfil')   return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_encargado') return <Navigate to="/jugador" replace/>
   return children
@@ -312,22 +317,24 @@ function EscenarioRoute({ children }) {
 function AcudienteRoute({ children }) {
   const { user, loading } = useAuthStore()
   const [estado, setEstado] = useState('cargando') // cargando | ok | no_acudiente | sin_perfil
+  const conocido = !!user && portalConocido(user.id, 'acudiente') // ya comprobado: se abre de una
 
   useEffect(() => {
     if (loading) return
     if (!user) { setEstado('sin_perfil'); return }
     let cancelado = false
     supabase.from('players').select('es_acudiente').eq('user_id', user.id).maybeSingle()
-      .then(({ data: p }) => {
+      .then(({ data: p, error }) => {
         if (cancelado) return
-        if (!p) setEstado('sin_perfil')
-        else if (p.es_acudiente) setEstado('ok')
-        else setEstado('no_acudiente')
+        if (!p && error && conocido) return // falla de conexión: no se saca a quien ya estaba adentro
+        if (!p) { olvidarPortal(user.id, 'acudiente'); setEstado('sin_perfil') }
+        else if (p.es_acudiente) { marcarPortal(user.id, 'acudiente'); setEstado('ok') }
+        else { olvidarPortal(user.id, 'acudiente'); setEstado('no_acudiente') }
       })
     return () => { cancelado = true }
   }, [loading, user])
 
-  if (loading || estado === 'cargando') return <PantallaCargando/>
+  if (!conocido && (loading || estado === 'cargando')) return <PantallaCargando/>
   if (estado === 'sin_perfil')    return <Navigate to="/jugador/login" replace/>
   if (estado === 'no_acudiente')  return <Navigate to="/jugador" replace/>
   return children
@@ -456,7 +463,7 @@ export default function App() {
       const u = session?.user ?? null
       const id = u?.id ?? null
       if (id !== null && id === ultimoUserIdRef.current && useAuthStore.getState().user?.id === id) { setLoading(false); return }
-      if (id === null && ultimoUserIdRef.current !== null) import('./lib/borradorFormularios').then(m => m.olvidarBorradores()).catch(() => {}) // cerró sesión: no dejar borradores en el celular
+      if (id === null && ultimoUserIdRef.current !== null) { import('./lib/borradorFormularios').then(m => m.olvidarBorradores()).catch(() => {}); olvidarPerfilGuardado() } // cerró sesión: no dejar borradores ni copias en el celular
       ultimoUserIdRef.current = id
       setUser(u)
       setLoading(false)

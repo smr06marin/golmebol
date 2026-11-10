@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, nombreCancha, asegurarReservasFijas, fechaLocalStr } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, nombreCancha, sincronizarReservasFijas, obtenerAccesoEscenario, fechaLocalStr } from '../lib/escenarioHelpers'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X } from 'lucide-react'
 
@@ -43,24 +43,31 @@ export default function EscenarioAdminReservasPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { navigate('/jugador/login'); return }
-    const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-    if (!p || !p.es_encargado_escenario) { navigate('/jugador'); return }
-    const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
-    if (!acceso) { navigate('/escenario'); return }
-    setSoloLectura(!!acceso.solo_lectura)
-    setEncargado(p)
-    const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
+    // Identidad, acceso y escenario salen del acceso compartido (sesión del celular + copia): no se repiten consultas
+    const r = await obtenerAccesoEscenario(escenarioId)
+    if (r.estado === 'sin_sesion') { navigate('/jugador/login'); return }
+    if (r.estado === 'sin_rol') { navigate('/jugador'); return }
+    if (r.estado === 'sin_acceso') { navigate('/escenario'); return }
+    setSoloLectura(!!r.acceso.solo_lectura)
+    setEncargado(r.encargado)
+    const esc = r.escenario
     setEscenario(esc || null)
-    const { data: cs } = await supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden')
+    // Canchas y reservas a la vez
+    const [{ data: cs }, { data: rsvs }] = await Promise.all([
+      supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
+      supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId),
+    ])
     setCanchas(cs || [])
     setMCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
-    await asegurarReservasFijas(escenarioId)
-    const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
     setReservas(rsvs || [])
     if (!mHora && esc) setMHora(getHours(esc)[0] || '08:00')
     setLoading(false)
+    // Las reservas fijas se ponen al día DETRÁS de la pantalla; solo si cambió algo se vuelven a leer
+    sincronizarReservasFijas(escenarioId).then(async cambio => {
+      if (!cambio) return
+      const { data: nuevas } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
+      if (nuevas) setReservas(nuevas)
+    }).catch(() => {})
   }
 
   function showMsg(t) { setMsg(t); setTimeout(()=>setMsg(''),3000) }

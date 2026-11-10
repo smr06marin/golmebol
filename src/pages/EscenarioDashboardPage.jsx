@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { G, EncabezadoEscenario } from '../components/EscenarioUI'
-import { fmtMoney, fmtDate, todayStr, allSlotsForDate, escenarioActivo, asegurarReservasFijasThrottled, obtenerAccesoEscenario, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
+import { fmtMoney, fmtDate, todayStr, allSlotsForDate, escenarioActivo, sincronizarReservasFijas, obtenerAccesoEscenario, invalidarAccesoEscenario } from '../lib/escenarioHelpers'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { useAuthStore } from '../store/authStore'
+import { leerCopia, guardarCopia, borrarCopia } from '../lib/perfilPrevio'
 import { ShoppingCart, Smartphone, Package, Truck, Wallet, Receipt, BarChart3, Settings, Repeat, History, Bell, ChevronRight, ChevronDown, CalendarDays, AlertTriangle } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 
@@ -18,27 +20,31 @@ const S = {
 export default function EscenarioDashboardPage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
-  const [encargado,  setEncargado]  = useState(null)
-  const [escenario,  setEscenario]  = useState(null)
-  const [otros,      setOtros]      = useState([]) // otros escenarios del mismo encargado (para el switch)
-  const [productos,  setProductos]  = useState([])
-  const [ventasHoy,  setVentasHoy]  = useState([])
-  const [canchas,    setCanchas]    = useState([])
-  const [reservas,   setReservas]   = useState([])
-  const [pedidosPend,setPedidosPend]= useState(0)
-  const [nFijos,     setNFijos]     = useState(0) // clientes que juegan siempre el mismo día y hora
-  const [loading,    setLoading]    = useState(true)
+  // Lo último que vio esta cuenta en este panel: se pinta de inmediato y los datos nuevos llegan detrás
+  const uid = useAuthStore.getState().user?.id
+  const [copia] = useState(() => leerCopia(uid, 'esc_panel_' + escenarioId, 6 * 60 * 60 * 1000))
+  const [encargado,  setEncargado]  = useState(copia?.encargado || null)
+  const [escenario,  setEscenario]  = useState(copia?.escenario || null)
+  const [otros,      setOtros]      = useState(copia?.otros || []) // otros escenarios del mismo encargado (para el switch)
+  const [productos,  setProductos]  = useState(copia?.productos || [])
+  const [ventasHoy,  setVentasHoy]  = useState(copia?.ventasHoy || [])
+  const [canchas,    setCanchas]    = useState(copia?.canchas || [])
+  const [reservas,   setReservas]   = useState(copia?.reservas || [])
+  const [pedidosPend,setPedidosPend]= useState(copia?.pedidosPend || 0)
+  const [nFijos,     setNFijos]     = useState(copia?.nFijos || 0) // clientes que juegan siempre el mismo día y hora
+  const [loading,    setLoading]    = useState(!copia)
   const [notFound,   setNotFound]   = useState(false)
   const [subiendoLogo, setSubiendoLogo] = useState(false)
-  const [actividadReciente, setActividadReciente] = useState([])
+  const [actividadReciente, setActividadReciente] = useState(copia?.actividadReciente || [])
   const [mostrarAviso, setMostrarAviso] = useState(false)
   const [mostrarMas, setMostrarMas] = useState(false)
-  const [soloLectura, setSoloLectura] = useState(false)
+  const [soloLectura, setSoloLectura] = useState(!!copia?.soloLectura)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
   async function fetchTodo() {
-    setLoading(true); setNotFound(false)
+    if (!copia) setLoading(true)
+    setNotFound(false)
     // La identidad + acceso + datos del escenario vienen de un cache
     // compartido (dura 3 minutos) — así no se repiten esas consultas cada
     // vez que se vuelve a este panel desde Canchas, Ventas, etc.
@@ -61,9 +67,9 @@ export default function EscenarioDashboardPage() {
       supabase.from('escenario_pedidos').select('id', { count: 'exact', head: true }).eq('escenario_id', escenarioId).eq('estado', 'pendiente'),
       supabase.from('escenario_actividad').select('*').eq('escenario_id', escenarioId).order('created_at', { ascending: false }).limit(8),
       supabase.from('escenario_reservas_fijas').select('id').eq('escenario_id', escenarioId).eq('activa', true),
-      asegurarReservasFijasThrottled(escenarioId),
     ])
     setOtros((asignaciones || []).map(a => a.escenarios).filter(Boolean))
+    if ((asignaciones || []).length !== 1) borrarCopia('escenario_unico') // ya no tiene un solo escenario: vuelve a mostrar el selector
     setProductos(prods || [])
     setVentasHoy(ventas || [])
     setCanchas(cs || [])
@@ -79,6 +85,20 @@ export default function EscenarioDashboardPage() {
     if (!r.acceso.solo_lectura && !localStorage.getItem(keyAviso)) setMostrarAviso(true)
 
     setLoading(false)
+
+    guardarCopia(uid, 'esc_panel_' + escenarioId, {
+      encargado: p, escenario: r.escenario, soloLectura: !!r.acceso.solo_lectura,
+      otros: (asignaciones || []).map(a => a.escenarios).filter(Boolean),
+      productos: prods || [], ventasHoy: ventas || [], canchas: cs || [], reservas: rsvs || [],
+      pedidosPend: cPed || 0, nFijos: (fijosAct || []).length, actividadReciente: act || [],
+    })
+
+    // Las reservas fijas se ponen al día DETRÁS de la pantalla; solo si cambió algo se vuelven a leer las reservas
+    sincronizarReservasFijas(escenarioId).then(async cambio => {
+      if (!cambio) return
+      const { data: nuevas } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId).gte('fecha', hoy)
+      if (nuevas) setReservas(nuevas)
+    }).catch(() => {})
   }
 
   function cerrarAviso() {

@@ -3,6 +3,7 @@
 // slots en cada página (Canchas, Solicitudes, Panel, página pública, etc).
 
 import { supabase } from './supabase'
+import { leerCopia, guardarCopia, borrarCopia } from './perfilPrevio'
 
 export const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
@@ -293,6 +294,9 @@ export async function prepararFotoProducto(file, { maxDim = 500, quitarFondo = f
 // llamar SIEMPRE que se vaya a mostrar disponibilidad, sin throttle: si esto
 // quedara detrás del throttle de 10 minutos de abajo, un cupo fantasma podía
 // seguir apareciendo ocupado un buen rato después de arreglar la regla.
+// Se prende cuando la sincronización de reservas fijas realmente cambió algo (así la pantalla solo se refresca si hace falta)
+let _huboCambioFijas = false
+
 async function limpiarOcurrenciasHuerfanasDeFijas(escenarioId) {
   const desde = todayStr()
   const { data: todasFijas, error: errFijas } = await supabase.from('escenario_reservas_fijas').select('id, cancha, hora').eq('escenario_id', escenarioId)
@@ -312,6 +316,7 @@ async function limpiarOcurrenciasHuerfanasDeFijas(escenarioId) {
   if (huerfanas.length > 0) {
     const { error } = await supabase.from('escenario_reservas').delete().in('id', huerfanas.map(h => h.id))
     if (error) console.error('limpiarOcurrenciasHuerfanasDeFijas: no se pudieron limpiar —', error.message)
+    else _huboCambioFijas = true
   }
 }
 
@@ -375,6 +380,7 @@ export async function asegurarReservasFijas(escenarioId, semanas = 12) {
     ;({ error } = await supabase.from('escenario_reservas').insert(sinFijaId))
   }
   if (error) console.error('asegurarReservasFijas: no se pudieron crear las reservas fijas —', error.message)
+  else _huboCambioFijas = true
   return error || null
 }
 
@@ -390,23 +396,49 @@ const _accesoEscenarioCache = new Map() // escenarioId -> { estado, encargado, a
 const ACCESO_ESCENARIO_CACHE_MS = 3 * 60 * 1000
 
 export function invalidarAccesoEscenario(escenarioId) {
-  if (escenarioId) _accesoEscenarioCache.delete(escenarioId)
+  if (escenarioId) { _accesoEscenarioCache.delete(escenarioId); borrarCopia('acceso_' + escenarioId) }
   else _accesoEscenarioCache.clear()
+}
+
+// Consulta real a la base: perfil y escenario salen a la vez (no dependen entre sí) y después el acceso.
+async function consultarAccesoEscenario(user, escenarioId) {
+  const [{ data: p }, { data: esc }] = await Promise.all([
+    supabase.from('players').select('*').eq('user_id', user.id).single(),
+    supabase.from('escenarios').select('*').eq('id', escenarioId).single(),
+  ])
+  if (!p || !p.es_encargado_escenario) return { estado: 'sin_rol' }
+  const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
+  if (!acceso) return { estado: 'sin_acceso', encargado: p }
+  return { estado: 'ok', encargado: p, acceso, escenario: esc || null, timestamp: Date.now() }
 }
 
 export async function obtenerAccesoEscenario(escenarioId) {
   const cacheado = _accesoEscenarioCache.get(escenarioId)
   if (cacheado && Date.now() - cacheado.timestamp < ACCESO_ESCENARIO_CACHE_MS) return cacheado
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // La sesión se lee del propio celular (no va a la red)
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user
   if (!user) return { estado: 'sin_sesion' }
-  const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
-  if (!p || !p.es_encargado_escenario) return { estado: 'sin_rol' }
-  const { data: acceso } = await supabase.from('escenario_encargados').select('id, solo_lectura').eq('escenario_id', escenarioId).eq('player_id', p.id).maybeSingle()
-  if (!acceso) return { estado: 'sin_acceso', encargado: p }
-  const { data: esc } = await supabase.from('escenarios').select('*').eq('id', escenarioId).single()
-  const resultado = { estado: 'ok', encargado: p, acceso, escenario: esc || null, timestamp: Date.now() }
-  _accesoEscenarioCache.set(escenarioId, resultado)
+
+  // Con la copia que quedó de la última vez, se contesta DE UNA y se verifica por detrás
+  // (si ya no tiene acceso, la copia se borra y la próxima pantalla lo sabe).
+  const copia = leerCopia(user.id, 'acceso_' + escenarioId)
+  if (copia && copia.estado === 'ok') {
+    const rapido = { ...copia, timestamp: Date.now() }
+    _accesoEscenarioCache.set(escenarioId, rapido)
+    consultarAccesoEscenario(user, escenarioId).then(r => {
+      if (r.estado === 'ok') { _accesoEscenarioCache.set(escenarioId, r); guardarCopia(user.id, 'acceso_' + escenarioId, r) }
+      else { _accesoEscenarioCache.delete(escenarioId); borrarCopia('acceso_' + escenarioId) }
+    }).catch(() => {})
+    return rapido
+  }
+
+  const resultado = await consultarAccesoEscenario(user, escenarioId)
+  if (resultado.estado === 'ok') {
+    _accesoEscenarioCache.set(escenarioId, resultado)
+    guardarCopia(user.id, 'acceso_' + escenarioId, resultado)
+  }
   return resultado
 }
 
@@ -431,6 +463,14 @@ export async function asegurarReservasFijasThrottled(escenarioId, semanas = 12) 
   if (ultima && ahora - ultima < RESERVAS_FIJAS_THROTTLE_MS) return null
   _reservasFijasUltimoChequeo.set(escenarioId, ahora)
   return asegurarReservasFijas(escenarioId, semanas)
+}
+
+// Igual que asegurarReservasFijasThrottled pero pensada para correr DETRÁS de la pantalla (sin hacer esperar a nadie).
+// Devuelve true solo si cambió algo en las reservas: en ese caso la pantalla vuelve a leerlas.
+export async function sincronizarReservasFijas(escenarioId) {
+  _huboCambioFijas = false
+  try { await asegurarReservasFijasThrottled(escenarioId) } catch { /* no es crítico: la pantalla ya cargó */ }
+  return _huboCambioFijas
 }
 
 export function escenarioActivo(escenario) {

@@ -3,6 +3,8 @@ import { Users } from 'lucide-react'
 import { PaginaPanel, CuerpoPanel, EncabezadoPanel, Saludo, TarjetaPanel, G } from '../components/PanelUI'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuthStore } from '../store/authStore'
+import { leerCopia, guardarCopia } from '../lib/perfilPrevio'
 import TarjetaEscuelaJugador from '../components/TarjetaEscuelaJugador'
 import FichaEvolucion from '../components/FichaEvolucion'
 
@@ -14,14 +16,17 @@ const S = {
 
 export default function AcudientePage() {
   const navigate = useNavigate()
-  const [acudiente, setAcudiente] = useState(null)
-  const [hijos, setHijos] = useState([]) // [{ jugador, escuelaNombre, premios }]
-  const [loading, setLoading] = useState(true)
+  // Lo último que vio esta cuenta se pinta de inmediato y los datos nuevos llegan detrás
+  const uid = useAuthStore.getState().user?.id
+  const [copia] = useState(() => leerCopia(uid, 'acudiente_home', 6 * 60 * 60 * 1000))
+  const [acudiente, setAcudiente] = useState(copia?.acudiente || null)
+  const [hijos, setHijos] = useState(copia?.hijos || []) // [{ jugador, escuelaNombre, premios }]
+  const [loading, setLoading] = useState(!copia)
 
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
-    setLoading(true)
+    if (!copia) setLoading(true)
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null // sesión del propio teléfono: getUser() iba a la red en cada entrada
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
@@ -30,22 +35,25 @@ export default function AcudientePage() {
     setAcudiente(p)
 
     const { data: vinculos } = await supabase.from('escuela_acudientes').select('*, jugador:jugador_id(*)').eq('acudiente_id', p.id)
-    const lista = []
-    for (const v of vinculos || []) {
+    // Cada hijo se carga a la vez (antes uno detrás de otro, con varias consultas seguidas por cada uno)
+    const lista = (await Promise.all((vinculos || []).map(async v => {
       const jugador = v.jugador
-      if (!jugador) continue
-      const { data: tp } = await supabase.from('team_players').select('team_id, teams(name, categoria)').eq('player_id', jugador.id).maybeSingle()
+      if (!jugador) return null
+      const [{ data: tp }, { data: premTorneo }] = await Promise.all([
+        supabase.from('team_players').select('team_id, teams(name, categoria)').eq('player_id', jugador.id).maybeSingle(),
+        supabase.from('escuela_torneo_premios').select('*, torneo:torneo_id(nombre)').eq('jugador_id', jugador.id).order('created_at', { ascending:false }),
+      ])
       const escuelaId = tp?.team_id
       let premios = []
       if (escuelaId) {
         const { data: prem } = await supabase.from('escuela_premios').select('*').eq('escuela_id', escuelaId).order('umbral', { ascending:true })
         premios = prem || []
       }
-      const { data: premTorneo } = await supabase.from('escuela_torneo_premios').select('*, torneo:torneo_id(nombre)').eq('jugador_id', jugador.id).order('created_at', { ascending:false })
-      lista.push({ jugador, escuelaNombre: tp?.teams?.name || '', premios, premiosTorneo: premTorneo || [] })
-    }
+      return { jugador, escuelaNombre: tp?.teams?.name || '', premios, premiosTorneo: premTorneo || [] }
+    }))).filter(Boolean)
     setHijos(lista)
     setLoading(false)
+    guardarCopia(uid, 'acudiente_home', { acudiente: p, hijos: lista })
   }
 
   async function handleLogout() {

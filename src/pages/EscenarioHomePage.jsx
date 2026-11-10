@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { EncabezadoEscenario, G } from '../components/EscenarioUI'
 import { Building2, ChevronRight, Hourglass } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
+import { leerCopia, guardarCopia, borrarCopia } from '../lib/perfilPrevio'
 
 // Mismo look que el resto de Golmebol: negro, tarjetas planas, acento verde.
 const S = { navy: G.bg, card: G.card, card2: G.card2, border: G.border, cyan: G.green, gold: G.gold, text: G.text, muted: G.muted }
@@ -19,6 +21,10 @@ export default function EscenarioHomePage() {
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
+    // Quien tiene UN solo escenario entra directo a su panel, sin esperar las consultas (el panel vuelve a comprobar el acceso)
+    const uid = useAuthStore.getState().user?.id
+    const unico = leerCopia(uid, 'escenario_unico', 7 * 24 * 60 * 60 * 1000)
+    if (unico?.id) { navigate(`/escenario/${unico.id}`, { replace: true }); return }
     setLoading(true)
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null // sesión del propio teléfono: getUser() iba a la red en cada entrada
     if (!user) { navigate('/jugador/login'); return }
@@ -30,7 +36,8 @@ export default function EscenarioHomePage() {
     const lista = (asignaciones || []).map(a => a.escenarios).filter(Boolean)
     setEscenarios(lista)
 
-    if (lista.length === 1) { navigate(`/escenario/${lista[0].id}`, { replace: true }); return }
+    if (lista.length === 1) { guardarCopia(user.id, 'escenario_unico', { id: lista[0].id }); navigate(`/escenario/${lista[0].id}`, { replace: true }); return }
+    borrarCopia('escenario_unico')
     setLoading(false)
   }
 

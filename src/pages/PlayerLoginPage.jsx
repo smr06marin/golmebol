@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { registrarSesionDispositivo, marcarInicioLogin } from '../lib/deviceSession'
 import { conTimeout } from '../lib/conTimeout'
-import { guardarPerfilPrevio } from '../lib/perfilPrevio'
+import { guardarPerfilPrevio, marcarPortalDeRuta } from '../lib/perfilPrevio'
 
 const MSG_TIMEOUT = 'Esto está tardando demasiado. Revisa tu internet e intenta de nuevo.'
 const MSG_CONEXION = 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'
@@ -404,6 +404,7 @@ export default function PlayerLoginPage() {
         guardarPerfilPrevio(authData?.user?.id, player?.id, cedula.trim())
         // Mientras se verifica lo demás, ya se va bajando la pantalla de destino.
         const ruta = rutaDeCuenta(player)
+        marcarPortalDeRuta(authData?.user?.id, ruta) // el portal ya está comprobado (lo dijo el servidor al buscar la cédula): se abre de una
         precargarDestino(ruta)
         // Golmebol es gratis: con contraseña correcta y cédula ya registrada, entra directo.
         // `primer_ingreso` ya vino en la búsqueda de la cédula: solo si parece primer ingreso se confirma en la base

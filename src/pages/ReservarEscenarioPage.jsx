@@ -3,7 +3,8 @@ import { useParams } from 'react-router-dom'
 import { Building2, MapPin, ChevronRight, X } from 'lucide-react'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, reservasDeSlot, intervalosSolapan, horasSeguidasLibres, horaFin, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, asegurarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, reservasDeSlot, intervalosSolapan, horasSeguidasLibres, horaFin, todayStr, fmtDate, precioCancha, nombreCancha, fmtMoney, escenarioActivo, sincronizarReservasFijas, proximosDias } from '../lib/escenarioHelpers'
+import { leerCacheRapido, guardarCacheRapido } from '../lib/cacheRapido'
 import { fmtHora12 } from '../lib/horaHelpers'
 
 // Tema claro tipo landing page — distinto del resto del portal (que es
@@ -47,20 +48,40 @@ export default function ReservarEscenarioPage() {
   useEffect(() => { setHoraSel(null); setHorasSel(1) }, [fecha, cancha])
 
   async function fetchTodo() {
-    setLoading(true)
-    const { data } = await supabase.from('escenarios').select('*').eq('id', escenarioId).maybeSingle()
-    if (!data) { setNotFound(true); setLoading(false); return }
-    setEscenario(data)
-    await asegurarReservasFijas(escenarioId)
-    const [{ data: cs }, { data: rsvs }] = await Promise.all([
+    // Lo último que se vio de este escenario se pinta DE INMEDIATO (horarios incluidos) y lo nuevo llega detrás.
+    // Al reservar se vuelve a comprobar que el horario siga libre, así que un dato viejo nunca produce una reserva doble.
+    const clave = 'reservar_' + escenarioId
+    const c = leerCacheRapido(clave, 30 * 60 * 1000)
+    if (c && c.escenario) {
+      setEscenario(c.escenario); setCanchas(c.canchas || []); setReservas(c.reservas || [])
+      setCancha(prev => prev || (c.canchas && c.canchas[0] ? c.canchas[0].slug : null))
+      setNotFound(false); setLoading(false)
+    } else {
+      setLoading(true)
+    }
+
+    // Todo sale a la vez (antes iba una cosa detrás de otra, incluida la revisión de reservas fijas)
+    const [{ data }, { data: cs }, { data: rsvs }] = await Promise.all([
+      supabase.from('escenarios').select('*').eq('id', escenarioId).maybeSingle(),
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
       // La página pública no lee la tabla (tiene teléfonos): pide solo la ocupación a una función del servidor
       supabase.rpc('escenario_ocupacion', { p_escenario_id: escenarioId }),
     ])
+    if (!data) { setNotFound(true); setLoading(false); return }
+    setNotFound(false)
+    setEscenario(data)
     setCanchas(cs || [])
     setReservas(rsvs || [])
     setCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
     setLoading(false)
+    guardarCacheRapido(clave, { escenario: data, canchas: cs || [], reservas: rsvs || [] })
+
+    // Las reservas fijas se ponen al día DETRÁS de la pantalla; solo si cambió algo se vuelve a pedir la ocupación
+    sincronizarReservasFijas(escenarioId).then(async cambio => {
+      if (!cambio) return
+      const { data: nuevas } = await supabase.rpc('escenario_ocupacion', { p_escenario_id: escenarioId })
+      if (nuevas) setReservas(nuevas)
+    }).catch(() => {})
   }
 
   function abrirSlot() {

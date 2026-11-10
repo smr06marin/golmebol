@@ -9,6 +9,8 @@ import BannerCaja, { BotonCuentaDelDia } from '../components/CajaDelDia'
 import { PaginaPanel, CuerpoPanel, EncabezadoPanel, Saludo, TarjetaPanel, CifrasPanel, BarraPanel, BotonVerde, FilaPanel, AvisoPanel, MasOpciones, G } from '../components/PanelUI'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { aplicarAliasMultiTorneo } from '../lib/nombresTorneo'
+import { useAuthStore } from '../store/authStore'
+import { leerCopia, guardarCopia } from '../lib/perfilPrevio'
 
 function ModalCambiarContrasena({ onClose }) {
   const [actual,  setActual]  = useState('')
@@ -118,14 +120,17 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
 export default function ArbitroHomePage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [arbitro,   setArbitro]   = useState(null)
-  const [partidos,  setPartidos]  = useState([])
-  const [stats,     setStats]     = useState({ total:0, jugados:0, torneos:0 })
-  const [loading,   setLoading]   = useState(true)
+  // Lo último que vio este árbitro se pinta de inmediato (partidos incluidos) y los datos nuevos llegan detrás
+  const uid = useAuthStore.getState().user?.id
+  const [copia] = useState(() => leerCopia(uid, 'arbitro_home', 6 * 60 * 60 * 1000))
+  const [arbitro,   setArbitro]   = useState(copia?.arbitro || null)
+  const [partidos,  setPartidos]  = useState(copia?.partidos || [])
+  const [stats,     setStats]     = useState(copia?.stats || { total:0, jugados:0, torneos:0 })
+  const [loading,   setLoading]   = useState(!copia)
   const [tab,       setTab]       = useState('proximos')
   const [showPass,  setShowPass]  = useState(false)
   const [showFlyer, setShowFlyer] = useState(false)
-  const [notifs,    setNotifs]    = useState([])
+  const [notifs,    setNotifs]    = useState(copia?.notifs || [])
   const [planillaPartido, setPlanillaPartido] = useState(null)
   const [informePartido, setInformePartido] = useState(null)   // partido ya cerrado al que se le sube SOLO el informe
   const [cierreOk, setCierreOk] = useState(null)               // partido recién cerrado: ofrece 'Subir informe' / 'Volver a abrir'
@@ -213,7 +218,7 @@ export default function ArbitroHomePage() {
   }, [])
 
   async function fetchTodo() {
-    setLoading(true)
+    if (!copia) setLoading(true)
     // La sesión se lee del propio teléfono (getSession): getUser() iba a la red en cada entrada.
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
@@ -249,10 +254,12 @@ export default function ArbitroHomePage() {
       .filter(m => { if (vistos.has(m.id)) return false; vistos.add(m.id); return true })
       .sort((a,b) => new Date(b.played_at||0) - new Date(a.played_at||0)))
     setPartidos(lista)
-    setStats({ total:lista.length, jugados:lista.filter(m=>m.status==='finished').length, torneos:new Set(lista.map(m=>m.tournament_id)).size })
+    const statsNuevas = { total:lista.length, jugados:lista.filter(m=>m.status==='finished').length, torneos:new Set(lista.map(m=>m.tournament_id)).size }
+    setStats(statsNuevas)
     // Notificaciones no leídas
     const { data: nots } = await pNots
     setNotifs(nots||[])
+    guardarCopia(uid, 'arbitro_home', { arbitro: p, partidos: lista, stats: statsNuevas, notifs: nots || [] })
   }
 
   // Refresco en segundo plano (al volver de otra app): sin pantalla de carga

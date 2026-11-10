@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { cargarDatosPrivadosEquipo, conDatosPrivados } from '../lib/equiposPrivado'
+import { useAuthStore } from '../store/authStore'
+import { leerCopia, guardarCopia } from '../lib/perfilPrevio'
 import { Shield, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, GraduationCap, Pencil, Image as ImageIcon, X, User, AlertTriangle } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
 import { PaginaPanel, CuerpoPanel, EncabezadoPanel, Saludo, TarjetaPanel, CifrasPanel, BotonVerde, FilaPanel, AvisoPanel, MasOpciones, G } from '../components/PanelUI'
@@ -18,12 +20,15 @@ const lbl = { fontSize:'.72rem', fontWeight:'600', color:S.muted, display:'block
 
 export default function EscuelaHomePage() {
   const navigate = useNavigate()
-  const [profesor,   setProfesor]   = useState(null)
-  const [escuela,    setEscuela]    = useState(null)
-  const [numJugadores, setNumJugadores] = useState(0)
-  const [numProfesores, setNumProfesores] = useState(0)
-  const [cMensualidad, setCMensualidad] = useState(0)
-  const [loading,    setLoading]    = useState(true)
+  // Lo último que vio esta cuenta se pinta de inmediato y los datos nuevos llegan detrás
+  const uid = useAuthStore.getState().user?.id
+  const [copia] = useState(() => leerCopia(uid, 'escuela_home', 6 * 60 * 60 * 1000))
+  const [profesor,   setProfesor]   = useState(copia?.profesor || null)
+  const [escuela,    setEscuela]    = useState(copia?.escuela || null)
+  const [numJugadores, setNumJugadores] = useState(copia?.numJugadores || 0)
+  const [numProfesores, setNumProfesores] = useState(copia?.numProfesores || 0)
+  const [cMensualidad, setCMensualidad] = useState(copia?.cMensualidad || 0)
+  const [loading,    setLoading]    = useState(!copia)
   const [nombreEscuela, setNombreEscuela] = useState('')
   const [categoria,     setCategoria]     = useState('')
   const [guardando,     setGuardando]     = useState(false)
@@ -41,7 +46,7 @@ export default function EscuelaHomePage() {
   useEffect(() => { fetchTodo() }, [])
 
   async function fetchTodo() {
-    setLoading(true)
+    if (!copia) setLoading(true)
     const { data: { session } } = await supabase.auth.getSession(); const user = session?.user ?? null // sesión del propio teléfono: getUser() iba a la red en cada entrada
     if (!user) { navigate('/jugador/login'); return }
     const { data: p } = await supabase.from('players').select('*').eq('user_id', user.id).single()
@@ -54,19 +59,23 @@ export default function EscuelaHomePage() {
     setProfesor(p)
 
     if (p.escuela_id) {
-      const { data: esc } = await supabase.from('teams').select('*').eq('id', p.escuela_id).single()
-      const privEsc = esc ? await cargarDatosPrivadosEquipo(esc.id) : null
+      // Todo lo de la escuela sale a la vez (antes eran cinco consultas una detrás de otra)
+      const [{ data: esc }, privEscRaw, { count: cJug }, { count: cProf }, tpRes] = await Promise.all([
+        supabase.from('teams').select('*').eq('id', p.escuela_id).single(),
+        cargarDatosPrivadosEquipo(p.escuela_id).catch(() => null),
+        supabase.from('team_players').select('id', { count: 'exact', head: true }).eq('team_id', p.escuela_id),
+        supabase.from('players').select('id', { count: 'exact', head: true }).eq('escuela_id', p.escuela_id).or('rol.eq.profesor,es_profesor.eq.true'),
+        // Cuántos jugadores tienen la mensualidad por vencer (próximos 3 días) o vencida (solo el coordinador lo ve)
+        p.es_profesor_coordinador ? supabase.from('team_players').select('players(fecha_vencimiento)').eq('team_id', p.escuela_id) : Promise.resolve({ data: null }),
+      ])
+      const privEsc = esc ? privEscRaw : null
       setEscuela(conDatosPrivados(esc, privEsc) || null)
-      const { count: cJug } = await supabase.from('team_players').select('id', { count: 'exact', head: true }).eq('team_id', p.escuela_id)
       setNumJugadores(cJug || 0)
-      const { count: cProf } = await supabase.from('players').select('id', { count: 'exact', head: true }).eq('escuela_id', p.escuela_id).or('rol.eq.profesor,es_profesor.eq.true')
       setNumProfesores(cProf || 0)
-
-      // Cuántos jugadores tienen la mensualidad por vencer (próximos 3 días) o vencida.
+      let pendientes = 0
       if (p.es_profesor_coordinador) {
-        const { data: tp } = await supabase.from('team_players').select('players(fecha_vencimiento)').eq('team_id', p.escuela_id)
         const hoy = new Date(); hoy.setHours(0,0,0,0)
-        const pendientes = (tp || []).filter(t => {
+        pendientes = (tpRes.data || []).filter(t => {
           const fv = t.players?.fecha_vencimiento
           if (!fv) return false
           const dias = Math.round((new Date(fv).setHours(0,0,0,0) - hoy) / (1000*60*60*24))
@@ -74,6 +83,9 @@ export default function EscuelaHomePage() {
         }).length
         setCMensualidad(pendientes)
       }
+      guardarCopia(uid, 'escuela_home', { profesor: p, escuela: conDatosPrivados(esc, privEsc) || null, numJugadores: cJug || 0, numProfesores: cProf || 0, cMensualidad: pendientes })
+    } else {
+      guardarCopia(uid, 'escuela_home', { profesor: p, escuela: null, numJugadores: 0, numProfesores: 0, cMensualidad: 0 })
     }
     setLoading(false)
   }

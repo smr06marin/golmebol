@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, asegurarReservasFijasThrottled, proximosDias, obtenerAccesoEscenario, horasSeguidasLibres, horaFin, intervalosSolapan, fechaLocalStr } from '../lib/escenarioHelpers'
+import { getHours, slotEstado, todayStr, fmtDate, fmtMoney, precioCancha, nombreCancha, sincronizarReservasFijas, proximosDias, obtenerAccesoEscenario, horasSeguidasLibres, horaFin, intervalosSolapan, fechaLocalStr } from '../lib/escenarioHelpers'
+import { useAuthStore } from '../store/authStore'
+import { leerCopia, guardarCopia } from '../lib/perfilPrevio'
 import { fmtHora12 } from '../lib/horaHelpers'
 import { X, Phone, Eye, Wrench, Bell, CalendarDays, Goal } from 'lucide-react'
 import { BotonVolver } from '../components/EscenarioUI'
@@ -358,24 +360,27 @@ function ModalGestionar({ reserva, canchas, horas, soloLectura, onClose, onResue
 export default function EscenarioCanchasPage() {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
-  const [encargado, setEncargado] = useState(null)
-  const [escenario, setEscenario] = useState(null)
-  const [canchas,   setCanchas]   = useState([])
-  const [reservas,  setReservas]  = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [cancha,    setCancha]    = useState(null)
+  // Lo último que vio esta cuenta: horarios y reservas se pintan de inmediato y se actualizan detrás
+  const uid = useAuthStore.getState().user?.id
+  const [copia] = useState(() => leerCopia(uid, 'esc_canchas_' + escenarioId, 6 * 60 * 60 * 1000))
+  const [encargado, setEncargado] = useState(copia?.encargado || null)
+  const [escenario, setEscenario] = useState(copia?.escenario || null)
+  const [canchas,   setCanchas]   = useState(copia?.canchas || [])
+  const [reservas,  setReservas]  = useState(copia?.reservas || [])
+  const [loading,   setLoading]   = useState(!copia)
+  const [cancha,    setCancha]    = useState(copia?.canchas?.[0]?.slug || null)
   const [fecha,     setFecha]     = useState(todayStr())
   const [otraFecha, setOtraFecha] = useState(false)
   const [modalSlot, setModalSlot] = useState(null)
   const [revisando, setRevisando] = useState(null)
   const [gestionando, setGestionando] = useState(null)
   const [msg,       setMsg]       = useState('')
-  const [soloLectura, setSoloLectura] = useState(false)
+  const [soloLectura, setSoloLectura] = useState(!!copia?.soloLectura)
 
   useEffect(() => { fetchTodo() }, [escenarioId])
 
   async function fetchTodo() {
-    setLoading(true)
+    if (!copia) setLoading(true)
     // La identidad + acceso + datos del escenario vienen de un cache
     // compartido (dura 3 minutos) — así no se repiten esas consultas cada
     // vez que se entra y sale de esta pestaña.
@@ -386,15 +391,23 @@ export default function EscenarioCanchasPage() {
     setSoloLectura(!!r.acceso.solo_lectura)
     setEncargado(r.encargado)
     setEscenario(r.escenario)
-    const [{ data: cs }] = await Promise.all([
+    // Canchas y reservas se piden a la vez (antes una esperaba a la otra y a la revisión de reservas fijas)
+    const [{ data: cs }, { data: rsvs }] = await Promise.all([
       supabase.from('escenario_canchas').select('*').eq('escenario_id', escenarioId).eq('activa', true).order('orden'),
-      asegurarReservasFijasThrottled(escenarioId),
+      supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId),
     ])
     setCanchas(cs || [])
     setCancha(prev => prev || (cs && cs[0] ? cs[0].slug : null))
-    const { data: rsvs } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
     setReservas(rsvs || [])
     setLoading(false)
+    guardarCopia(uid, 'esc_canchas_' + escenarioId, { encargado: r.encargado, escenario: r.escenario, soloLectura: !!r.acceso.solo_lectura, canchas: cs || [], reservas: rsvs || [] })
+
+    // Las reservas fijas se ponen al día DETRÁS de la pantalla; solo si cambió algo se vuelven a leer
+    sincronizarReservasFijas(escenarioId).then(async cambio => {
+      if (!cambio) return
+      const { data: nuevas } = await supabase.from('escenario_reservas').select('*').eq('escenario_id', escenarioId)
+      if (nuevas) setReservas(nuevas)
+    }).catch(() => {})
   }
 
   function abrir(cancha, fecha, hora) { if (!soloLectura) setModalSlot({ cancha, fecha, hora }) }
