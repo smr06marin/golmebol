@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, ClipboardList, CheckCircle, Trophy, Calendar, Clock, Lock, FileText, Key, Circle } from 'lucide-react'
 import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
+import InformeSolo from '../components/planillaRapida/InformeSolo'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
 
@@ -124,6 +125,8 @@ export default function ArbitroHomePage() {
   const [showFlyer, setShowFlyer] = useState(false)
   const [notifs,    setNotifs]    = useState([])
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  const [informePartido, setInformePartido] = useState(null)   // partido ya cerrado al que se le sube SOLO el informe
+  const [cierreOk, setCierreOk] = useState(null)               // partido recién cerrado: ofrece 'Subir informe' / 'Volver a abrir'
   const arbitroRef = useRef(null) // para refrescar en segundo plano sin depender del closure del efecto
 
   function abrirPlanilla(p) {
@@ -133,12 +136,27 @@ export default function ArbitroHomePage() {
     // (se apagó, se cerró la app, etc.) sin tener que esperar esta consulta
     // de nuevo — la planilla misma ya trae su propio borrador guardado.
     try { localStorage.setItem(`planilla_partido_shell_${p.id}`, JSON.stringify(p)) } catch (e) {}
-    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); return n }, { replace: true })
+    // Partido ya cerrado que se vuelve a abrir (corregir algo): se marca en la URL para que, si el celular recarga,
+    // la restauración no la cierre sola por estar "finished".
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); if (p.status === 'finished') n.set('reabierta', '1'); else n.delete('reabierta'); return n }, { replace: true })
+  }
+  async function reabrirPlanilla(p) {
+    if (!window.confirm('Vas a volver a abrir una planilla que ya estaba cerrada.\n\nSolo hazlo para corregir un error. El resultado guardado se mantiene hasta que guardes los cambios, y queda registrado que se editó después del cierre.\n\n¿Abrir la planilla?')) return
+    setCierreOk(null)
+    // Se trae el partido tal como quedó guardado (marcador, estado) para abrir la planilla con datos frescos.
+    let fresco = null
+    try {
+      const { data } = await supabase.from('matches')
+        .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
+        .eq('id', p.id).single()
+      fresco = data
+    } catch (e) {}
+    abrirPlanilla({ ...(fresco || p), status: 'finished' })
   }
   function cerrarPlanilla() {
     if (planillaPartido) { try { localStorage.removeItem(`planilla_partido_shell_${planillaPartido.id}`) } catch (e) {} }
     setPlanillaPartido(null)
-    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); return n }, { replace: true })
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('planilla'); n.delete('reabierta'); return n }, { replace: true })
     fetchTodo()
   }
 
@@ -160,9 +178,9 @@ export default function ArbitroHomePage() {
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
         .eq('id', matchId).single()
         .then(({ data }) => {
-          // Un árbitro no puede editar una planilla ya cerrada (solo admin/coordinador),
-          // ni siquiera armando el link a mano.
-          if (data && data.status !== 'finished') {
+          // Una planilla ya cerrada solo se restaura si el árbitro la volvió a abrir a propósito
+          // ("Volver a abrir planilla" deja ?reabierta=1 en la URL); si no, se cierra sola.
+          if (data && (data.status !== 'finished' || searchParams.get('reabierta') === '1')) {
             setPlanillaPartido(data)
             try { localStorage.setItem(`planilla_partido_shell_${matchId}`, JSON.stringify(data)) } catch (e) {}
           } else if (data) {
@@ -278,8 +296,32 @@ export default function ArbitroHomePage() {
           contexto="arbitro"
           partido={planillaPartido}
           onClose={cerrarPlanilla}
-          onGuardarResultado={() => {}}
+          onGuardarResultado={() => setCierreOk(planillaPartido)}
         />
+      )}
+
+      {informePartido && (
+        <div style={{ position:'fixed', inset:0, zIndex:9600, overflowY:'auto', background:'#07070e' }}>
+          <InformeSolo partido={informePartido} onVolver={() => setInformePartido(null)}/>
+        </div>
+      )}
+
+      {cierreOk && !planillaPartido && !informePartido && (
+        <div onClick={() => setCierreOk(null)} style={{ position:'fixed', inset:0, zIndex:9500, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', padding:'18px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'16px', padding:'22px 18px', width:'100%', maxWidth:'340px', textAlign:'center', color:'#e8f4fd' }}>
+            <div style={{ fontSize:'2.2rem', marginBottom:'6px' }}>✓</div>
+            <div style={{ fontSize:'1.05rem', fontWeight:'800' }}>Planilla cerrada</div>
+            <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginTop:'4px' }}>{cierreOk.home?.name} vs {cierreOk.away?.name}</div>
+            <div style={{ fontSize:'.75rem', color:'#7a9ab5', marginTop:'16px' }}>¿Te faltó algo?</div>
+            <div style={{ display:'flex', gap:'8px', marginTop:'8px' }}>
+              <button onClick={() => { setInformePartido(cierreOk); setCierreOk(null) }}
+                style={{ flex:1, padding:'12px 6px', borderRadius:'10px', border:'1px solid rgba(249,168,37,.5)', background:'rgba(249,168,37,.1)', color:'#f9a825', fontWeight:'800', fontSize:'.8rem', cursor:'pointer' }}>📝 Subir informe</button>
+              <button onClick={() => reabrirPlanilla(cierreOk)}
+                style={{ flex:1, padding:'12px 6px', borderRadius:'10px', border:'1px solid #1e2d3d', background:'transparent', color:'#e8f4fd', fontWeight:'800', fontSize:'.8rem', cursor:'pointer' }}>↩ Volver a abrir planilla</button>
+            </div>
+            <button onClick={() => setCierreOk(null)} style={{ marginTop:'10px', width:'100%', padding:'11px', borderRadius:'10px', border:'none', background:'#1a73e8', color:'#fff', fontWeight:'800', fontSize:'.85rem', cursor:'pointer' }}>Listo</button>
+          </div>
+        </div>
       )}
 
       <PortalBanner theme="dark" sticky
@@ -373,9 +415,15 @@ export default function ArbitroHomePage() {
                 </div>
               )}
               {esJugado ? (
-                <div title="Solo el coordinador o el admin pueden editar una planilla cerrada"
-                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'1px solid #1e2d3d', background:'none', color:'#5a6b7a', fontSize:'.78rem', fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', boxSizing:'border-box' }}>
-                  <Lock size={13}/> Planilla cerrada
+                <div style={{ marginTop:'10px', display:'flex', gap:'8px' }}>
+                  <button onClick={()=>setInformePartido(p)}
+                    style={{ flex:1, padding:'10px 6px', borderRadius:'8px', border:'1px solid rgba(249,168,37,.5)', background:'rgba(249,168,37,.1)', color:'#f9a825', fontSize:'.78rem', fontWeight:'800', cursor:'pointer' }}>
+                    📝 Subir informe
+                  </button>
+                  <button onClick={()=>reabrirPlanilla(p)}
+                    style={{ flex:1, padding:'10px 6px', borderRadius:'8px', border:'1px solid #1e2d3d', background:'none', color:'#e8f4fd', fontSize:'.78rem', fontWeight:'800', cursor:'pointer' }}>
+                    ↩ Volver a abrir planilla
+                  </button>
                 </div>
               ) : (
                 <button onClick={()=>abrirPlanilla(p)}

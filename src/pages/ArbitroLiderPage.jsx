@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check, AlertTriangle, CheckCircle, ClipboardList, Circle, MapPin, User, Trophy, FileText, CreditCard, Key, Pencil, CheckSquare, Square, Smartphone, Crown, PartyPopper, Zap } from 'lucide-react'
 import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
+import InformeSolo from '../components/planillaRapida/InformeSolo'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useEstadoUI, useRestaurarScroll } from '../hooks/useEstadoUI'
@@ -181,7 +182,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   )
 }
 
-function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditarPlanilla, onCambiarPlanilla }) {
+function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditarPlanilla, onCambiarPlanilla, onSubirInforme }) {
   const [abierto, setAbierto] = useState(false)
   // Selector propio en vez de <select> nativo: en algunos celulares (Oppo/
   // ColorOS) abrir el select del sistema sobre esta página oscura dejaba la
@@ -274,6 +275,12 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
           <button onClick={()=>onEditarPlanilla(p)}
             style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'10px', padding:'8px 14px', cursor:'pointer', color:'#7a9ab5', fontSize:'.75rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'5px' }}>
 <Pencil size={12}/> Editar planilla
+          </button>
+        )}
+        {esJugado && onSubirInforme && (
+          <button onClick={()=>onSubirInforme(p)}
+            style={{ background:'rgba(249,168,37,.1)', border:'1px solid rgba(249,168,37,.5)', borderRadius:'10px', padding:'8px 14px', cursor:'pointer', color:'#f9a825', fontSize:'.75rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'5px' }}>
+            📝 Subir informe
           </button>
         )}
       </div>
@@ -538,6 +545,7 @@ export default function ArbitroLiderPage() {
   const [reseteando,    setReseteando]    = useState(false)
   const [reclamosMap,  setReclamosMap]  = useState({})
   const [planillaPartido, setPlanillaPartido] = useState(null)
+  const [informePartido, setInformePartido] = useState(null)   // partido ya cerrado al que se le sube SOLO el informe
   // Qué torneos ve este coordinador (ver lib/torneosCoordinador.js)
   const [torneosInfo, setTorneosInfo] = useState(null)   // { [id]: { status, archivado } } (null = no se pudo leer)
   const [misTorneos,  setMisTorneos]  = useState(null)   // Set de torneos que ya manejó (null = falta correr la migración)
@@ -930,7 +938,7 @@ export default function ArbitroLiderPage() {
               const tieneArbitro = p.arbitro1_id||p.arbitro2_id||p.arbitro3_id
               return (
                 <div key={p.id} style={{ marginBottom:'8px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${recAbierto?'rgba(217,48,37,.5)':tieneReclamo?'rgba(217,48,37,.2)':'#1e2d3d'}`, background:recAbierto?'rgba(217,48,37,.05)':'transparent' }}>
-                  <CardPartido partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onEditarPlanilla={abrirPlanilla}/>
+                  <CardPartido partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onEditarPlanilla={abrirPlanilla} onSubirInforme={setInformePartido}/>
                   <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #1e2d3d', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
                       <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', flex:1 }}>
                         {(reclamosMap[p.id]||[]).map((r,i)=>{
@@ -988,6 +996,12 @@ export default function ArbitroLiderPage() {
       )}
 
       {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado'); fetchArbitros() }}/>}
+
+      {informePartido && (
+        <div style={{ position:'fixed', inset:0, zIndex:9600, overflowY:'auto', background:'#07070e' }}>
+          <InformeSolo partido={informePartido} onVolver={() => setInformePartido(null)}/>
+        </div>
+      )}
 
       {planillaPartido && (
         // Fútbol de salón (profesional) por defecto en cuentas de árbitro; Fútbol 11 (hoja de papel) si el coordinador la eligió
