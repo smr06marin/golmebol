@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { cargarDatosPrivadosEquipo, conDatosPrivados } from '../lib/equiposPrivado'
 import {
   ArrowLeft, Shield, Users, Trophy, Calendar, Award, Search, X,
-  LayoutGrid, BarChart3, Clock, MapPin, Pencil, Camera, Power, Check,
+  LayoutGrid, BarChart3, Clock, MapPin, Pencil, Power, Check,
 } from 'lucide-react'
 import { responderPregunta } from '../lib/motorPreguntas'
 import { getPuntosTorneo } from '../lib/puntosTorneo'
@@ -66,7 +66,6 @@ export default function EquipoHistorialPage() {
   const [editandoTelId,   setEditandoTelId]   = useState(null)
   const [telEdit,         setTelEdit]         = useState('')
   const [guardandoTel,    setGuardandoTel]    = useState(false)
-  const [subiendoFoto,    setSubiendoFoto]    = useState(null)
   const [mostrarAgregarTorneo, setMostrarAgregarTorneo] = useState(false)
   const [busquedaAgregarTorneo, setBusquedaAgregarTorneo] = useState('')
   const [agregandoJugadorId, setAgregandoJugadorId] = useState(null)
@@ -399,27 +398,7 @@ export default function EquipoHistorialPage() {
     showMsg('Teléfono actualizado ✓')
   }
 
-  async function handleFotoJugador(jugador, file) {
-    if (!esDueno || !file) return
-    setSubiendoFoto(jugador.id)
-    const archivo = await comprimirImagen(file)
-    const ext  = archivo.name.split('.').pop()
-    // Esta es la FOTO DE PERFIL del jugador (players.photo_face_url): la que se ve en el
-    // torneo, la planilla y las listas. Antes se guardaba en photo_url (la de la tarjeta),
-    // y como el torneo muestra primero la de perfil, el cambio del dueño nunca se veía.
-    const path = `fotos/${jugador.id}_perfil.${ext}`
-    const { error } = await supabase.storage.from('players').upload(path, archivo, { upsert: true })
-    if (error) { setSubiendoFoto(null); return showMsg('Error al subir la foto', 'error') }
-    const { data: urlData } = supabase.storage.from('players').getPublicUrl(path)
-    // ?v=: la ruta del archivo es la misma al reemplazar la foto, y sin esto el navegador
-    // y la red de Supabase siguen mostrando la foto vieja guardada.
-    const nuevaUrl = `${urlData.publicUrl}?v=${Date.now()}`
-    const { error: errDb } = await supabase.from('players').update({ photo_face_url: nuevaUrl, foto_cambiar_perfil: false }).eq('id', jugador.id)
-    if (errDb) { setSubiendoFoto(null); return showMsg('La foto se subió pero no se pudo guardar', 'error') }
-    setJugadoresEquipoGlobal(prev => prev.map(j => j.id === jugador.id ? { ...j, photo_face_url: nuevaUrl } : j))
-    setSubiendoFoto(null)
-    showMsg('Foto actualizada ✓')
-  }
+  // Las fotos de los jugadores ya NO las cambia el dueño del equipo: solo el organizador del torneo (o el propio jugador desde su tarjeta).
 
   // ── Buscador del equipo (misma lógica que el admin, solo lectura) ──
   function construirRespuestas() {
@@ -1097,16 +1076,9 @@ export default function EquipoHistorialPage() {
                               {(j.photo_face_url || j.photo_url) ? <img src={j.photo_face_url || j.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Users size={16} color={S.muted}/>}
                             </div>
                           </div>
-                          {esDueno && (
-                            <label style={{ position:'absolute', bottom:'-3px', right:'-3px', width:'18px', height:'18px', borderRadius:'50%', background:S.cyan, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', border:`2px solid ${S.card}` }} title="Cambiar foto">
-                              <Camera size={10} color="#000"/>
-                              <input type="file" accept="image/*" style={{ display:'none' }} disabled={subiendoFoto === j.id}
-                                onChange={e => handleFotoJugador(j, e.target.files[0])}/>
-                            </label>
-                          )}
                         </div>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontWeight:'700', color:S.text, fontSize:'.84rem' }}>{j.name}{subiendoFoto === j.id && <span style={{ fontSize:'.66rem', color:S.muted, fontWeight:'500' }}> · subiendo foto...</span>}</div>
+                          <div style={{ fontWeight:'700', color:S.text, fontSize:'.84rem' }}>{j.name}</div>
                           <div style={{ display:'flex', gap:'6px', marginTop:'5px', flexWrap:'wrap' }}>
                             {j.es_elite       && <span style={{ fontSize:'.66rem', color:'#1a1305', background:'#f5c542', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>💎 Élite</span>}
                             {j.es_profesional && <span style={{ fontSize:'.66rem', color:'#fff', background:'#7b3ff2', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>🎓 Profesional</span>}
@@ -1122,7 +1094,7 @@ export default function EquipoHistorialPage() {
                         </div>
                       </div>
 
-                      {/* Controles del encargado del equipo: teléfono y foto
+                      {/* Controles del encargado del equipo: teléfono
                           (cualquier vista), y quitar del torneo — solo dentro
                           de un torneo puntual, ya que es lo que libera cupo.
                           Nunca hay botón de eliminar jugador ni de crear uno
