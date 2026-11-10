@@ -1,8 +1,7 @@
 import { Shield } from 'lucide-react'
 
 // Ficha para RECONOCER y ESCOGER un equipo que ya existe en Golmebol:
-// escudo, nombre, ciudad, dueño y su "vida futbolística" en tres números
-// (torneos, jugadores, partidos) + el último torneo. Se usa al agregar un
+// escudo, nombre, ciudad, dueño y el último torneo que jugó. Se usa al agregar un
 // equipo al torneo y en el aviso de equipos parecidos, para que el organizador
 // no se confunda entre dos equipos con el mismo nombre.
 // `equipo`: fila de buscar_equipos_para_inscribir (los datos de ficha pueden faltar).
@@ -13,11 +12,6 @@ export default function FichaEquipo({ equipo: e, children, mostrarCedula = false
   const yaEsta = !!e.en_este_torneo
   const desactivado = !!e.desactivado_en_este_torneo
   const atenuada = yaEsta || desactivado
-  const stats = tieneFicha ? [
-    { n: e.torneos, t: e.torneos === 1 ? 'torneo' : 'torneos' },
-    { n: e.jugadores, t: e.jugadores === 1 ? 'jugador' : 'jugadores' },
-    { n: e.partidos, t: e.partidos === 1 ? 'partido' : 'partidos' },
-  ] : []
 
   return (
     <div style={{ ...card, opacity: atenuada ? 0.8 : 1 }}>
@@ -36,16 +30,6 @@ export default function FichaEquipo({ equipo: e, children, mostrarCedula = false
 
       {mostrarCedula && e.por_cedula && <div style={pildora}>✓ Misma cédula del dueño</div>}
 
-      {stats.length > 0 && (
-        <div style={grilla}>
-          {stats.map((s, i) => (
-            <div key={i} style={{ ...celda, borderLeft: i > 0 ? '1px solid #e3e6ea' : 'none' }}>
-              <div style={numero}>{s.n}</div>
-              <div style={etiqueta}>{s.t}</div>
-            </div>
-          ))}
-        </div>
-      )}
       {tieneFicha && e.ultimo_torneo && (
         <div style={ultimo}><span style={{ color: '#80868b' }}>Último torneo</span> <b style={{ color: '#3c4043' }}>{e.ultimo_torneo}</b></div>
       )}
@@ -61,10 +45,6 @@ const card = { background: '#fff', border: '1px solid #dfe3e8', borderRadius: '1
 const escudo = { width: '68px', height: '68px', borderRadius: '14px', flexShrink: 0, background: '#f8f9fa', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }
 const nombre = { fontWeight: 800, color: '#202124', fontSize: '1.05rem', lineHeight: 1.2, wordBreak: 'break-word', textTransform: 'uppercase', letterSpacing: '.2px' }
 const fila = { fontSize: '.8rem', color: '#5f6368', marginTop: '3px', lineHeight: 1.25 }
-const grilla = { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', background: '#f6f8fa', border: '1px solid #e8eaed', borderRadius: '12px', marginTop: '12px', overflow: 'hidden' }
-const celda = { padding: '8px 4px', textAlign: 'center' }
-const numero = { fontSize: '1.2rem', fontWeight: 800, color: '#174ea6', lineHeight: 1.1 }
-const etiqueta = { fontSize: '.68rem', color: '#5f6368', fontWeight: 600, marginTop: '2px' }
 const ultimo = { fontSize: '.76rem', marginTop: '9px', lineHeight: 1.3, wordBreak: 'break-word' }
 const pildora = { display: 'inline-block', background: '#e6f4ea', color: '#137333', borderRadius: '999px', padding: '3px 10px', fontSize: '.7rem', fontWeight: 800, marginTop: '10px' }
 const estadoVerde = { marginTop: '10px', background: '#f1f3f4', color: '#3c4043', borderRadius: '10px', padding: '8px 10px', fontSize: '.78rem', fontWeight: 700, textAlign: 'center' }
