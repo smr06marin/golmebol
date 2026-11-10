@@ -12,6 +12,7 @@ import { responderPregunta } from '../../lib/motorPreguntas'
 import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPorCedula, rolActualLabel } from '../../lib/personaPorCedula'
 import { useAuthStore } from '../../store/authStore'
 import { confirmar } from '../../lib/confirmar'
+import { abrirChatAyuda } from '../../lib/abrirChat'
 
 const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
 
@@ -1145,11 +1146,10 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                   </button>
                 )}
                 {!modoLectura && !esPrincipal && (
-                  <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola! Soy organizador y quiero pedir permiso para editar los datos del dueño del equipo "${equipo.name}". Datos actuales: ${equipo.representante_nombre || 'sin nombre'}${equipo.representante_cedula ? ` · cédula ${equipo.representante_cedula}` : ''}${equipo.representante_telefono ? ` · tel ${equipo.representante_telefono}` : ''}`)}`}
-                    target="_blank" rel="noreferrer"
-                    style={{ fontSize: '.68rem', color: '#e8710a', ...GLASS_INSET, borderRadius: '20px', padding: '3px 10px', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    🔒 Solicitar cambio
-                  </a>
+                  <button type="button" onClick={() => abrirChatAyuda(`Hola! Soy organizador y quiero pedir permiso para editar los datos del dueño del equipo "${equipo.name}". Datos actuales: ${equipo.representante_nombre || 'sin nombre'}${equipo.representante_cedula ? ` · cédula ${equipo.representante_cedula}` : ''}${equipo.representante_telefono ? ` · tel ${equipo.representante_telefono}` : ''}`)}
+          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', fontSize: '.68rem', color: '#e8710a', ...GLASS_INSET, borderRadius: '20px', padding: '3px 10px', fontWeight: '700', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          🔒 Solicitar cambio
+        </button>
                 )}
               </div>
             )}

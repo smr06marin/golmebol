@@ -11,6 +11,7 @@ import SponsorSplash from '../components/card/SponsorSplash'
 import PortalBanner from '../components/PortalBanner'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
 import { fmtHoraDate } from '../lib/horaHelpers'
+import { abrirChatAyuda } from '../lib/abrirChat'
 
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
@@ -394,13 +395,13 @@ export default function PlayerHomePage() {
   }
 
   // Antes esto generaba la imagen y la descargaba en el celular del jugador.
-  // Ahora en vez de eso lo mandamos directo al WhatsApp de Golmebol pidiendo
+  // Ahora en vez de eso lo mandamos directo al chat de Golmebol pidiendo
   // la impresión en acrílico — el admin principal es quien después busca al
   // jugador por cédula (en Admin > Jugadores) y descarga la tarjeta desde ahí
   // para mandarla a imprimir.
   function handleImprimirAcrilico() {
     const texto = `Hola! Quiero imprimir mi tarjeta en acrílico 🖨️🃏. Soy ${player.name} (cédula ${player.numero_cedula}).`
-    window.open(`https://wa.me/573178940448?text=${encodeURIComponent(texto)}`, '_blank')
+    abrirChatAyuda(texto, { nombre: player?.name || '' })
   }
 
   function getPosicionTipo(p) {
@@ -576,11 +577,10 @@ export default function PlayerHomePage() {
             style={{ width: '100%', padding: '14px', background: 'linear-gradient(90deg, #00ddd0, #1a73e8)', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '800', fontSize: '1rem', marginBottom: '12px' }}>
             🎯 ENTRAR A PREDIX →
           </button>
-          <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`)}`}
-            target="_blank" rel="noopener noreferrer"
-            style={{ display: 'block', padding: '12px', background: 'rgba(37,211,102,.15)', border: '1px solid rgba(37,211,102,.4)', borderRadius: '12px', color: '#25d366', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none', marginBottom: '12px' }}>
-            📲 ¿Juegas en un equipo? Escríbenos
-          </a>
+          <button type="button" onClick={() => abrirChatAyuda(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`, { nombre: player.name })}
+          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'block', padding: '12px', background: 'rgba(37,211,102,.15)', border: '1px solid rgba(37,211,102,.4)', borderRadius: '12px', color: '#25d366', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none', marginBottom: '12px' }}>
+          💬 ¿Juegas en un equipo? Escríbenos
+        </button>
           <button onClick={async () => { await supabase.auth.signOut(); navigate('/jugador/login') }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.35)', fontSize: '.75rem' }}>
             Cerrar sesión

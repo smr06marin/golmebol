@@ -8,6 +8,7 @@ import { useFormDraft, limpiarBorrador } from '../hooks/useFormDraft'
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import PlanillaEquipoModal from '../components/PlanillaEquipoModal'
 import { cargarPlanillaEquipoRepresentante } from '../lib/planillaEquipo'
+import { abrirChatAyuda } from '../lib/abrirChat'
 
 // Cliente aparte SIN sesión persistente: se usa solo para verificar la cédula y
 // contraseña de quien desactiva un jugador, sin tocar la sesión del navegador.
@@ -544,11 +545,10 @@ export default function RegistroEquipoPage() {
           Este link de registro ya venció (es válido por {horasValidez === 24 ? '1 día' : `${Math.round(horasValidez / 24)} días`} desde que se envió).
           Pide a Golmebol que te comparta uno nuevo para seguir inscribiendo jugadores del equipo <strong>{equipo.name}</strong> en el torneo <strong>{torneo.name}</strong>.
         </div>
-        <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola! Quiero registrar otro jugador, ¿me podrías enviar el link? Equipo: ${equipo.name} — Torneo: ${torneo.name}`)}`}
-          target="_blank" rel="noopener noreferrer"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '13px', background: '#25D366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none' }}>
-          📲 Escribir a Golmebol por WhatsApp
-        </a>
+        <button type="button" onClick={() => abrirChatAyuda(`Hola! Quiero registrar otro jugador, ¿me podrías enviar el link? Equipo: ${equipo.name} — Torneo: ${torneo.name}`)}
+          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '13px', background: '#25D366', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '.9rem', textDecoration: 'none' }}>
+          💬 Escribir a Golmebol por el chat
+        </button>
       </div>
     </div>
   )

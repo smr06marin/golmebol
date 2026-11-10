@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Trophy, Calendar, BarChart3, User, Swords, Flam
 import { getPuntosTorneo } from '../lib/puntosTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { compararPosiciones } from '../lib/torneoTablas'
+import { abrirChatAyuda } from '../lib/abrirChat'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -299,8 +300,6 @@ function construirRankingTorneo(modo, torneoId, { preds, duelosArr, posturasArr,
   return Object.values(rankMap).sort((a, b) => b.puntos - a.puntos)
 }
 
-const WA_PREDIX = (texto) => `https://wa.me/573178940448?text=${encodeURIComponent(texto)}`
-
 // ── Rondas (fechas de apertura/cierre/fin por torneo, las pone el admin) ──
 // Mismo criterio que en el panel de admin: el estado se calcula de las 3
 // fechas, no se confía en un campo guardado que se pueda desactualizar.
@@ -325,7 +324,7 @@ function proximaRondaRelevante(rondas) {
 }
 
 // Ficha de planes disponibles + mis suscripciones, con botón directo a
-// WhatsApp para pagar (el cobro es manual, lo activa un admin después).
+// Chat de Golmebol para pagar (el cobro es manual, lo activa un admin después).
 function ModalPlanesPredix({ planes, misSuscripciones, jugadorNombre, onClose }) {
   function fmtMoney(n) { return `$${Number(n || 0).toLocaleString('es-CO')}` }
   return (
@@ -359,11 +358,10 @@ function ModalPlanesPredix({ planes, misSuscripciones, jugadorNombre, onClose })
                 {fmtMoney(p.precio_min)} – {fmtMoney(p.precio_max)} · tú eliges cuánto pagar en ese rango
               </div>
               <div style={{ fontSize:'.72rem', color:S.gold, marginTop:'2px' }}>Si quedas 1° del ranking, ganas {p.multiplicador_premio}x lo que pagaste</div>
-              <a href={WA_PREDIX(`Hola! Soy ${jugadorNombre} y quiero suscribirme a "${p.nombre}" en Predix Golmebol (rango ${fmtMoney(p.precio_min)}–${fmtMoney(p.precio_max)}). ¿Cómo pago?`)}
-                target="_blank" rel="noreferrer"
-                style={{ display:'block', textAlign:'center', marginTop:'10px', padding:'9px', background:S.cyan, borderRadius:'8px', color:'#000', fontWeight:'800', fontSize:'.78rem', textDecoration:'none' }}>
-                📲 Escribir por WhatsApp
-              </a>
+              <button type="button" onClick={() => abrirChatAyuda(`Hola! Soy ${jugadorNombre} y quiero suscribirme a "${p.nombre}" en Predix Golmebol (rango ${fmtMoney(p.precio_min)}–${fmtMoney(p.precio_max)}). ¿Cómo pago?`, { nombre: jugadorNombre })}
+                style={{ border:'none', cursor:'pointer', fontFamily:'inherit', width:'100%', boxSizing:'border-box', display:'block', textAlign:'center', marginTop:'10px', padding:'9px', background:S.cyan, borderRadius:'8px', color:'#000', fontWeight:'800', fontSize:'.78rem', textDecoration:'none' }}>
+                💬 Escribir por el chat
+              </button>
             </div>
           ))}
         </div>

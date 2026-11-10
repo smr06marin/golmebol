@@ -40,6 +40,7 @@ import AyudaTermino from '../../components/AyudaTermino'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { confirmar } from '../../lib/confirmar'
 import { armarLiquidaciones, descargarLiquidacionCancha, descargarLiquidacionArbitros } from '../../lib/liquidacionesPdf'
+import { abrirChatAyuda } from '../../lib/abrirChat'
 
 // Le pone un límite de tiempo a una consulta a Supabase para que un botón
 // nunca se quede "cargando..." para siempre (por ejemplo si internet falla a
@@ -4829,7 +4830,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     return equipos.length >= (torneo?.equipos_permitidos || 0)
   }
   function avisarCupoEquipos() {
-    showMsg(`Alcanzaste el cupo de equipos habilitado para este torneo (${torneo?.equipos_permitidos || 0}). Escríbenos por WhatsApp para que Golmebol te habilite más.`, 'error')
+    showMsg(`Alcanzaste el cupo de equipos habilitado para este torneo (${torneo?.equipos_permitidos || 0}). Escríbenos por el chat de ayuda para que Golmebol te habilite más.`, 'error')
   }
 
   async function handleAgregarEquipo(equipo) {
@@ -6911,13 +6912,12 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             <div style={{ background: '#fff8e1', border: '1px solid #ffe08a', borderRadius: '12px', padding: '14px 16px', marginBottom: '14px' }}>
               <div style={{ fontWeight: '700', color: '#7a5600', fontSize: '.9rem', marginBottom: '4px' }}>Tu torneo aún no tiene cupo de equipos</div>
               <div style={{ fontSize: '.82rem', color: '#7a5600', lineHeight: 1.5, marginBottom: '10px' }}>
-                Para inscribir equipos, Golmebol debe habilitarte el cupo de este torneo. Escríbenos por WhatsApp y te lo activamos.
+                Para inscribir equipos, Golmebol debe habilitarte el cupo de este torneo. Escríbenos por el chat de ayuda y te lo activamos.
               </div>
-              <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`Hola Golmebol! Soy organizador del torneo "${torneo?.name || ''}" y quiero que me habiliten el cupo de equipos.`)}`}
-                target="_blank" rel="noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: '#25d366', color: '#fff', borderRadius: '10px', fontWeight: '700', fontSize: '.85rem', textDecoration: 'none' }}>
-                Pedir cupo por WhatsApp
-              </a>
+              <button type="button" onClick={() => abrirChatAyuda(`Hola Golmebol! Soy organizador del torneo "${torneo?.name || ''}" y quiero que me habiliten el cupo de equipos.`)}
+          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: '#25d366', color: '#fff', borderRadius: '10px', fontWeight: '700', fontSize: '.85rem', textDecoration: 'none' }}>
+          Pedir cupo por el chat
+        </button>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>

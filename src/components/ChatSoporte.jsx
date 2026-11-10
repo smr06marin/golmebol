@@ -97,6 +97,17 @@ function ChatInterno() {
   const limite = useRef(null)
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState('')
+
+  // Otros botones del admin (ej. "Pedir cupo") abren este chat con el mensaje ya escrito
+  useEffect(() => {
+    const alPedir = e => {
+      const m = String(e.detail?.mensaje || '')
+      if (m) setTexto(prev => (prev.trim() ? prev : m))
+      setAbierto(true)
+    }
+    window.addEventListener('gm-abrir-chat-soporte', alPedir)
+    return () => window.removeEventListener('gm-abrir-chat-soporte', alPedir)
+  }, [])
   const panelRef = useRef(null) // el panel del chat: en el celular se acomoda al área que deja libre el teclado
   const fin = useRef(null)
   const secuencia = useRef(0)

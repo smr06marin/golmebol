@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { abrirChatAyuda } from '../../lib/abrirChat'
 
 const S = {
   navy:    '#07070e',
@@ -220,13 +221,12 @@ const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','niv
               🎉 ¡Tarjeta desbloqueada!
             </div>
             <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', lineHeight: 1.5, marginBottom: '12px' }}>
-              Envíanos un pantallazo de esta pantalla por WhatsApp y reclama tu premio 👇
+              Cuéntanos por el chat que la desbloqueaste y reclama tu premio 👇
             </div>
-            <a href={`https://wa.me/573178940448?text=${encodeURIComponent(`¡Desbloqueé la tarjeta ${subnivel_activo.card?.nombre} · ${subnivel_activo.nombre} en Golmebol! 🎉 Vengo a reclamar mi premio.`)}`}
-              target="_blank" rel="noopener noreferrer"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none' }}>
-              📲 Reclamar premio en WhatsApp
-            </a>
+            <button type="button" onClick={() => abrirChatAyuda(`¡Desbloqueé la tarjeta ${subnivel_activo.card?.nombre} · ${subnivel_activo.nombre} en Golmebol! 🎉 Vengo a reclamar mi premio.`)}
+          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none' }}>
+          💬 Reclamar premio por el chat
+        </button>
           </div>
         )}
         {/* Barra de progreso */}

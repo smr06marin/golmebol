@@ -12,6 +12,7 @@ import { useAuthStore } from '../store/authStore'
 import { comprimirImagen } from '../lib/imageCompress'
 import { compararPosiciones } from '../lib/torneoTablas'
 import { FASES } from '../lib/palmaresJugador'
+import { abrirChatAyuda } from '../lib/abrirChat'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -258,7 +259,7 @@ export default function EquipoHistorialPage() {
 
   // Agrega (o vuelve a activar) un jugador del equipo EN ESTE torneo,
   // respetando el límite de jugadores configurado en el torneo. Si ya no
-  // hay cupo, no se agrega — se ofrece pedir cupo extra por WhatsApp.
+  // hay cupo, no se agrega — se ofrece pedir cupo extra por el chat.
   async function handleAgregarJugadorTorneo(jugador, torneoId) {
     if (!esDueno) return
     if (estadoInsc[torneoId]?.abierta === false) return showMsg(estadoInsc[torneoId].motivo || 'La inscripción de jugadores está cerrada', 'error')
@@ -1040,10 +1041,10 @@ export default function EquipoHistorialPage() {
                   {cupoLleno && (
                     <div style={{ marginTop:'10px' }}>
                       <div style={{ fontSize:'.76rem', color:S.muted, marginBottom:'8px' }}>Ya llegaste al límite de jugadores de este torneo. Para inscribir uno más, pídele al organizador que te habilite un cupo extra.</div>
-                      <a href={`https://wa.me/573178940448?text=${encodeURIComponent(mensajeWa)}`} target="_blank" rel="noreferrer"
-                        style={{ display:'inline-flex', alignItems:'center', gap:'6px', background:'#25d366', borderRadius:'8px', padding:'8px 14px', color:'#04250f', fontSize:'.78rem', fontWeight:'800', textDecoration:'none' }}>
-                        📲 Pedir cupo extra por WhatsApp
-                      </a>
+                      <button type="button" onClick={() => abrirChatAyuda(mensajeWa)}
+          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', display:'inline-flex', alignItems:'center', gap:'6px', background:'#25d366', borderRadius:'8px', padding:'8px 14px', color:'#04250f', fontSize:'.78rem', fontWeight:'800', textDecoration:'none' }}>
+          💬 Pedir cupo extra por el chat
+        </button>
                     </div>
                   )}
 

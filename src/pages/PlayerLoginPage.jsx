@@ -8,6 +8,7 @@ const MSG_TIMEOUT = 'Esto está tardando demasiado. Revisa tu internet e intenta
 const MSG_CONEXION = 'No se pudo conectar. Revisa tu internet e intenta de nuevo.'
 const msgFalla = (err) => (err?.message === 'TIMEOUT' ? MSG_TIMEOUT : MSG_CONEXION)
 import BotonVolverLogin from '../components/BotonVolverLogin'
+import { abrirChatAyuda } from '../lib/abrirChat'
 
 // Letra del sistema (clara y grande): la fuente angosta de la app se leía muy chica en el celular de varias personas
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
@@ -33,9 +34,6 @@ const CLAVE_CEDULA = 'golmebol_jugador_cedula'
 const leerCedulaGuardada = () => { try { return (localStorage.getItem(CLAVE_CEDULA) || '').replace(/\D/g, '') } catch { return '' } }
 const guardarCedula = (c) => { try { const d = String(c || '').replace(/\D/g, ''); if (d) localStorage.setItem(CLAVE_CEDULA, d) } catch { /* sin almacenamiento: no se recuerda */ } }
 const olvidarCedula = () => { try { localStorage.removeItem(CLAVE_CEDULA) } catch { /* nada */ } }
-
-const WA_LINK = (texto) =>
-  `https://wa.me/573178940448?text=${encodeURIComponent(texto)}`
 
 function ErrorBox({ error }) {
   if (!error) return null
@@ -166,15 +164,14 @@ function ModalRecuperarPass({ onClose }) {
         ) : (
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '2.4rem', marginBottom: '12px' }}>📲</div>
-            <div style={{ fontWeight: 800, color: '#202124', fontSize: '1.4rem', marginBottom: '8px' }}>Escríbenos por WhatsApp</div>
+            <div style={{ fontWeight: 800, color: '#202124', fontSize: '1.4rem', marginBottom: '8px' }}>Escríbenos por el chat</div>
             <div style={{ fontSize: '1.02rem', color: '#3c4043', marginBottom: '20px', lineHeight: 1.5 }}>
               Dinos tu cédula <b>{cedula}</b> y te ayudamos a recuperar el acceso
             </div>
-            <a href={WA_LINK(`Hola! Olvidé mi contraseña de PREDIX Golmebol. Mi cédula es ${cedula}. Ayúdenme a recuperar el acceso 🙏`)}
-              target="_blank" rel="noopener noreferrer"
-              style={{ display: 'block', padding: '16px', background: '#1e9e4a', borderRadius: '14px', color: '#fff', fontWeight: 800, fontSize: '1.15rem', textDecoration: 'none', marginBottom: '10px' }}>
-              📲 Escribir a Golmebol
-            </a>
+            <button type="button" onClick={() => { abrirChatAyuda(`Hola! Olvidé mi contraseña de PREDIX Golmebol. Mi cédula es ${cedula}. Ayúdenme a recuperar el acceso 🙏`); onClose() }}
+              style={{ display: 'block', width: '100%', border: 'none', cursor: 'pointer', fontFamily: FONT, padding: '16px', background: '#1a73e8', borderRadius: '14px', color: '#fff', fontWeight: 800, fontSize: '1.15rem', marginBottom: '10px' }}>
+              💬 Abrir el chat de ayuda
+            </button>
             <button onClick={onClose} style={btnTexto}>Cerrar</button>
           </div>
         )}
@@ -371,7 +368,7 @@ export default function PlayerLoginPage() {
           ok = !!r.data?.ok
           if (ok && r.data.nombre) setPlayer(prev => ({ ...prev, name: r.data.nombre }))
         }
-        if (!ok) { setError('Los datos no coinciden con el jugador registrado. Verifica tu nombre y primer apellido, o escríbenos por WhatsApp.'); return }
+        if (!ok) { setError('Los datos no coinciden con el jugador registrado. Verifica tu nombre y primer apellido, o escríbenos por el chat de ayuda.'); return }
         setError('')
         setStep('crear_pass')
       })())
@@ -449,7 +446,7 @@ export default function PlayerLoginPage() {
         if (msg.includes('already registered') || msg.includes('ya existe') || msg.includes('already exists')) {
           const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password: pass })
           if (signInError || !signInData?.user) {
-            setError('Ya existe una cuenta con esta cédula pero no coincide con esta contraseña. Si ya la habías creado antes, usa esa contraseña, o escríbenos por WhatsApp para restablecerla.')
+            setError('Ya existe una cuenta con esta cédula pero no coincide con esta contraseña. Si ya la habías creado antes, usa esa contraseña, o escríbenos por el chat de ayuda para restablecerla.')
             return
           }
           if (!player.user_id) await vincularCuenta(player.id, signInData.user.id)
@@ -495,12 +492,13 @@ export default function PlayerLoginPage() {
     </div>
   )
   const cajaAviso = { fontSize: '1.02rem', color: '#202124', marginBottom: '18px', background: '#f1f3f4', borderRadius: '12px', padding: '14px 16px', lineHeight: 1.5 }
-  const linkWhatsapp = (href, texto) => (
-    <a href={href} target="_blank" rel="noopener noreferrer"
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '15px', background: '#1e9e4a', borderRadius: '14px', color: '#fff', fontWeight: 800, fontSize: '1.1rem', textDecoration: 'none', textAlign: 'center' }}>
+  const botonChat = (mensaje, texto) => (
+    <button type="button" onClick={() => abrirChatAyuda(mensaje, { nombre: player?.name || '' })}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', border: 'none', cursor: 'pointer', fontFamily: FONT, padding: '15px', background: '#1a73e8', borderRadius: '14px', color: '#fff', fontWeight: 800, fontSize: '1.1rem', textAlign: 'center' }}>
       {texto}
-    </a>
+    </button>
   )
+
   const formStyle = { display: 'flex', flexDirection: 'column', gap: '18px' }
 
   return (
@@ -557,7 +555,7 @@ export default function PlayerLoginPage() {
               <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e8eaed', fontSize: '1rem', color: '#3c4043', textAlign: 'center', lineHeight: 1.5 }}>
                 ¿Es tu primera vez? Escribe tu cédula y te vamos guiando.
                 <div style={{ marginTop: '8px' }}>
-                  <a href={WA_LINK('Hola! Necesito ayuda para entrar a Golmebol 🙏')} target="_blank" rel="noopener noreferrer" style={{ color: '#128c4b', fontWeight: 800, textDecoration: 'underline' }}>¿Necesitas ayuda? Escríbenos por WhatsApp</a>
+                  <button type="button" onClick={() => abrirChatAyuda('Hola! Necesito ayuda para entrar a Golmebol 🙏')} style={{ ...btnTexto, color: '#174ea6', fontWeight: 800 }}>💬 ¿Necesitas ayuda? Escríbenos por el chat</button>
                 </div>
               </div>
             </>
@@ -602,7 +600,7 @@ export default function PlayerLoginPage() {
                   <div role="alert" style={{ background: '#fce8e6', border: '2px solid #f3b5ae', borderRadius: '12px', padding: '14px 16px', fontSize: '1.02rem', lineHeight: 1.4, color: '#b3261e', fontWeight: 600 }}>
                     {error}
                     <div style={{ marginTop: '12px' }}>
-                      {linkWhatsapp(WA_LINK(`Hola! Estoy intentando activar mi cuenta de Golmebol con la cédula ${cedula} pero no me deja verificar mi nombre. ¿Me ayudan? 🙏`), '📲 Escribir a Golmebol')}
+                      {botonChat(`Hola! Estoy intentando activar mi cuenta de Golmebol con la cédula ${cedula} pero no me deja verificar mi nombre. ¿Me ayudan? 🙏`, '💬 Escribir por el chat')}
                     </div>
                   </div>
                 )}
@@ -635,11 +633,10 @@ export default function PlayerLoginPage() {
                 <button type="button" onClick={volver} style={btnTexto}>← Volver</button>
               </form>
               <div style={{ marginTop: '14px' }}>
-                <a href={WA_LINK(`Hola! Soy ${player?.name}, cédula ${cedula}. Estoy activando mi cuenta de Golmebol ✅`)}
-                  target="_blank" rel="noopener noreferrer"
-                  style={{ display: 'block', textAlign: 'center', fontSize: '.98rem', color: '#128c4b', fontWeight: 700, textDecoration: 'underline' }}>
-                  📲 Avisar a Golmebol por WhatsApp
-                </a>
+                <button type="button" onClick={() => abrirChatAyuda(`Hola! Soy ${player?.name}, cédula ${cedula}. Estoy activando mi cuenta de Golmebol ✅`, { nombre: player?.name || '' })}
+                  style={{ ...btnTexto, display: 'block', margin: '0 auto', color: '#174ea6', fontWeight: 700 }}>
+                  💬 Avisar a Golmebol por el chat
+                </button>
               </div>
             </>
           )}
@@ -652,9 +649,9 @@ export default function PlayerLoginPage() {
                 La cédula <b>{cedula}</b> no está registrada en Golmebol. Solo puede entrar quien ya esté inscrito por su equipo o por Golmebol. Es gratis.
               </div>
               <div style={{ ...cajaAviso, textAlign: 'left' }}>
-                📋 Pídele a tu equipo que te inscriba con el link de registro, o escríbenos por WhatsApp para ayudarte.
+                📋 Pídele a tu equipo que te inscriba con el link de registro, o escríbenos por el chat para ayudarte.
               </div>
-              {linkWhatsapp(WA_LINK(`Hola! Mi cédula ${cedula} no aparece registrada en Golmebol. ¿Me ayudan a quedar inscrito? 🙏`), '📲 Escribir a Golmebol por WhatsApp')}
+              {botonChat(`Hola! Mi cédula ${cedula} no aparece registrada en Golmebol. ¿Me ayudan a quedar inscrito? 🙏`, '💬 Escribir por el chat')}
               <button onClick={volver} style={{ ...btnTexto, marginTop: '8px' }}>← Probar con otra cédula</button>
             </div>
           )}

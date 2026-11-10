@@ -29,7 +29,7 @@ const nuevoToken = () => {
 }
 
 // Páginas públicas donde aparece el chat. Los dominios propios de cada organizador no lo muestran.
-const RUTAS = /^\/($|torneos\/?$|records\/?$|t\/|e\/|j\/|organizador\/|escenarios\/?$|reservar\/|pedir\/|equipos\/)/
+const RUTAS = /^\/($|torneos\/?$|records\/?$|t\/|e\/|j\/|organizador\/|escenarios\/?$|reservar\/|pedir\/|equipos\/|login\/?$|jugador(\/|$)|mi-tarjeta\/?$|registro\/)/
 const hostPropio = () => {
   try { const h = window.location.hostname; return h === 'localhost' || h === '127.0.0.1' || h.endsWith('golmebol.com') || h.endsWith('.vercel.app') } catch { return false }
 }
@@ -145,8 +145,12 @@ function ChatInterno() {
   useEffect(() => {
     const alPedir = e => {
       const t = e.detail?.tema
+      const msg = String(e.detail?.mensaje || '')
+      const nom = (String(e.detail?.nombre || '').trim() || leer(K_NOMBRE)).replace(/\s+/g, ' ')
       if (t && TEMAS[t]) setTema(t)
-      setVista(t && TEMAS[t] ? 'datos' : 'temas')
+      if (msg) setTexto(prev => (prev.trim() ? prev : msg)) // deja el mensaje ya escrito para que solo toque Enviar
+      if (msg && nom.length >= 2) { setNombre(nom); guardar(K_NOMBRE, nom); setVista('chat') }
+      else setVista(t && TEMAS[t] ? 'datos' : 'temas')
       setAbierto(true)
     }
     window.addEventListener('gm-abrir-chat-publico', alPedir)

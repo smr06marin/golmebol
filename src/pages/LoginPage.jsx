@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import BotonVolverLogin from '../components/BotonVolverLogin'
+import { abrirChatAyuda } from '../lib/abrirChat'
 
 // ── WebAuthn helpers ──────────────────────────────────────────
 function bufferToBase64(buffer) {
@@ -13,9 +14,6 @@ function base64ToBuffer(base64) {
 
 const RP_ID   = window.location.hostname        // ej: "golmebol.vercel.app"
 const RP_NAME = 'Golmebol'
-
-const WA_LINK = (texto) =>
-  `https://wa.me/573178940448?text=${encodeURIComponent(texto)}`
 
 async function registerFaceId(userId, email) {
   const challenge = crypto.getRandomValues(new Uint8Array(32))
@@ -366,13 +364,12 @@ export default function LoginPage({ enRecuperacion, onRecuperada }) {
       {showRecuperar && (
         <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '10px', padding: '1rem', marginBottom: '1rem', textAlign: 'center' }}>
           <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.7)', marginBottom: '.8rem', lineHeight: 1.5 }}>
-            Escríbenos por WhatsApp y te ayudamos a restablecerla
+            Escríbenos por el chat y te ayudamos a restablecerla
           </div>
-          <a href={WA_LINK(`Hola! Olvidé mi contraseña de Golmebol (correo: ${email || 'escribir aquí'}). Ayúdenme a restablecerla 🙏`)}
-            target="_blank" rel="noopener noreferrer"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '.7rem', background: '#25d366', borderRadius: '8px', color: '#fff', fontWeight: '700', fontSize: '.85rem', textDecoration: 'none' }}>
-            📲 Escribir a Golmebol
-          </a>
+          <button type="button" onClick={() => abrirChatAyuda(`Hola! Olvidé mi contraseña de Golmebol (correo: ${email || 'escribir aquí'}). Ayúdenme a restablecerla 🙏`)}
+            style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '.7rem', background: '#1a73e8', borderRadius: '8px', color: '#fff', fontWeight: '700', fontSize: '.85rem', textDecoration: 'none' }}>
+            💬 Abrir el chat de ayuda
+          </button>
         </div>
       )}
 
