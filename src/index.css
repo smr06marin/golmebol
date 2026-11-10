@@ -279,3 +279,8 @@ body.gm-chat-abierto .gm-marca-golmebol {
 body.gm-planilla-abierta .gm-admin-nav,
 body.gm-planilla-abierta .gm-admin-top,
 body.gm-planilla-abierta .gm-ayuda-fab { display: none !important; }
+
+/* Fichas de puesto bajo la tarjeta: respuesta al toque */
+.gm-ficha { transition: transform .12s ease, border-color .2s ease; -webkit-tap-highlight-color: transparent; }
+.gm-ficha:active { transform: scale(.96); }
+.gm-fichas-fila::-webkit-scrollbar { display: none; }

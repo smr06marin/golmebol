@@ -8,6 +8,7 @@ import { leerPerfilPrevio, guardarPerfilPrevio, leerCopiaPerfil, guardarCopiaPer
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import StatRankingModal from '../components/card/StatRankingModal'
+import MisPuestos from '../components/card/MisPuestos'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
 import { EncabezadoPanel, Saludo, CuerpoPanel, TarjetaPanel, CifrasPanel, BotonVerde, BotonContorno, FilaPanel, AvisoPanel, MasOpciones, BotonVolver, G } from '../components/PanelUI'
@@ -99,6 +100,12 @@ export default function PlayerHomePage() {
   const [nuevasTarjetas,    setNuevasTarjetas]    = useState([])
   const [notifIndex,        setNotifIndex]        = useState(0)
   const [rankingModal,      setRankingModal]      = useState(null)
+  // La primera vez, un brillo suave invita a tocar los números; se apaga cuando la persona toca uno
+  const [pistaTops,         setPistaTops]         = useState(() => { try { return !localStorage.getItem('gm_pista_tops') } catch { return true } })
+  function abrirRanking(k) {
+    setRankingModal(k)
+    if (pistaTops) { setPistaTops(false); try { localStorage.setItem('gm_pista_tops', '1') } catch { /* sin almacenamiento */ } }
+  }
   const [notifs,            setNotifs]            = useState([])
   const [splashPreview,     setSplashPreview]     = useState(null)
   const [pendingPreview,    setPendingPreview]    = useState(null)
@@ -627,7 +634,7 @@ export default function PlayerHomePage() {
 
   function handleCardClick(itemId) {
     const statKeys = ['pj', 'gc', 'prom', 'efic', 'pg', 'pe', 'pp']
-    if (statKeys.includes(itemId)) { setRankingModal(itemId); return }
+    if (statKeys.includes(itemId)) { abrirRanking(itemId); return }
     const torneo = torneosData.find(t => t.id === itemId)
     if (torneo) { navigate(`/jugador/torneo/${torneo.id}`); return }
     const reg = torneos.find(t => t.teams?.id === itemId)
@@ -1004,11 +1011,12 @@ export default function PlayerHomePage() {
               <PlayerCard
                 playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero} esDefensa={esDefensa}
                 photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
-                onStatClick={handleCardClick}
+                onStatClick={handleCardClick} pista={pistaTops}
                 playerId={player.id}
                 onFotoSubida={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
               />
             </div>
+            <MisPuestos playerId={player.id} userId={user?.id} pj={stats?.pj || 0} onAbrir={abrirRanking}/>
             {torneos.length > 0 && (
               <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', margin: '18px auto 0', maxWidth: '360px', fontSize: '.95rem', color: G.text2, lineHeight: 1.5 }}>
                 Toca el escudo para ver el torneo o el equipo.

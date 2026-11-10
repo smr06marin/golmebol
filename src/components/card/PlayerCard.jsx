@@ -156,6 +156,8 @@ export default function PlayerCard({
   // equipo/escuela), y las stats son las de la ficha de evolución del niño
   // en vez de las de un jugador de club (P.G/P.E/P.P no aplican).
   modoEscuela     = false,
+  // Invitación a tocar: un brillo suave recorre los números (se apaga solo cuando la persona toca uno)
+  pista           = false,
 }) {
   const [tI, setTI] = useState(() => leerSeleccion(playerId, 't', torneosData))
   const [eI, setEI] = useState(() => leerSeleccion(playerId, 'e', equiposData))
@@ -256,6 +258,9 @@ export default function PlayerCard({
 
   return (
     <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto', filter: `drop-shadow(0 10px 30px rgba(0,0,0,.75)) drop-shadow(0 0 10px ${color}55)` }}>
+      {pista && (
+        <style>{`@keyframes gmPistaFila { 0%, 60%, 100% { background: transparent; box-shadow: none } 28% { background: ${isPremium ? '#D6B65D' : color}2e; box-shadow: inset 0 0 0 1px ${isPremium ? '#D6B65D' : color}55 } } @media (prefers-reduced-motion: reduce) { .gm-pista { animation: none !important } }`}</style>
+      )}
       {hoja === 'torneo' && (
         <HojaElegir titulo="Elige el torneo" items={TORNEOS} indice={tI}
           onElegir={i => { setTI(i); guardarSeleccion(playerId, 't', TORNEOS[i]?.id); setHoja(null) }} onCerrar={() => setHoja(null)}/>
@@ -460,9 +465,9 @@ export default function PlayerCard({
           <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '1.5% 12% 1% 12%', background: 'rgba(4,1,22,.92)', borderTop: `1.5px solid ${isPremium ? '#D6B65D44' : `${color}44`}` }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                {statsIzquierda.map(({ label, value, key, dot }) => (
-                  <div key={key} onClick={() => onStatClick?.(key)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px' }}
+                {statsIzquierda.map(({ label, value, key, dot }, ix) => (
+                  <div key={key} onClick={() => onStatClick?.(key)} className={pista ? 'gm-pista' : undefined}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px', ...(pista ? { animation: `gmPistaFila 6s ease-in-out ${(ix * 0.55).toFixed(2)}s infinite` } : null) }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
@@ -475,9 +480,9 @@ export default function PlayerCard({
               </div>
               <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${isPremium ? '#D6B65D99' : `${color}99`},transparent)`, flexShrink: 0 }}/>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                {statsDerecha.map(({ label, value, key }) => (
-                  <div key={key} onClick={() => onStatClick?.(key)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px' }}
+                {statsDerecha.map(({ label, value, key }, ix) => (
+                  <div key={key} onClick={() => onStatClick?.(key)} className={pista ? 'gm-pista' : undefined}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px', ...(pista ? { animation: `gmPistaFila 6s ease-in-out ${(ix * 0.55 + 0.27).toFixed(2)}s infinite` } : null) }}
                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>{value}</span>
