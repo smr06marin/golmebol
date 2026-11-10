@@ -15,6 +15,7 @@ import PlanillaPenales, { PreguntaPenales } from './PlanillaPenales'
 import { necesitaPreguntarPenales, filasParaGuardar, normalizarGanador, sumarGlobal, criterioLlave, eliminacionDirecta } from '../lib/penales'
 import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../lib/alarmaTiempo'
 import { useCierreAutomatico, guardarInformeCierreAuto, calcularFinTiempoSnap, registrarPlanillaAbierta } from '../lib/cierreAutomatico'
+import { BotonTransferencia } from './CobrosCancha'
 
 const AZUL = '#1a3a8a'
 const ROJO = '#d93025'
@@ -2772,6 +2773,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
               {!isOnline && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff3e0', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ffe0b2' }}>📵 Sin internet</span>}
               {isOnline && hayDatosLocales && <span style={{ fontSize: '.75rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '6px', padding: '4px 10px', fontWeight: '500', border: '1px solid #ceead6' }}>🔄 Datos locales</span>}
               {mvpId && <span style={{ fontSize: '.75rem', color: '#e8710a', background: '#fff8e1', borderRadius: '6px', padding: '4px 10px', fontWeight: '600', border: '1px solid #ffe082' }}>⭐ MVP: {[...jugadoresLocal, ...jugadoresVisitante].find(j => j.id === mvpId)?.nombre || '...'}</span>}
+              <BotonTransferencia partido={partido} torneo={torneo}/>
               <button onClick={() => { if (!informeTipo) setInformeTipo('otro'); setShowInforme({ motivo: 'otro' }) }} style={{ padding: '6px 12px', background: informeGuardado ? '#1e8e3e' : '#7b1fa2', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>{informeGuardado ? '✓ Informe' : '📝 Informe'}</button>
               <button onClick={() => setShowEspecial('w')} style={{ padding: '6px 12px', background: '#e8710a', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>🏆 Por W</button>
               <button onClick={() => setShowEspecial('desierto')} style={{ padding: '6px 12px', background: '#5f6368', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#fff', fontSize: '.78rem', fontWeight: '700' }}>❌ Desierto</button>

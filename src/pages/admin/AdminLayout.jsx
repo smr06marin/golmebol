@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Ban, Trophy, Shield, Users, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone } from 'lucide-react'
+import { Ban, Trophy, Shield, Users, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone, Wallet } from 'lucide-react'
 import { supabase, supabaseSilent } from '../../lib/supabase'
 import { errorAmigable } from '../../lib/mensajesError'
 import ConfirmHost from '../../components/ConfirmHost'
@@ -15,6 +15,7 @@ const MENU_COMPLETO = [
   { icon: <Shield size={22}/>,       label: 'EQUIPOS',    ruta: '/admin/equipos',   ocultoOrganizador: true, ayuda: 'Todos los equipos registrados en la plataforma' },
   { icon: <Users size={22}/>,        label: 'JUGADORES',  ruta: '/admin/jugadores', ocultoOrganizador: true, ayuda: 'Todos los jugadores registrados en la plataforma' },
   { icon: <Ban size={22}/>,          label: 'SUSPENSIONES', ruta: '/admin/suspensiones', ayuda: 'Jugadores sancionados: quita o extiende sanciones y pide vetos' },
+  { icon: <Wallet size={22}/>,       label: 'TRANSFERENCIAS', ruta: '/admin/cobros', ayuda: 'Las transferencias que reciben los árbitros en la cancha, con la foto del comprobante' },
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias', ocultoOrganizador: true },

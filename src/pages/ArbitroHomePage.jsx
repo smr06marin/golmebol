@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, ClipboardList, CheckCircle, Trophy, Calendar, Clock, Lock, FileText, Key, Circle } from 'lucide-react'
 import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
 import InformeSolo from '../components/planillaRapida/InformeSolo'
+import BannerCaja from '../components/CajaDelDia'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
 
@@ -360,6 +361,9 @@ export default function ArbitroHomePage() {
             </div>
           ))}
         </div>
+
+        {/* Mi caja: cobros del día (solo torneos que cobran en cancha) */}
+        <BannerCaja partidos={partidos}/>
 
         {/* Tabs */}
         <div style={{ display:'flex', gap:'6px', marginBottom:'16px', background:'#111827', borderRadius:'10px', padding:'4px' }}>

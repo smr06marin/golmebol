@@ -3378,6 +3378,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       precio_amarilla: fc.precio_amarilla || 0, precio_azul: fc.precio_azul || 0, precio_roja: fc.precio_roja || 0,
       pago_cancha_partido: fc.pago_cancha_partido || 0, pago_cancha_w: fc.pago_cancha_w || 0,
       pago_arbitro_partido: fc.pago_arbitro_partido || 0, pago_arbitro_w: fc.pago_arbitro_w || 0,
+      cobro_en_cancha: !!fc.cobro_en_cancha,
     })
     // Precio propio por cancha (opcional) — si una cancha no tiene precio
     // propio, queda vacío acá y usa el valor por defecto de arriba.
@@ -3391,7 +3392,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   async function handleGuardarConfigFin() {
     setGuardandoFin(true)
     const fc = { ...(torneo?.finanzas_config || {}), llevar_cuentas: true }
-    Object.keys(formFin).forEach(k => { fc[k] = k === 'inscripcion_modo' ? (formFin[k] === 'jugador' ? 'jugador' : 'equipo') : (parseFloat(formFin[k]) || 0) })
+    Object.keys(formFin).forEach(k => { fc[k] = k === 'inscripcion_modo' ? (formFin[k] === 'jugador' ? 'jugador' : 'equipo') : k === 'cobro_en_cancha' ? !!formFin[k] : (parseFloat(formFin[k]) || 0) })
     const { error } = await supabase.from('tournaments').update({ finanzas_config: fc }).eq('id', id)
     if (error) { setGuardandoFin(false); return showMsg(errorAmigable(error, 'Error al guardar precios'), 'error') }
 
@@ -8054,6 +8055,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                           style={{ width: '100%', border: '1.5px solid #dadce0', borderRadius: '8px', padding: '9px 10px', fontSize: '.9rem', fontWeight: '700', color: '#202124', outline: 'none', boxSizing: 'border-box' }}/>
                       </div>
                     ))}
+                  </div>
+
+                  <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid #f1f3f4' }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!formFin.cobro_en_cancha} onChange={e => setFormFin(f => ({ ...f, cobro_en_cancha: e.target.checked }))} style={{ width: 22, height: 22, marginTop: 1, flexShrink: 0 }}/>
+                      <span>
+                        <span style={{ display: 'block', fontWeight: '800', color: '#202124', fontSize: '.88rem' }}>💵 Los árbitros cobran en la cancha</span>
+                        <span style={{ display: 'block', fontSize: '.72rem', color: '#5f6368', lineHeight: 1.4, marginTop: '2px' }}>En la planilla del árbitro sale un botón «Cobros» para marcar si cada equipo pagó el arbitraje en efectivo, por transferencia (con foto del comprobante) o con los dos. Las tarjetas se cobran igual. Te llega un aviso con cada transferencia y el árbitro ve su cierre del día. Actívalo solo en los torneos de Golmebol.</span>
+                      </span>
+                    </label>
                   </div>
 
                   {canchas.length > 0 && (

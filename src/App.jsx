@@ -22,6 +22,7 @@ const PlayerHomePage          = lazy(() => import('./pages/PlayerHomePage'))
 const AdminLayout             = lazy(() => import('./pages/admin/AdminLayout'))
 const AdminDashboard          = lazy(() => import('./pages/admin/AdminDashboard'))
 const AdminTorneosPage        = lazy(() => import('./pages/admin/AdminTorneosPage'))
+const AdminCobrosCanchaPage   = lazy(() => import('./pages/admin/AdminCobrosCanchaPage'))
 const AdminEquiposPage        = lazy(() => import('./pages/admin/AdminEquiposPage'))
 const AdminJugadoresPage      = lazy(() => import('./pages/admin/AdminJugadoresPage'))
 const AdminJugadorDetallePage = lazy(() => import('./pages/admin/AdminJugadorDetallePage'))
@@ -520,6 +521,7 @@ export default function App() {
             <Route path="sponsors"      element={<AdminSponsorsPage/>}/>
             <Route path="tarjetas"      element={<AdminTarjetasPage/>}/>
             <Route path="suspensiones"  element={<AdminSuspensionesPage/>}/>
+            <Route path="cobros"        element={<AdminCobrosCanchaPage/>}/>
             <Route path="noticias"      element={<AdminNoticiasPage/>}/>
             <Route path="records"       element={<AdminRecordsPage/>}/>
             <Route path="arbitros"      element={<AdminArbitrosPage/>}/>

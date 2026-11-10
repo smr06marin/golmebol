@@ -35,7 +35,7 @@ const EDAD_MAXIMA_H = 72       // un aviso con más de 3 días ya no sirve
 const CONCURRENCIA = 20
 // Avisos para ORGANIZADORES (tarjeta roja en vivo e informe del árbitro): salen de inmediato, a cualquier hora,
 // y solo a quien es dueño del torneo (o administrador de Golmebol si el torneo no tiene organizador).
-const URGENTES = ['roja', 'informe']
+const URGENTES = ['roja', 'informe', 'cobro']
 const EDAD_URGENTE_H = 6       // una roja o un informe de hace más de 6 horas ya no es "de inmediato"
 
 // ── Firebase (HTTP v1) ────────────────────────────────────────
@@ -208,6 +208,7 @@ const RESUMEN = {
   recordatorio: { titulo: 'Tus partidos empiezan pronto', texto: n => `${n} de tus partidos empiezan en la próxima hora.` },
   roja:    { titulo: 'Tarjetas rojas en tus partidos', texto: n => `Hubo ${n} tarjetas rojas en tus torneos. Abre Golmebol para verlas.` },
   informe: { titulo: 'Informes de los árbitros',        texto: n => `Los árbitros escribieron ${n} informes en tus torneos. Abre Golmebol para leerlos.` },
+  cobro:   { titulo: 'Transferencias de los árbitros',  texto: n => `Los árbitros recibieron ${n} transferencias en la cancha. Abre Golmebol para ver las fotos.` },
 }
 
 // ── Aviso ordenado: título corto + líneas (equipos / cuándo y dónde / torneo) ──
@@ -238,7 +239,7 @@ export function armarAvisoPartido(it, m, disp) {
     const jugado = m.home_score != null && m.away_score != null
     lineas.push(`${local}${jugado ? ` ${m.home_score} – ${m.away_score} ` : ' vs '}${visit}`)
     if (torneo) lineas.push(torneo)
-    lineas.push(it.tipo === 'informe' ? 'Toca para leer el informe' : 'Toca para ver el partido')
+    lineas.push(it.tipo === 'informe' ? 'Toca para leer el informe' : it.tipo === 'cobro' ? 'Toca para ver la foto del comprobante' : 'Toca para ver el partido')
     return { titulo, cuerpo: lineas.join('\n'), icono: urlLogo(m.tournaments?.logo_url || m.home.logo_url) }
   }
   if (it.tipo === 'resultado') {
@@ -277,7 +278,9 @@ export function avisosParaDispositivo(items, detalles = {}, disp = null) {
         avisos.push({
           tipo, titulo: rico?.titulo || it.titulo, cuerpo: rico?.cuerpo || it.cuerpo, icono: rico?.icono || '',
           // Al tocarlo abre el partido: el resultado abre el minuto a minuto; lo demás, la programación
-          ruta: it.tipo === 'informe' && it.torneo_id
+          ruta: it.tipo === 'cobro'
+            ? '/admin/cobros'
+            : it.tipo === 'informe' && it.torneo_id
             ? `/admin/torneos/${it.torneo_id}?tab=informes${it.match_id ? `&partido=${it.match_id}` : ''}`
             : it.torneo_id ? `/t/${it.torneo_id}${it.match_id ? `?partido=${it.match_id}` : ''}` : '/',
           tag: URGENTES.includes(it.tipo) ? `${tipo}:${it.id ?? it.match_id}` : `${tipo}:${it.match_id}`, // cada roja / informe es su propia notificación
