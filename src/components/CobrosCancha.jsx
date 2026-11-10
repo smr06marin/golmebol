@@ -18,11 +18,17 @@ const btnGrande = (bg, color = '#fff', borde = 'none') => ({
 })
 const hora = iso => new Date(iso).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' })
 
-// Miniatura de un comprobante (privado: se pide un enlace temporal). Al tocarla se ve grande.
-export function FotoComprobante({ ruta, size = 44 }) {
+// Enlace temporal de un comprobante privado (null mientras carga o si falla)
+function useUrlComprobante(ruta) {
   const [url, setUrl] = useState(null)
-  const [grande, setGrande] = useState(false)
   useEffect(() => { let vivo = true; urlComprobante(ruta).then(u => { if (vivo) setUrl(u) }); return () => { vivo = false } }, [ruta])
+  return url
+}
+
+// Miniatura de un comprobante. Al tocarla se ve grande.
+export function FotoComprobante({ ruta, size = 44 }) {
+  const url = useUrlComprobante(ruta)
+  const [grande, setGrande] = useState(false)
   if (!url) return <div style={{ width: size, height: size, borderRadius: 8, background: '#f1f3f4' }}/>
   return (
     <>
@@ -33,6 +39,95 @@ export function FotoComprobante({ ruta, size = 44 }) {
         </div>
       )}
     </>
+  )
+}
+
+function ImgCarrusel({ ruta, ancho, alto, onClick }) {
+  const url = useUrlComprobante(ruta)
+  const caja = { width: ancho, height: alto, borderRadius: 12, background: '#e8eaed', flexShrink: 0 }
+  if (!url) return <div style={caja}/>
+  return <img src={url} alt="Comprobante" onClick={onClick} style={{ ...caja, objectFit: 'cover', cursor: 'pointer', border: '1px solid rgba(128,128,128,.3)', display: 'block' }}/>
+}
+
+// Foto en pantalla completa con flechas y deslizar el dedo para pasar a la anterior / siguiente
+function VisorFotos({ fotos, inicio, onClose }) {
+  const [k, setK] = useState(inicio)
+  const toque = useRef(null)
+  const n = fotos.length
+  const ir = useCallback(d => setK(x => (x + d + n) % n), [n])
+  useEffect(() => {
+    const f = e => { if (e.key === 'Escape') onClose(); if (e.key === 'ArrowRight') ir(1); if (e.key === 'ArrowLeft') ir(-1) }
+    window.addEventListener('keydown', f)
+    return () => window.removeEventListener('keydown', f)
+  }, [ir, onClose])
+  const f = fotos[k]
+  const url = useUrlComprobante(f.ruta)
+  const flecha = lado => ({ position: 'absolute', top: '50%', [lado]: 8, transform: 'translateY(-50%)', width: 52, height: 52, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.18)', color: '#fff', fontSize: '1.6rem', fontWeight: 800, cursor: 'pointer' })
+  return (
+    <div onClick={onClose} onTouchStart={e => { toque.current = e.touches[0].clientX }}
+      onTouchEnd={e => { if (toque.current == null) return; const dx = e.changedTouches[0].clientX - toque.current; toque.current = null; if (Math.abs(dx) > 50 && n > 1) ir(dx < 0 ? 1 : -1) }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.92)', zIndex: 9990, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '56px 12px 24px', WebkitTextSizeAdjust: '100%' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', color: '#fff' }}>
+        <div style={{ flex: 1, fontSize: '.85rem', fontWeight: 700 }}>Foto {k + 1} de {n}</div>
+        <button onClick={e => { e.stopPropagation(); onClose() }} style={{ minWidth: 48, minHeight: 48, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.18)', color: '#fff', fontSize: '1.2rem', fontWeight: 800, cursor: 'pointer' }}>✕</button>
+      </div>
+      {url ? <img src={url} alt="Comprobante" onClick={e => e.stopPropagation()} style={{ maxWidth: '100%', maxHeight: '72vh', objectFit: 'contain', borderRadius: 8 }}/> : <div style={{ color: '#fff' }}>Cargando…</div>}
+      <div style={{ color: '#fff', textAlign: 'center', marginTop: 12 }}>
+        <div style={{ fontSize: '1.3rem', fontWeight: 900 }}>{pesos(f.monto)}</div>
+        {f.titulo && <div style={{ fontSize: '.82rem', opacity: .85 }}>{f.titulo}</div>}
+        {f.sub && <div style={{ fontSize: '.74rem', opacity: .7 }}>{f.sub}</div>}
+      </div>
+      {n > 1 && <>
+        <button onClick={e => { e.stopPropagation(); ir(-1) }} style={flecha('left')} aria-label="Anterior">‹</button>
+        <button onClick={e => { e.stopPropagation(); ir(1) }} style={flecha('right')} aria-label="Siguiente">›</button>
+      </>}
+    </div>
+  )
+}
+
+// CARRUSEL de comprobantes: una fila que se desliza de lado, con flechas y contador. Al tocar una foto se abre grande
+// y se pasa de una a otra. fotos: [{ id, ruta, monto, titulo, sub }]
+export function CarruselFotos({ fotos, oscuro = false }) {
+  const pista = useRef(null)
+  const [activa, setActiva] = useState(0)
+  const [visor, setVisor] = useState(null)
+  const ANCHO = 150, ALTO = 190, GAP = 12
+  const n = fotos.length
+  const texto = oscuro ? '#e8f4fd' : INK
+  const tenue = oscuro ? '#7a9ab5' : MUTED
+  const ir = d => {
+    const el = pista.current; if (!el) return
+    el.scrollBy({ left: d * (ANCHO + GAP), behavior: 'smooth' })
+  }
+  const flecha = lado => ({ position: 'absolute', top: ALTO / 2 - 22, [lado]: -4, width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(32,33,36,.78)', color: '#fff', fontSize: '1.4rem', fontWeight: 800, cursor: 'pointer', zIndex: 2, boxShadow: '0 2px 8px rgba(0,0,0,.35)' })
+  if (!n) return null
+  return (
+    <div>
+      <div style={{ position: 'relative' }}>
+        <div ref={pista} onScroll={e => setActiva(Math.min(n - 1, Math.max(0, Math.round(e.currentTarget.scrollLeft / (ANCHO + GAP)))))}
+          style={{ display: 'flex', gap: GAP, overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain', paddingBottom: 6, scrollbarWidth: 'none' }}>
+          {fotos.map((f, i) => (
+            <div key={f.id || i} style={{ flex: `0 0 ${ANCHO}px`, scrollSnapAlign: 'start', color: texto }}>
+              <ImgCarrusel ruta={f.ruta} ancho={ANCHO} alto={ALTO} onClick={() => setVisor(i)}/>
+              <div style={{ fontSize: '1rem', fontWeight: 900, marginTop: 6 }}>{pesos(f.monto)}</div>
+              {f.titulo && <div style={{ fontSize: '.68rem', color: tenue, lineHeight: 1.3 }}>{f.titulo}</div>}
+              {f.sub && <div style={{ fontSize: '.66rem', color: tenue }}>{f.sub}</div>}
+            </div>
+          ))}
+        </div>
+        {n > 1 && <>
+          <button onClick={() => ir(-1)} style={flecha('left')} aria-label="Foto anterior">‹</button>
+          <button onClick={() => ir(1)} style={flecha('right')} aria-label="Foto siguiente">›</button>
+        </>}
+      </div>
+      {n > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+          {fotos.map((_, i) => <span key={i} style={{ width: i === activa ? 16 : 7, height: 7, borderRadius: 4, background: i === activa ? AZUL : (oscuro ? '#2b3b4d' : '#c4c7cc'), transition: 'width .15s' }}/>)}
+          <span style={{ fontSize: '.7rem', color: tenue, marginLeft: 6 }}>{activa + 1} de {n}</span>
+        </div>
+      )}
+      {visor != null && <VisorFotos fotos={fotos} inicio={visor} onClose={() => setVisor(null)}/>}
+    </div>
   )
 }
 

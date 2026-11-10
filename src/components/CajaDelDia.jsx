@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { cobraEnCancha, pesos, diaBogota, resumenCaja } from '../lib/cobrosCancha'
-import { FotoComprobante } from './CobrosCancha'
+import { CarruselFotos } from './CobrosCancha'
 
 // «Mi caja»: el cuadre del día del árbitro, por cancha. TODO se calcula solo:
 //  · arbitrajes = cada equipo paga el valor del torneo (en un W paga uno solo; en un desierto nadie)
@@ -136,15 +136,7 @@ export function CajaDelDia({ partidos, configs, onClose, diaInicial }) {
                   {g.fotos.length > 0 && (
                     <div style={{ marginTop: '10px' }}>
                       <div style={{ fontSize: '.7rem', color: TENUE, fontWeight: '700', marginBottom: '6px' }}>FOTOS DE LAS TRANSFERENCIAS ({g.fotos.length})</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                        {g.fotos.map(f => (
-                          <div key={f.id} style={{ width: '88px' }}>
-                            <FotoComprobante ruta={f.ruta} size={88}/>
-                            <div style={{ fontSize: '.78rem', fontWeight: '800', marginTop: '3px' }}>{pesos(f.monto)}</div>
-                            <div style={{ fontSize: '.62rem', color: TENUE, lineHeight: 1.25 }}>{f.partido.home?.name} vs {f.partido.away?.name} · {hora(f.hora)}</div>
-                          </div>
-                        ))}
-                      </div>
+                      <CarruselFotos oscuro fotos={g.fotos.map(f => ({ id: f.id, ruta: f.ruta, monto: f.monto, titulo: `${f.partido.home?.name || '?'} vs ${f.partido.away?.name || '?'}`, sub: hora(f.hora) }))}/>
                     </div>
                   )}
 
