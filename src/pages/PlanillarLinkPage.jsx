@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Shield, MapPin, Clock, Trophy, AlertTriangle } from 'lucide-react'
 import PlanillaRapida from '../components/planillaRapida/PlanillaRapida'
+import InformeSolo from '../components/planillaRapida/InformeSolo'
 import { fmtHoraDate } from '../lib/horaHelpers'
 
 // Entrada pública (sin cuenta ni login) para que cualquiera que tenga el
@@ -42,6 +43,7 @@ export default function PlanillarLinkPage() {
   const [terminado, setTerminado] = useState(false)
   const [lista, setLista] = useState(null)          // partidos del link (null hasta cargar)
   const [guardadoOk, setGuardadoOk] = useState(false)
+  const [informeDe, setInformeDe] = useState(null)   // partido al que se le sube SOLO el informe (ya cerrado)
   const esGrupo = !!lista && lista.length > 1
 
   useEffect(() => { cargarPreview() }, [token])
@@ -83,29 +85,34 @@ export default function PlanillarLinkPage() {
     setCargando(false)
   }
 
+  // Deja la sesión lista para escribir en ESE partido (sesión anónima si hace falta + registro del acceso por link).
+  async function abrirAcceso() {
+    // Solo hace falta ALGUNA sesión para poder guardar (así sea anónima) —
+    // no identifica a la persona ni crea ningún jugador. Si el celular ya
+    // tiene cualquier sesión (anónima de antes, o una cuenta real), se
+    // respeta tal cual: no hace falta una nueva por cada link.
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      const { error: errAnon } = await supabase.auth.signInAnonymously()
+      if (errAnon) throw new Error('No se pudo entrar: ' + errAnon.message)
+    }
+
+    // Registra en el servidor que ESTA sesión entró con el link de este partido
+    // (ver migracion_seguridad_paso10a.sql): sin eso no se puede guardar la planilla.
+    const { error: errEntrada } = await supabase.rpc('entrar_planilla_por_link', { p_token: token })
+    if (errEntrada) {
+      throw new Error(/venci|inv[aá]lido/i.test(errEntrada.message || '')
+        ? 'Este link ya venció o no es válido.'
+        : 'No se pudo entrar: ' + (errEntrada.message || 'intenta de nuevo'))
+    }
+  }
+
   async function handleEntrar(matchId) {
     setEntrando(matchId || true)
     setGuardadoOk(false)
     setError('')
     try {
-      // Solo hace falta ALGUNA sesión para poder guardar (así sea anónima) —
-      // no identifica a la persona ni crea ningún jugador. Si el celular ya
-      // tiene cualquier sesión (anónima de antes, o una cuenta real), se
-      // respeta tal cual: no hace falta una nueva por cada link.
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        const { error: errAnon } = await supabase.auth.signInAnonymously()
-        if (errAnon) throw new Error('No se pudo entrar: ' + errAnon.message)
-      }
-
-      // Registra en el servidor que ESTA sesión entró con el link de este partido
-      // (ver migracion_seguridad_paso10a.sql): sin eso no se puede guardar la planilla.
-      const { error: errEntrada } = await supabase.rpc('entrar_planilla_por_link', { p_token: token })
-      if (errEntrada) {
-        throw new Error(/venci|inv[aá]lido/i.test(errEntrada.message || '')
-          ? 'Este link ya venció o no es válido.'
-          : 'No se pudo entrar: ' + (errEntrada.message || 'intenta de nuevo'))
-      }
+      await abrirAcceso()
 
       const { data: match, error: errMatch } = await supabase.from('matches')
         .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
@@ -120,6 +127,50 @@ export default function PlanillarLinkPage() {
     }
   }
 
+  // Partido ya cerrado → "Subir informe": abre SOLO el informe de ese partido (no toca resultado ni planilla).
+  async function handleInforme(matchId) {
+    setEntrando(matchId || true)
+    setGuardadoOk(false)
+    setError('')
+    try {
+      await abrirAcceso()
+      const { data: match, error: errMatch } = await supabase.from('matches')
+        .select('id, tournament_id, home:home_team_id(name), away:away_team_id(name)')
+        .eq('id', matchId).single()
+      if (errMatch || !match) throw new Error('No se pudo cargar el partido')
+      setTerminado(false)
+      setPartido(null)
+      setInformeDe(match)
+    } catch (e) {
+      setError(e.message || 'Error al abrir el informe')
+    } finally {
+      setEntrando(false)
+    }
+  }
+
+  // Partido ya cerrado → "Volver a abrir planilla": se sigue editando el MISMO partido ya cerrado (sigue contando
+  // en la tabla); al guardar se actualiza todo y queda registrado que se editó después del cierre.
+  async function handleReabrir(matchId) {
+    if (!window.confirm('Vas a volver a abrir una planilla que ya estaba cerrada.\n\nSolo hazlo para corregir un error. El resultado guardado se mantiene hasta que guardes los cambios, y queda registrado que se editó después del cierre.\n\n¿Abrir la planilla?')) return
+    setTerminado(false)
+    setPartido(null)
+    await handleEntrar(matchId)
+  }
+
+  // Los dos botones que salen en un partido ya jugado
+  const botonesJugado = (matchId) => (
+    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+      <button onClick={() => handleInforme(matchId)} disabled={!!entrando}
+        style={{ flex: 1, padding: '12px 6px', borderRadius: '10px', border: '1px solid rgba(249,168,37,.5)', background: 'rgba(249,168,37,.1)', color: '#f9a825', fontWeight: '800', fontSize: '.8rem', cursor: entrando ? 'default' : 'pointer' }}>
+        {entrando === matchId ? 'Abriendo...' : '📝 Subir informe'}
+      </button>
+      <button onClick={() => handleReabrir(matchId)} disabled={!!entrando}
+        style={{ flex: 1, padding: '12px 6px', borderRadius: '10px', border: '1px solid #1e2d3d', background: 'transparent', color: '#e8f4fd', fontWeight: '800', fontSize: '.8rem', cursor: entrando ? 'default' : 'pointer' }}>
+        ↩ Volver a abrir planilla
+      </button>
+    </div>
+  )
+
   const wrap = { minHeight: '100vh', background: '#07070e', fontFamily: 'system-ui,sans-serif', color: '#e8f4fd', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }
 
   // "Guardado" (resultado final ya guardado) va ANTES que "partido": si no,
@@ -129,13 +180,25 @@ export default function PlanillarLinkPage() {
   // (Suspender) SOLO se llama a onClose (sin onGuardarResultado) — ahí no
   // se marca terminado, se limpia partido y vuelve a la pantalla de
   // "Entrar a planillar" para poder seguir el partido después por el mismo link.
+  if (informeDe) {
+    return <InformeSolo partido={informeDe} onVolver={() => { setInformeDe(null); if (esGrupo) cargarPreview(true) }}/>
+  }
+
   if (terminado) {
+    const idCerrado = partido?.id || lista?.[0]?.id
     return (
       <div style={wrap}>
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'center', width: '100%', maxWidth: '340px' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>✓</div>
           <div style={{ fontSize: '1.1rem', fontWeight: '800' }}>Resultado guardado</div>
           <div style={{ fontSize: '.85rem', color: '#7a9ab5', marginTop: '6px' }}>Ya puedes salir — cierra esta página.</div>
+          {idCerrado && (
+            <>
+              <div style={{ fontSize: '.75rem', color: '#7a9ab5', marginTop: '22px' }}>¿Te faltó algo?</div>
+              {botonesJugado(idCerrado)}
+              {error && <div style={{ fontSize: '.78rem', color: '#ff6b6b', marginTop: '10px' }}>{error}</div>}
+            </>
+          )}
         </div>
       </div>
     )
@@ -196,7 +259,7 @@ export default function PlanillarLinkPage() {
               const jugado = m.status === 'finished'
               const cargandoEste = entrando === m.id
               return (
-                <div key={m.id} style={{ background: '#111827', border: `1px solid ${jugado ? '#1f3d2b' : '#1e2d3d'}`, borderRadius: '14px', padding: '14px', opacity: jugado ? 0.7 : 1 }}>
+                <div key={m.id} style={{ background: '#111827', border: `1px solid ${jugado ? '#1f3d2b' : '#1e2d3d'}`, borderRadius: '14px', padding: '14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#00ddd0', fontSize: '.78rem', fontWeight: '800' }}>
                       <Clock size={12}/> {m.hora ? fmtHoraDate(m.hora) : '—'}
@@ -220,7 +283,10 @@ export default function PlanillarLinkPage() {
                     ))}
                   </div>
                   {jugado ? (
-                    <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '.78rem', fontWeight: '800', color: '#7ee0a0' }}>✓ Jugado</div>
+                    <>
+                      <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '.78rem', fontWeight: '800', color: '#7ee0a0' }}>✓ Jugado</div>
+                      {botonesJugado(m.id)}
+                    </>
                   ) : (
                     <button onClick={() => handleEntrar(m.id)} disabled={!!entrando}
                       style={{ width: '100%', marginTop: '12px', padding: '12px', borderRadius: '10px', border: 'none', cursor: entrando ? 'default' : 'pointer', background: 'linear-gradient(135deg,#1a73e8,#00ddd0)', color: '#07070e', fontSize: '.88rem', fontWeight: '800', opacity: entrando && !cargandoEste ? 0.5 : 1 }}>
@@ -281,10 +347,17 @@ export default function PlanillarLinkPage() {
 
         {error && <div style={{ fontSize: '.78rem', color: '#ff6b6b', marginBottom: '10px' }}>{error}</div>}
 
+        {preview.status === 'finished' ? (
+          <div>
+            <div style={{ textAlign: 'center', fontSize: '.85rem', fontWeight: '800', color: '#7ee0a0' }}>✓ Este partido ya está jugado</div>
+            {botonesJugado(preview.id)}
+          </div>
+        ) : (
         <button onClick={() => handleEntrar(preview.id)} disabled={!!entrando}
           style={{ width: '100%', padding: '13px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#1a73e8,#00ddd0)', color: '#07070e', fontSize: '.9rem', fontWeight: '800', opacity: entrando ? .6 : 1 }}>
           {entrando ? 'Entrando...' : 'Entrar a planillar'}
         </button>
+        )}
       </div>
     </div>
   )
