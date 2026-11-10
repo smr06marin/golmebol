@@ -169,7 +169,7 @@ function ModalRecuperarPass({ onClose }) {
             <div style={{ fontSize: '1.02rem', color: '#8a8a8a', marginBottom: '20px', lineHeight: 1.5 }}>
               Dinos tu cédula <b>{cedula}</b> y te ayudamos a recuperar el acceso
             </div>
-            <button type="button" onClick={() => { abrirChatAyuda(`Hola! Olvidé mi contraseña de PREDIX Golmebol. Mi cédula es ${cedula}. Ayúdenme a recuperar el acceso 🙏`); onClose() }}
+            <button type="button" onClick={() => { abrirChatAyuda(`Hola! Olvidé mi contraseña de Golmebol. Mi cédula es ${cedula}. Ayúdenme a recuperar el acceso 🙏`); onClose() }}
               style={{ display: 'block', width: '100%', border: 'none', cursor: 'pointer', fontFamily: FONT, padding: '16px', background: '#6fcf3d', borderRadius: '14px', color: '#0a1a05', fontWeight: 900, fontSize: '1.15rem', marginBottom: '10px' }}>
               💬 Abrir el chat de ayuda
             </button>

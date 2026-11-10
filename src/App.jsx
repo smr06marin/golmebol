@@ -42,6 +42,7 @@ const AdminEscuelasPage       = lazy(() => import('./pages/admin/AdminEscuelasPa
 const AdminUsuariosPage       = lazy(() => import('./pages/admin/AdminUsuariosPage'))
 const AdminPredixPage         = lazy(() => import('./pages/admin/AdminPredixPage'))
 const PlayerTorneoPage        = lazy(() => import('./pages/PlayerTorneoPage'))
+import { PREDIX_ACTIVO } from './lib/funcionesActivas'
 const PlayerApuestasPage      = lazy(() => import('./pages/PlayerApuestasPage'))
 const PlayerNoticiasPage      = lazy(() => import('./pages/PlayerNoticiasPage'))
 const PlayerHistorialPage     = lazy(() => import('./pages/PlayerHistorialPage'))
@@ -572,7 +573,7 @@ export default function App() {
           <Route path="/jugador/login"      element={<PlayerLoginPage/>}/>
           <Route path="/jugador"            element={<PlayerRoute><PlayerHomePage/></PlayerRoute>}/>
           <Route path="/jugador/torneo/:id" element={<PlayerRoute><PlayerTorneoPage/></PlayerRoute>}/>
-          <Route path="/jugador/apuestas"   element={<PlayerRoute><PlayerApuestasPage/></PlayerRoute>}/>
+          <Route path="/jugador/apuestas"   element={PREDIX_ACTIVO ? <PlayerRoute><PlayerApuestasPage/></PlayerRoute> : <Navigate to="/jugador" replace/>}/>
           <Route path="/jugador/historial"  element={<PlayerRoute><PlayerHistorialPage/></PlayerRoute>}/>
           <Route path="/jugador/noticias"   element={<PlayerRoute><PlayerNoticiasPage/></PlayerRoute>}/>
 

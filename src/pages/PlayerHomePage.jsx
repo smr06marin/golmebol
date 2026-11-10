@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { PREDIX_ACTIVO } from '../lib/funcionesActivas'
 import { leerPerfilPrevio, guardarPerfilPrevio, leerCopiaPerfil, guardarCopiaPerfil, olvidarPerfilGuardado } from '../lib/perfilPrevio'
 import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
@@ -18,7 +19,7 @@ import { abrirChatAyuda } from '../lib/abrirChat'
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
   { id: 'historial', label: 'Historial',  icon: '📋' },
-  { id: 'predix',    label: 'Predix',     icon: '🎯' },
+  ...(PREDIX_ACTIVO ? [{ id: 'predix', label: 'Predix', icon: '🎯' }] : []),
 ]
 
 // Fondo ambiental detrás de la tarjeta: degradés en capas + textura fina + viñeta,
@@ -146,8 +147,9 @@ export default function PlayerHomePage() {
         .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
         .eq('player_id', pid).eq('activo', true),
       supabase.from('team_players').select('id').eq('player_id', pid).limit(1),
-      supabase.from('predicciones').select('puntos_ganados, match_id').eq('player_id', pid).eq('resuelta', true).gt('puntos_ganados', 0),
-      supabase.from('player_notifications').select('*').eq('player_id', pid).eq('tipo', 'predix_ronda').eq('leida', false),
+      // Predix apagado: no se pide nada de Predix (entra más rápido)
+      PREDIX_ACTIVO ? supabase.from('predicciones').select('puntos_ganados, match_id').eq('player_id', pid).eq('resuelta', true).gt('puntos_ganados', 0) : Promise.resolve({ data: [] }),
+      PREDIX_ACTIVO ? supabase.from('player_notifications').select('*').eq('player_id', pid).eq('tipo', 'predix_ronda').eq('leida', false) : Promise.resolve({ data: [] }),
       // ¿Es DUEÑO de algún equipo? Va en el mismo Promise.all (no encadenado
       // después) para que "sinEquipo" ya lo tenga en cuenta abajo — si no, un
       // dueño que no está en ninguna plantilla quedaba atrapado en la
@@ -296,12 +298,12 @@ export default function PlayerHomePage() {
         titulo: `¡Partido ${tiempoStr}!`,
         texto: `${partido.home?.name} vs ${partido.away?.name} · ${horaStr}`,
         color: '#e8710a', bg: '#fffbf0',
-        accion: { label: 'Ver PREDIX', fn: () => navigate('/jugador/apuestas') },
+        ...(PREDIX_ACTIVO ? { accion: { label: 'Ver PREDIX', fn: () => navigate('/jugador/apuestas') } } : {}),
       }
       setNotifs(prev => prev.some(n => n.id === nid) ? prev : [notif, ...prev])
     }
 
-    if (predsResueltas && predsResueltas.length > 0) {
+    if (PREDIX_ACTIVO && predsResueltas && predsResueltas.length > 0) {
       const nid = `predix_puntos_${predsResueltas.length}`
       if (!dismissed.includes(nid)) {
         const totalPts = predsResueltas.reduce((s, r) => s + (r.puntos_ganados || 0), 0)
@@ -333,7 +335,7 @@ export default function PlayerHomePage() {
 
     // Notificaciones de aperturas de rondas de Predix (avisadas por el admin
     // desde el panel — ver AdminPredixPage.jsx / pestaña Rondas)
-    ;(rondaNotifs || []).forEach(n => {
+    ;(PREDIX_ACTIVO ? (rondaNotifs || []) : []).forEach(n => {
       const nid = `predix_ronda_${n.id}`
       if (!dismissed.includes(nid)) {
         notifsList.push({
@@ -345,17 +347,6 @@ export default function PlayerHomePage() {
         })
       }
     })
-
-    // Aviso informativo: acceso gratis por ahora, suscripción futura
-    const nidGratis = 'acceso_gratis_v1'
-    if (!dismissed.includes(nidGratis)) {
-      notifsList.push({
-        id: nidGratis, icon: '🎁',
-        titulo: 'Golmebol es gratis por ahora',
-        texto: 'Más adelante habrá una suscripción de $10.000/mes para seguir disfrutando de la app completa. Te avisaremos con tiempo antes de que empiece a aplicar.',
-        color: '#8e44ad', bg: '#f8f0fc',
-      })
-    }
 
     setNotifs(notifsList)
 
@@ -580,19 +571,27 @@ export default function PlayerHomePage() {
 
   if (!player) return null
 
-  // No está registrado como jugador en ningún equipo: su portal es solo PREDIX
+  // No está registrado como jugador en ningún equipo
   if (sinEquipo) return (
     <div style={{ minHeight: '100vh', background: G.bg, fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif', color: G.text, WebkitTextSizeAdjust: '100%' }}>
-      <EncabezadoPanel nombre={player.name} rol="Jugador · solo Predix" avatarUrl={player.photo_face_url} forma="redonda"
+      <EncabezadoPanel nombre={player.name} rol={PREDIX_ACTIVO ? 'Jugador · solo Predix' : 'Jugador'} avatarUrl={player.photo_face_url} forma="redonda"
         usuario={player} actual="jugador" onLogout={handleLogout}/>
       <CuerpoPanel>
-        <Saludo nombre={player.name?.split(' ')[0] || ''} texto="Tu acceso por ahora es solo a Predix"/>
-        <TarjetaPanel icono={Target} titulo="Predix">
-          <div style={{ fontSize: '1rem', color: G.text2, lineHeight: 1.5, marginBottom: '16px' }}>
-            Todavía no estás registrado como jugador en ningún equipo. Mientras tanto puedes predecir resultados, competir en el ranking y ganar premios.
-          </div>
-          <BotonVerde onClick={() => navigate('/jugador/apuestas')}>Entrar a Predix</BotonVerde>
-        </TarjetaPanel>
+        <Saludo nombre={player.name?.split(' ')[0] || ''} texto={PREDIX_ACTIVO ? 'Tu acceso por ahora es solo a Predix' : 'Todavía no estás en ningún equipo'}/>
+        {PREDIX_ACTIVO ? (
+          <TarjetaPanel icono={Target} titulo="Predix">
+            <div style={{ fontSize: '1rem', color: G.text2, lineHeight: 1.5, marginBottom: '16px' }}>
+              Todavía no estás registrado como jugador en ningún equipo. Mientras tanto puedes predecir resultados, competir en el ranking y ganar premios.
+            </div>
+            <BotonVerde onClick={() => navigate('/jugador/apuestas')}>Entrar a Predix</BotonVerde>
+          </TarjetaPanel>
+        ) : (
+          <TarjetaPanel icono={Hourglass} titulo="Tu tarjeta de jugador">
+            <div style={{ fontSize: '1rem', color: G.text2, lineHeight: 1.5 }}>
+              Cuando tu equipo te registre en un torneo, aquí vas a ver tu tarjeta, tus estadísticas y tu historial de partidos.
+            </div>
+          </TarjetaPanel>
+        )}
         <FilaPanel verde icono={Hourglass} titulo="¿Juegas en un equipo?" sub="Escríbenos por el chat y te registramos"
           onClick={() => abrirChatAyuda(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`, { nombre: player.name })}/>
       </CuerpoPanel>
@@ -953,10 +952,12 @@ export default function PlayerHomePage() {
             </div>
           </TarjetaPanel>
 
+          {PREDIX_ACTIVO && (
           <TarjetaPanel icono={Target} titulo="Predix">
             <div style={{ fontSize: '1rem', color: G.text2, lineHeight: 1.5, marginBottom: '14px' }}>Predice los resultados de los partidos y compite con otros jugadores por puntos.</div>
             <BotonContorno icono={<Target size={20}/>} onClick={() => navigate('/jugador/apuestas')}>Entrar a Predix</BotonContorno>
           </TarjetaPanel>
+          )}
 
           <MasOpciones>
             <FilaPanel icono={Newspaper} titulo="Noticias del torneo" sub="Pre-partido, resultados y más" onClick={() => navigate('/jugador/noticias')}/>
@@ -1148,7 +1149,7 @@ export default function PlayerHomePage() {
       )}
 
       {/* PREDIX */}
-      {tab === 'predix' && (
+      {PREDIX_ACTIVO && tab === 'predix' && (
         <div style={{ padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
           <button onClick={() => navigate('/jugador/noticias')}
             style={{ width: '100%', maxWidth: '300px', padding: '12px 16px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>

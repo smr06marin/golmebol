@@ -1,3 +1,4 @@
+import { PREDIX_ACTIVO } from '../lib/funcionesActivas'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -801,10 +802,12 @@ export default function PlayerHistorialPage() {
           <button onClick={() => setTab('partidos')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', background:'none', border:'none', cursor:'pointer', color: tab==='partidos'?S.cyan:S.muted, padding:'4px 10px' }}>
             <Calendar size={20} strokeWidth={tab==='partidos'?2.4:1.8}/><span style={{ fontSize:'.62rem', fontWeight: tab==='partidos'?'800':'600' }}>Partidos</span>
           </button>
+          {PREDIX_ACTIVO && (
           <button onClick={() => navigate('/jugador/apuestas')}
             style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'50px', height:'50px', borderRadius:'50%', background:S.cyan, border:`4px solid ${S.surface}`, cursor:'pointer', marginTop:'-22px', boxShadow:'0 4px 14px rgba(0,221,208,.4)' }}>
             <span style={{ fontSize:'1.4rem', fontWeight:'900', color:'#000', lineHeight:1 }}>+</span>
           </button>
+          )}
           <button onClick={() => setTab('resumen')} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', background:'none', border:'none', cursor:'pointer', color: tab==='resumen'?S.cyan:S.muted, padding:'4px 10px' }}>
             <User size={20} strokeWidth={tab==='resumen'?2.4:1.8}/><span style={{ fontSize:'.62rem', fontWeight: tab==='resumen'?'800':'600' }}>Perfil</span>
           </button>

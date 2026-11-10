@@ -1,3 +1,4 @@
+import { PREDIX_ACTIVO } from '../lib/funcionesActivas'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -949,7 +950,7 @@ export default function RecordsPage() {
               { icono: <Target size={18} color={S.cyan}/>, label: 'Predix' },
               { icono: <CreditCard size={18} color={S.cyan}/>, label: 'Tarjeta' },
               { icono: <User size={18} color={S.cyan}/>, label: 'Perfil' },
-            ].map(b => (
+            ].filter(b => PREDIX_ACTIVO || b.label !== 'Predix').map(b => (
               <div key={b.label} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '12px', padding: '12px 4px', textAlign: 'center' }}>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>{b.icono}</div>
                 <div style={{ fontSize: '.58rem', color: S.muted, fontWeight: '700' }}>{b.label}</div>
