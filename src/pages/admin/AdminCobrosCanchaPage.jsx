@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { diaBogota, pesos } from '../../lib/cobrosCancha'
+import { useAuthStore } from '../../store/authStore'
+import { diaBogota, pesos, resumenCaja } from '../../lib/cobrosCancha'
 import { FotoComprobante } from '../../components/CobrosCancha'
 
-// TRANSFERENCIAS DE CANCHA (para el dueño del torneo / administrador)
-// Cada vez que a un árbitro le pagan por transferencia, toma la foto del comprobante y escribe el monto.
-// Aquí queda el registro: por día y por cancha, con la foto, y se puede marcar «revisada» al compararla con el banco.
+// CUADRE DE CANCHA (para el dueño del torneo / administrador)
+//  1) CUADRE POR DÍA Y POR CANCHA (todo automático): lo recogido (arbitrajes + tarjetas), lo que ya llegó a tu cuenta por
+//     transferencia, el efectivo que recogió el árbitro, lo que le toca al árbitro, lo que te debe entregar, el alquiler
+//     de la cancha y LO QUE TE QUEDA. Son las mismas cuentas de Finanzas del torneo (Gastos = canchas + árbitros).
+//  2) TRANSFERENCIAS: cada foto de comprobante que tomó un árbitro, por día y cancha, con «revisada» para compararla con el banco.
 // Datos: tabla cobros_cancha (migracion_cobros_cancha.sql). El aviso al celular llega al instante con cada transferencia.
 
 const AZUL = '#1a73e8'
 const VERDE = '#188038'
 const NARANJA = '#e8710a'
+const ROJO = '#d93025'
 const INK = '#202124'
 const MUTED = '#5f6368'
 const LINE = '#e3e5e8'
@@ -40,6 +44,91 @@ function Tarjeta({ titulo, valor, sub, color = INK, fondo = '#fff', borde = LINE
   )
 }
 
+function Fila({ a, b, color, fuerte, tenue, signo }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '4px 0', fontSize: fuerte ? '.92rem' : '.84rem', fontWeight: fuerte ? '800' : '500', color: color || (tenue ? MUTED : INK) }}>
+      <span>{a}</span><span style={{ whiteSpace: 'nowrap' }}>{signo}{b}</span>
+    </div>
+  )
+}
+
+// Cuenta de UNA cancha, en orden y sin vueltas: recogido → cuenta → efectivo → árbitro → alquiler → te queda
+function CuentaCancha({ g }) {
+  const entrega = g.teEntrega >= 0
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${LINE}`, borderRadius: '16px', marginBottom: '12px', overflow: 'hidden' }}>
+      <div style={{ background: '#f8f9fa', padding: '12px 14px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: '900', fontSize: '1.02rem' }}>📍 {g.cancha}</div>
+        <div style={{ fontSize: '.74rem', color: MUTED }}>
+          {g.pitados} jugado{g.pitados === 1 ? '' : 's'}{g.ws ? ` · ${g.ws} W` : ''}{g.desiertos ? ` · ${g.desiertos} desierto` : ''}{g.sinTerminar ? ` · ⏳ ${g.sinTerminar} sin cerrar` : ''}
+        </div>
+      </div>
+      <div style={{ padding: '10px 14px 14px' }}>
+        <Fila a={`Arbitrajes (${g.equiposArbitraje} equipo${g.equiposArbitraje === 1 ? '' : 's'}${g.ws ? ', en W paga uno solo' : ''})`} b={pesos(g.arbitrajes)} tenue/>
+        <Fila a="Tarjetas cobradas" b={pesos(g.tarjetas)} tenue/>
+        <Fila a="Total recogido en la cancha" b={pesos(g.recogido)} fuerte/>
+        <div style={{ height: 1, background: LINE, margin: '6px 0' }}/>
+        <Fila a="📲 Ya está en tu cuenta (transferencias)" b={pesos(g.transferencia)} color={AZUL}/>
+        <Fila a="💵 Efectivo que recogió el árbitro" b={pesos(g.efectivo)} fuerte color={g.efectivo < 0 ? ROJO : undefined}/>
+        <Fila a="Le toca al árbitro (su pago)" b={pesos(g.leCorresponde)} tenue signo="−"/>
+        <div style={{ margin: '6px 0', borderRadius: '12px', padding: '10px 12px', background: entrega ? '#e8f0fe' : '#fce8e6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '.8rem', fontWeight: '800', color: entrega ? AZUL : ROJO }}>{entrega ? '💵 El árbitro te entrega' : '💵 Tú le debes al árbitro'}</span>
+          <span style={{ fontSize: '1.1rem', fontWeight: '900', color: entrega ? AZUL : ROJO }}>{pesos(Math.abs(g.teEntrega))}</span>
+        </div>
+        <div style={{ height: 1, background: LINE, margin: '6px 0' }}/>
+        <Fila a="Alquiler de la cancha (lo que tú pagas)" b={pesos(g.alquiler)} tenue signo="−"/>
+        <div style={{ marginTop: '8px', borderRadius: '12px', padding: '12px 14px', background: g.teQueda >= 0 ? '#e6f4ea' : '#fce8e6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '.86rem', fontWeight: '900', color: g.teQueda >= 0 ? '#0d652d' : ROJO }}>LO QUE TE QUEDA EN ESTA CANCHA</span>
+          <span style={{ fontSize: '1.25rem', fontWeight: '900', color: g.teQueda >= 0 ? '#0d652d' : ROJO }}>{pesos(g.teQueda)}</span>
+        </div>
+        <div style={{ fontSize: '.68rem', color: MUTED, marginTop: '6px' }}>Lo que te queda = recogido − pago al árbitro − alquiler de la cancha.</div>
+
+        {g.fotos.length > 0 && (
+          <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${LINE}` }}>
+            <div style={{ fontSize: '.74rem', fontWeight: '800', color: AZUL, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '8px' }}>📲 Fotos de las transferencias de esta cancha ({g.fotos.length})</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+              {g.fotos.map(f => (
+                <div key={f.id} style={{ width: '92px' }}>
+                  <FotoComprobante ruta={f.ruta} size={92}/>
+                  <div style={{ fontSize: '.9rem', fontWeight: '900', marginTop: '4px' }}>{pesos(f.monto)}</div>
+                  <div style={{ fontSize: '.66rem', color: MUTED, lineHeight: 1.3 }}>{f.partido.home?.name} vs {f.partido.away?.name}</div>
+                  <div style={{ fontSize: '.66rem', color: MUTED }}>{hora(f.hora)}{f.por ? ` · ${f.por}` : ''}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '.68rem', color: MUTED, marginTop: '8px' }}>Toca una foto para verla grande.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CuadreBloque({ cuadre, modo }) {
+  const t = cuadre.tot
+  return (
+    <div style={{ marginBottom: '8px' }}>
+      <div style={{ background: '#fff', border: `2px solid ${t.teQueda >= 0 ? '#a8dab5' : '#f5b7b1'}`, borderRadius: '16px', padding: '14px', marginBottom: '14px' }}>
+        <div style={{ fontSize: '.72rem', fontWeight: '800', color: MUTED, textTransform: 'uppercase', letterSpacing: '.05em' }}>{modo === 'semana' ? 'En la semana' : 'En el día'}, después de pagar árbitros y canchas</div>
+        <div style={{ fontSize: '2rem', fontWeight: '900', color: t.teQueda >= 0 ? '#0d652d' : ROJO, margin: '2px 0 10px' }}>{pesos(t.teQueda)} <span style={{ fontSize: '.8rem', fontWeight: '700', color: MUTED }}>te quedan</span></div>
+        <Fila a="Recogido en todas las canchas" b={pesos(t.recogido)} tenue/>
+        <Fila a="Pago a los árbitros" b={pesos(t.leCorresponde)} tenue signo="−"/>
+        <Fila a="Alquiler de las canchas" b={pesos(t.alquiler)} tenue signo="−"/>
+        <div style={{ height: 1, background: LINE, margin: '8px 0' }}/>
+        <Fila a="📲 Ya está en tu cuenta" b={pesos(t.transferencia)} color={AZUL} fuerte/>
+        <Fila a={t.teEntrega >= 0 ? '💵 Los árbitros te entregan en efectivo' : '💵 Tú les debes a los árbitros'} b={pesos(Math.abs(t.teEntrega))} fuerte color={t.teEntrega >= 0 ? AZUL : ROJO}/>
+        {t.sinTerminar > 0 && <div style={{ fontSize: '.74rem', color: NARANJA, fontWeight: '700', marginTop: '8px' }}>⏳ Hay {t.sinTerminar} partido{t.sinTerminar === 1 ? '' : 's'} sin cerrar: el cuadre se completa cuando los cierren.</div>}
+      </div>
+      {cuadre.dias.map(d => (
+        <div key={d.dia}>
+          {modo === 'semana' && <div style={{ fontWeight: '900', fontSize: '.95rem', margin: '14px 0 8px', color: INK }}>{tituloDia(d.dia)}</div>}
+          {d.r.canchas.map(g => <CuentaCancha key={d.dia + g.cancha} g={g}/>)}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminCobrosCanchaPage() {
   const [sp] = useSearchParams()
   const [modo, setModo] = useState('dia') // dia | semana
@@ -49,6 +138,8 @@ export default function AdminCobrosCanchaPage() {
   const [equipos, setEquipos] = useState({})
   const [torneos, setTorneos] = useState({})
   const [filtroTorneo, setFiltroTorneo] = useState('todos')
+  const { user, rol } = useAuthStore()
+  const [cuadre, setCuadre] = useState(null) // { dias: [{ dia, r, alquileres }], tot } | null mientras carga
     const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
 
@@ -85,6 +176,63 @@ export default function AdminCobrosCanchaPage() {
     return () => { vivo = false }
   }, [desde, hasta])
 
+  // Cuadre por día y cancha: partidos de los torneos que cobran en la cancha + sus cobros + precios de cancha
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      let qt = supabase.from('tournaments').select('id, name, finanzas_config, organizador_id')
+      if (rol?.rol === 'organizador') qt = qt.eq('organizador_id', user?.id)
+      const { data: ts } = await qt
+      const torneosCobran = (ts || []).filter(t => t.finanzas_config?.cobro_en_cancha)
+      if (!vivo) return
+      if (!torneosCobran.length) { setCuadre({ dias: [], tot: null, sinTorneos: true }); return }
+      const configs = {}; torneosCobran.forEach(t => { configs[t.id] = t.finanzas_config || {} })
+      const tIds = torneosCobran.map(t => t.id)
+      const { data: ms } = await supabase.from('matches')
+        .select('id, tournament_id, location, cancha_id, home_team_id, away_team_id, status, tipo_resultado, home_score, away_score, played_at')
+        .in('tournament_id', tIds).gte('played_at', inicioDia(desde)).lt('played_at', finDia(hasta)).order('played_at', { ascending: true })
+      const partidos = ms || []
+      const mIds = partidos.map(m => m.id)
+      const eIds = [...new Set(partidos.flatMap(m => [m.home_team_id, m.away_team_id]).filter(Boolean))]
+      const [rc, rcan, re] = await Promise.all([
+        mIds.length ? supabase.from('cobros_cancha').select('*').in('match_id', mIds).eq('anulado', false) : { data: [] },
+        supabase.from('canchas').select('id, nombre, tournament_id, precio_partido, precio_w').in('tournament_id', tIds),
+        eIds.length ? supabase.from('teams').select('id, name').in('id', eIds) : { data: [] },
+      ])
+      if (!vivo) return
+      const nom = {}; (re.data || []).forEach(e => { nom[e.id] = e.name })
+      const canchas = rcan.data || []
+      partidos.forEach(m => { m.home = { name: nom[m.home_team_id] }; m.away = { name: nom[m.away_team_id] } })
+      // Alquiler de la cancha: igual que en Finanzas del torneo (precio propio de la cancha o el de por defecto del torneo)
+      const alquilerDe = m => {
+        if (m.status !== 'finished' || m.tipo_resultado === 'desierto') return 0
+        const fc = configs[m.tournament_id] || {}
+        const c = (m.cancha_id != null && m.cancha_id !== '' && canchas.find(x => String(x.id) === String(m.cancha_id)))
+          || (m.location && canchas.find(x => x.tournament_id === m.tournament_id && x.nombre === m.location)) || null
+        if (m.tipo_resultado === 'w') return Number(c && c.precio_w != null ? c.precio_w : fc.pago_cancha_w) || 0
+        return Number(c && c.precio_partido != null ? c.precio_partido : fc.pago_cancha_partido) || 0
+      }
+      const porDia = {}
+      partidos.forEach(m => { (porDia[diaBogota(m.played_at)] ||= []).push(m) })
+      const dias = Object.keys(porDia).sort().map(dia => {
+        const r = resumenCaja(porDia[dia], configs, rc.data || [])
+        r.canchas.forEach(g => {
+          g.alquiler = g.partidos.reduce((t, m) => t + alquilerDe(m), 0)
+          g.teQueda = g.recogido - g.leCorresponde - g.alquiler
+          g.teEntrega = g.efectivo - g.leCorresponde
+        })
+        return { dia, r }
+      })
+      const tot = { recogido: 0, transferencia: 0, efectivo: 0, leCorresponde: 0, alquiler: 0, teQueda: 0, teEntrega: 0, sinTerminar: 0 }
+      dias.forEach(d => d.r.canchas.forEach(g => {
+        tot.recogido += g.recogido; tot.transferencia += g.transferencia; tot.efectivo += g.efectivo; tot.leCorresponde += g.leCorresponde
+        tot.alquiler += g.alquiler; tot.teQueda += g.teQueda; tot.teEntrega += g.teEntrega; tot.sinTerminar += g.sinTerminar
+      }))
+      setCuadre({ dias, tot })
+    })()
+    return () => { vivo = false }
+  }, [desde, hasta, rol?.rol, user?.id])
+
   const visibles = useMemo(() => cobros.filter(c => filtroTorneo === 'todos' || c.tournament_id === filtroTorneo), [cobros, filtroTorneo])
 
   const tot = useMemo(() => visibles.reduce((t, c) => ({
@@ -112,9 +260,9 @@ export default function AdminCobrosCanchaPage() {
   const idsTorneos = [...new Set(cobros.map(c => c.tournament_id))]
 
   return (
-    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '16px 14px 60px', color: INK }}>
-      <div style={{ fontSize: '1.35rem', fontWeight: '900' }}>📲 Transferencias de cancha</div>
-      <div style={{ fontSize: '.84rem', color: MUTED, margin: '4px 0 14px', lineHeight: 1.4 }}>Cada pago por transferencia que recibieron los árbitros, con su foto, por día y por cancha.</div>
+    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '16px 14px 60px', color: INK, WebkitTextSizeAdjust: '100%', textSizeAdjust: '100%' }}>
+      <div style={{ fontSize: '1.35rem', fontWeight: '900' }}>💵 Cuadre de cancha</div>
+      <div style={{ fontSize: '.84rem', color: MUTED, margin: '4px 0 14px', lineHeight: 1.4 }}>Cuánta plata se recogió en cada cancha, lo que ya está en tu cuenta, lo que te debe entregar el árbitro y lo que te queda.</div>
 
       {/* Día / semana */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -141,6 +289,21 @@ export default function AdminCobrosCanchaPage() {
 
       {error && <div style={{ background: '#fce8e6', color: '#b3261e', borderRadius: '10px', padding: '10px 12px', fontSize: '.84rem', fontWeight: '700', marginBottom: '12px' }}>{error}</div>}
 
+      {!cuadre ? (
+        <div style={{ textAlign: 'center', color: MUTED, padding: '24px 0' }}>Calculando el cuadre…</div>
+      ) : cuadre.sinTorneos ? (
+        <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '14px', padding: '12px 14px', fontSize: '.84rem', color: '#7a5b00', marginBottom: '14px', lineHeight: 1.45 }}>
+          Ningún torneo tiene activado <b>«Los árbitros cobran en la cancha»</b>. Actívalo en Torneos → tu torneo → Finanzas → configurar precios.
+        </div>
+      ) : cuadre.dias.length === 0 ? (
+        <div style={{ textAlign: 'center', color: MUTED, padding: '24px 10px', background: '#f8f9fa', borderRadius: '14px', fontSize: '.9rem', marginBottom: '14px' }}>
+          No hubo partidos {modo === 'semana' ? 'esta semana' : 'este día'} en torneos que cobran en la cancha.
+        </div>
+      ) : (
+        <CuadreBloque cuadre={cuadre} modo={modo}/>
+      )}
+
+      <div style={{ fontSize: '1.05rem', fontWeight: '900', margin: '22px 0 8px' }}>📲 Transferencias recibidas</div>
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px' }}>
         <Tarjeta titulo="📲 Total por transferencia" valor={pesos(tot.total)} sub={`${tot.n} transferencia${tot.n === 1 ? '' : 's'}${tot.sinRev ? ` · ${tot.sinRev} sin revisar` : tot.n ? ' · todas revisadas' : ''}`} color={AZUL} fondo="#f3f7fe" borde="#c6dafc"/>
       </div>

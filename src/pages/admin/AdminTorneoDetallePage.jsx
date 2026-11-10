@@ -8062,7 +8062,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       <input type="checkbox" checked={!!formFin.cobro_en_cancha} onChange={e => setFormFin(f => ({ ...f, cobro_en_cancha: e.target.checked }))} style={{ width: 22, height: 22, marginTop: 1, flexShrink: 0 }}/>
                       <span>
                         <span style={{ display: 'block', fontWeight: '800', color: '#202124', fontSize: '.88rem' }}>💵 Los árbitros cobran en la cancha</span>
-                        <span style={{ display: 'block', fontSize: '.72rem', color: '#5f6368', lineHeight: 1.4, marginTop: '2px' }}>En la planilla del árbitro sale un botón «Cobros» para marcar si cada equipo pagó el arbitraje en efectivo, por transferencia (con foto del comprobante) o con los dos. Las tarjetas se cobran igual. Te llega un aviso con cada transferencia y el árbitro ve su cierre del día. Actívalo solo en los torneos de Golmebol.</span>
+                        <span style={{ display: 'block', fontSize: '.72rem', color: '#5f6368', lineHeight: 1.4, marginTop: '2px' }}>En la planilla del árbitro sale un botón «Pago transferencia» para tomar la foto del comprobante y escribir el monto. El arbitraje y las tarjetas se suman solos. Te llega un aviso con cada transferencia, el árbitro ve su cuadre del día y tú ves el cuadre por cancha en el menú CUADRE CANCHA. Actívalo solo en los torneos de Golmebol.</span>
                       </span>
                     </label>
                   </div>
