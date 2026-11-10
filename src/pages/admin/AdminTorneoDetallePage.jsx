@@ -920,6 +920,7 @@ export default function AdminTorneoDetallePage() {
   const [pasoCrear,          setPasoCrear]          = useState('cedula') // crear equipo: 'cedula' (paso 1) → 'datos' (paso 2)
   const [cedulaConsultada,   setCedulaConsultada]   = useState(false)   // ya se buscó esa cédula (paso 1)
   const [consultandoCedula,  setConsultandoCedula]  = useState(false)
+  const [modoBusquedaNombre, setModoBusquedaNombre] = useState(false) // «No tengo la cédula»: buscar el equipo por nombre
   const [nuevoEquipoForm,    setNuevoEquipoForm]    = useState({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' })
   const [personaCedulaNuevoEquipo, setPersonaCedulaNuevoEquipo] = useState(null) // jugador/árbitro ya registrado con esa cédula
   // Si el celular mata la pestaña al salir a otra app mientras se llena este
@@ -4899,7 +4900,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       setNuevoEquipoForm(f => ({ ...f, representante_cedula: c }))
       const lista = await buscarDuenoPorCedulaNuevoEquipo(c)
       setCedulaConsultada(true)
-      if (lista.length === 0) setPasoCrear('datos')
+      if (lista.length === 0) { setMostrarCrearEquipo(true); setPasoCrear('datos') }
     } finally {
       setConsultandoCedula(false)
     }
@@ -4937,7 +4938,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   function cerrarModalEquipo() {
     if (busquedaEquipoTimeoutRef.current) clearTimeout(busquedaEquipoTimeoutRef.current)
     setShowAgregarEquipo(false); setBusquedaEquipo(''); setEquiposDisponibles([])
-    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }); setPersonaCedulaNuevoEquipo(null); setEquiposDeCedula([]); setPasoCrear('cedula'); setCedulaConsultada(false)
+    setMostrarCrearEquipo(false); setNuevoEquipoForm({ name: '', city: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }); setPersonaCedulaNuevoEquipo(null); setEquiposDeCedula([]); setPasoCrear('cedula'); setCedulaConsultada(false); setModoBusquedaNombre(false)
     setNuevoEquipoLogo(null); setNuevoEquipoLogoPreview(null)
   }
 
@@ -5509,12 +5510,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               <button onClick={cerrarModalEquipo} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9aa0a6' }}><X size={18}/></button>
             </div>
 
-            {!mostrarCrearEquipo && (
+            {!mostrarCrearEquipo && modoBusquedaNombre && (
               <>
-                <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Nombre del equipo o cédula del dueño" style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
+                <button onClick={() => { setModoBusquedaNombre(false); setBusquedaEquipo(''); setEquiposDisponibles([]) }} style={{ background: 'none', border: 'none', color: '#1a73e8', fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', padding: '0 0 10px' }}>← Buscar por cédula del dueño</button>
+                <input value={busquedaEquipo} onChange={e => buscarEquipos(e.target.value)} placeholder="Nombre del equipo" style={{ ...inputStyle, marginBottom: '12px' }} autoFocus/>
                 {!busquedaEquipo.trim() && (
                   <div style={{ background: '#e8f0fe', borderRadius: '10px', padding: '10px 12px', fontSize: '.8rem', color: '#174ea6', lineHeight: 1.45 }}>
-                    <b>Primero busca si el equipo ya existe.</b> Si el equipo ya jugó otro torneo en Golmebol, usa el mismo: así se guarda toda su historia. Lo más seguro es buscar por la <b>cédula del dueño</b>.
+                    Escribe el nombre para ver si el equipo <b>ya existe</b> en Golmebol. Si ya jugó otro torneo, usa el mismo: así se guarda toda su historia.
                   </div>
                 )}
                 {loadingEquipos && equiposDisponibles.length === 0 && <div style={{ textAlign: 'center', color: '#9aa0a6', fontSize: '.875rem', padding: '12px' }}>Buscando...</div>}
@@ -5544,7 +5546,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </>
             )}
 
-            {mostrarCrearEquipo && pasoCrear === 'cedula' && (
+            {((mostrarCrearEquipo && pasoCrear === 'cedula') || (!mostrarCrearEquipo && !modoBusquedaNombre)) && (
               <div>
                 <div style={{ display: 'inline-block', background: '#e8f0fe', color: '#174ea6', borderRadius: '8px', padding: '3px 10px', fontSize: '.72rem', fontWeight: 800, marginBottom: '10px' }}>PASO 1 DE 2</div>
                 <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#202124', marginBottom: '4px' }}>¿Cuál es la cédula del dueño?</div>
@@ -5581,11 +5583,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
                   {cedulaConsultada && equiposDeCedula.length > 0 ? (
-                    <button onClick={() => setPasoCrear('datos')} style={{ width: '100%', padding: '12px', background: '#fff', border: '2px solid #1a73e8', borderRadius: '10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.9rem', fontWeight: '800' }}>+ Es otro equipo: agregar un equipo nuevo a esta cédula</button>
+                    <button onClick={() => { setMostrarCrearEquipo(true); setPasoCrear('datos') }} style={{ width: '100%', padding: '12px', background: '#fff', border: '2px solid #1a73e8', borderRadius: '10px', cursor: 'pointer', color: '#1a73e8', fontSize: '.9rem', fontWeight: '800' }}>+ Es otro equipo: agregar un equipo nuevo a esta cédula</button>
                   ) : (
                     <button onClick={() => continuarConCedula()} disabled={consultandoCedula || !nuevoEquipoForm.representante_cedula} style={{ width: '100%', padding: '12px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.92rem', fontWeight: '800', opacity: (consultandoCedula || !nuevoEquipoForm.representante_cedula) ? .6 : 1 }}>{consultandoCedula ? 'Buscando...' : 'Continuar →'}</button>
                   )}
-                  <button onClick={() => { setMostrarCrearEquipo(false); setParecidosCrear([]) }} style={{ width: '100%', padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>Volver</button>
+                  <button onClick={() => { setParecidosCrear([]); if (modoBusquedaNombre) setMostrarCrearEquipo(false); else cerrarModalEquipo() }} style={{ width: '100%', padding: '10px', background: '#fff', border: '1px solid #dadce0', borderRadius: '10px', cursor: 'pointer', color: '#5f6368', fontSize: '.85rem' }}>{modoBusquedaNombre ? 'Volver' : 'Cancelar'}</button>
+                  {!cedulaConsultada && (
+                    <button onClick={() => { setMostrarCrearEquipo(false); setModoBusquedaNombre(true) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem', textDecoration: 'underline', padding: '6px' }}>No tengo la cédula: buscar el equipo por nombre</button>
+                  )}
                 </div>
               </div>
             )}
