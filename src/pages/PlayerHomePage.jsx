@@ -8,7 +8,8 @@ import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import StatRankingModal from '../components/card/StatRankingModal'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
-import PortalBanner from '../components/PortalBanner'
+import { EncabezadoPanel, Saludo, CuerpoPanel, TarjetaPanel, CifrasPanel, BotonVerde, BotonContorno, FilaPanel, AvisoPanel, MasOpciones, BotonVolver, G } from '../components/PanelUI'
+import { Crown, History, Target, Newspaper, Layers, Printer, Bell, Hourglass } from 'lucide-react'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { abrirChatAyuda } from '../lib/abrirChat'
@@ -85,7 +86,7 @@ export default function PlayerHomePage() {
   const [cardLevelProgress, setCardLevelProgress] = useState([])
   const [tarjetasCustom,    setTarjetasCustom]    = useState([]) // tarjetas custom de BD
   const [loading,           setLoading]           = useState(true)
-  const [tab,               setTab]               = useState('tarjeta')
+  const [tab,               setTab]               = useState('inicio')
   const [cardType,          setCardType]          = useState('nivel1_verde')
   const [showSelector,      setShowSelector]      = useState(false)
   const [guardandoCard,     setGuardandoCard]     = useState(false)
@@ -564,29 +565,20 @@ export default function PlayerHomePage() {
 
   // No está registrado como jugador en ningún equipo: su portal es solo PREDIX
   if (sinEquipo) return (
-    <div style={{ minHeight: '100vh', background: '#07070e', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-      <div style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
-        <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#00ddd0', letterSpacing: '3px', marginBottom: '18px' }}>PREDIX · GOLMEBOL</div>
-        <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: '18px', padding: '28px 24px' }}>
-          <div style={{ fontSize: '2.4rem', marginBottom: '10px' }}>🎯</div>
-          <div style={{ fontWeight: '800', color: '#fff', fontSize: '1.15rem', marginBottom: '10px' }}>Hola, {player.name?.split(' ')[0]}</div>
-          <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.6)', lineHeight: 1.6, marginBottom: '20px' }}>
-            No estás registrado como jugador en ningún equipo, así que por ahora tu acceso es solo a <b style={{ color: '#00ddd0' }}>PREDIX</b>: predice resultados, compite en el ranking y gana premios.
+    <div style={{ minHeight: '100vh', background: G.bg, fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif', color: G.text, WebkitTextSizeAdjust: '100%' }}>
+      <EncabezadoPanel nombre={player.name} rol="Jugador · solo Predix" avatarUrl={player.photo_face_url} forma="redonda"
+        usuario={player} actual="jugador" onLogout={handleLogout}/>
+      <CuerpoPanel>
+        <Saludo nombre={player.name?.split(' ')[0] || ''} texto="Tu acceso por ahora es solo a Predix"/>
+        <TarjetaPanel icono={Target} titulo="Predix">
+          <div style={{ fontSize: '1rem', color: G.text2, lineHeight: 1.5, marginBottom: '16px' }}>
+            Todavía no estás registrado como jugador en ningún equipo. Mientras tanto puedes predecir resultados, competir en el ranking y ganar premios.
           </div>
-          <button onClick={() => navigate('/jugador/apuestas')}
-            style={{ width: '100%', padding: '14px', background: 'linear-gradient(90deg, #00ddd0, #1a73e8)', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#000', fontWeight: '800', fontSize: '1rem', marginBottom: '12px' }}>
-            🎯 ENTRAR A PREDIX →
-          </button>
-          <button type="button" onClick={() => abrirChatAyuda(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`, { nombre: player.name })}
-          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'block', padding: '12px', background: 'rgba(37,211,102,.15)', border: '1px solid rgba(37,211,102,.4)', borderRadius: '12px', color: '#25d366', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none', marginBottom: '12px' }}>
-          💬 ¿Juegas en un equipo? Escríbenos
-        </button>
-          <button onClick={async () => { await supabase.auth.signOut(); navigate('/jugador/login') }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.35)', fontSize: '.75rem' }}>
-            Cerrar sesión
-          </button>
-        </div>
-      </div>
+          <BotonVerde onClick={() => navigate('/jugador/apuestas')}>Entrar a Predix</BotonVerde>
+        </TarjetaPanel>
+        <FilaPanel verde icono={Hourglass} titulo="¿Juegas en un equipo?" sub="Escríbenos por el chat y te registramos"
+          onClick={() => abrirChatAyuda(`Hola! Soy ${player.name} (cédula ${player.numero_cedula}). Sí juego en un equipo y quiero que me registren como jugador ⚽`, { nombre: player.name })}/>
+      </CuerpoPanel>
     </div>
   )
 
@@ -638,7 +630,7 @@ export default function PlayerHomePage() {
   const tarjetaNotif = nuevasTarjetas[notifIndex]
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8f9fa' }}>
+    <div style={{ minHeight: '100vh', background: tab === 'inicio' ? G.bg : '#f8f9fa', ...(tab === 'inicio' ? { fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif', color: G.text, WebkitTextSizeAdjust: '100%', paddingBottom: '48px' } : {}) }}>
 
       {/* NOTIFICACIÓN TARJETA NUEVA */}
       {tarjetaNotif && (
@@ -916,40 +908,66 @@ export default function PlayerHomePage() {
         </div>
       )}
 
-      <PortalBanner theme="light" sticky
-        avatarUrl={player.photo_face_url} avatarEmoji="👤"
-        kicker="⚽ Golmebol" title={player.name?.split(' ')[0]}
-        subtitle={`${nivelTexto} · ${stats?.pj || 0} PJ`} subtitleColor={nivelColor}
-        usuario={player} actual="jugador" onLogout={handleLogout}
-      />
+      <EncabezadoPanel nombre={player.name} rol={`${nivelTexto} · ${stats?.pj || 0} PJ`} avatarUrl={player.photo_face_url} forma="redonda"
+        usuario={player} actual="jugador" onLogout={handleLogout}/>
 
-      <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>
+      {/* INICIO: lo de todos los días, grande y ordenado */}
+      {tab === 'inicio' && (
+        <CuerpoPanel>
+          <Saludo nombre={player.name?.split(' ')[0] || ''}/>
 
-      {/* Insignia de dueño de equipo — toca para entrar a administrar ese equipo */}
-      {equiposDueno.length > 0 && (
+          {notifs.slice(0, 2).map(n => (
+            <AvisoPanel key={n.id} icono={Bell} titulo={n.titulo} sub={n.texto} color={G.gold}
+              onClick={() => { if (n.accion?.fn) n.accion.fn(); dismissNotif(n.id) }}/>
+          ))}
+          {equiposDueno.map(eq => (
+            <AvisoPanel key={eq.id || eq.name} icono={Crown} titulo={`Eres dueño de ${eq.name}`} sub="Toca para administrar tu equipo"
+              onClick={eq.id ? () => navigate(`/equipos/${eq.id}`) : undefined}/>
+          ))}
+
+          <TarjetaPanel icono={Layers} titulo="Mi tarjeta" derecha={nivelTexto}>
+            <CifrasPanel cifras={[
+              { valor: stats?.pj || 0, etiqueta: 'Partidos', color: G.green },
+              { valor: esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0), etiqueta: esPortero ? 'Goles recibidos' : 'Goles', color: G.gold },
+            ]}/>
+            <BotonVerde onClick={() => setTab('tarjeta')}>Ver mi tarjeta</BotonVerde>
+            <div style={{ marginTop: '10px' }}>
+              <FilaPanel verde icono={History} titulo="Mi historial" sub="Tus partidos y resultados" onClick={() => setTab('historial')}/>
+            </div>
+          </TarjetaPanel>
+
+          <TarjetaPanel icono={Target} titulo="Predix">
+            <div style={{ fontSize: '1rem', color: G.text2, lineHeight: 1.5, marginBottom: '14px' }}>Predice los resultados de los partidos y compite con otros jugadores por puntos.</div>
+            <BotonContorno icono={<Target size={20}/>} onClick={() => navigate('/jugador/apuestas')}>Entrar a Predix</BotonContorno>
+          </TarjetaPanel>
+
+          <MasOpciones>
+            <FilaPanel icono={Newspaper} titulo="Noticias del torneo" sub="Pre-partido, resultados y más" onClick={() => navigate('/jugador/noticias')}/>
+            <FilaPanel icono={Layers} titulo="Mis tarjetas" sub={`${tarjetasDesbloqueadas.length} desbloqueadas de ${CARD_DESIGNS.length + tarjetasCustom.length}`} onClick={() => { setTab('tarjeta'); setShowSelector(true) }}/>
+            <FilaPanel icono={Printer} titulo="Imprimir mi tarjeta en acrílico" sub="Te ayudamos por el chat" onClick={handleImprimirAcrilico}/>
+          </MasOpciones>
+        </CuerpoPanel>
+      )}
+
+      {/* Dentro de una sección: siempre un botón grande para volver al inicio */}
+      {tab !== 'inicio' && (
+        <div style={{ background: G.bg, borderBottom: `1px solid ${G.border}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+          <BotonVolver onClick={() => setTab('inicio')} texto="Volver al inicio"/>
+          <span style={{ fontWeight: 800, fontSize: '1rem', color: G.text }}>{TABS.find(t => t.id === tab)?.label}</span>
+        </div>
+      )}
+      {tab !== 'inicio' && <NotifBanner notifs={notifs} onDismiss={dismissNotif}/>}
+      {tab !== 'inicio' && equiposDueno.length > 0 && (
         <div style={{ background: 'linear-gradient(90deg, #fff8e1, #fff)', borderBottom: '1px solid #ffe082', padding: '9px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '1rem' }}>👑</span>
           {equiposDueno.map(eq => (
             <button key={eq.id || eq.name} onClick={() => eq.id && navigate(`/equipos/${eq.id}`)}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: eq.id ? 'pointer' : 'default', fontSize: '.75rem', color: '#8a5a00', fontWeight: '700', textDecoration: eq.id ? 'underline' : 'none' }}>
-              Dueño de {eq.name}{eq.created_at ? ` · equipo creado el ${new Date(eq.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: eq.id ? 'pointer' : 'default', fontSize: '.8rem', color: '#8a5a00', fontWeight: '700', textDecoration: eq.id ? 'underline' : 'none' }}>
+              Dueño de {eq.name}
             </button>
           ))}
         </div>
       )}
-
-      {/* Tabs */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e8eaed', display: 'flex', padding: '0 16px', overflowX: 'auto' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: tab === t.id ? '600' : '400', color: tab === t.id ? '#1a73e8' : '#5f6368', borderBottom: tab === t.id ? '2px solid #1a73e8' : '2px solid transparent', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            <span>{t.icon}</span> {t.label}
-            {t.id === 'historial' && (stats?.pj || 0) > 0 && (
-              <span style={{ fontSize: '.65rem', fontWeight: '700', color: '#fff', background: '#5f6368', borderRadius: '10px', padding: '1px 6px', marginLeft: '2px' }}>{stats?.pj || 0}</span>
-            )}
-          </button>
-        ))}
-      </div>
 
       {/* MI TARJETA */}
       {tab === 'tarjeta' && (
@@ -1007,7 +1025,7 @@ export default function PlayerHomePage() {
 
           <div style={{ padding: '0 16px 8px' }}>
             <button onClick={handleImprimirAcrilico}
-              style={{ width: '100%', padding: '11px', background: '#25D366', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              style={{ width: '100%', padding: '11px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontWeight: '600', fontSize: '.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               🖨️ Imprimir en acrílico
             </button>
           </div>

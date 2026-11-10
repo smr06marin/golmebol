@@ -5,13 +5,13 @@ import { supabase } from '../lib/supabase'
 import { LogOut, ChevronDown, ChevronUp, Shield, Plus, X, Upload, Check, AlertTriangle, CheckCircle, ClipboardList, Circle, MapPin, User, Trophy, FileText, CreditCard, Key, Pencil, CheckSquare, Square, Smartphone, Crown, PartyPopper, Zap } from 'lucide-react'
 import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
 import InformeSolo from '../components/planillaRapida/InformeSolo'
-import PortalBanner from '../components/PortalBanner'
+import { PaginaPanel, EncabezadoPanel, Saludo, G } from '../components/PanelUI'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useEstadoUI, useRestaurarScroll } from '../hooks/useEstadoUI'
 import { clasificarTorneos } from '../lib/torneosCoordinador'
 
-const inp ={ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
-const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#7a9ab5', display:'block', marginBottom:'4px' }
+const inp ={ width:'100%', background:'#161616', border:'1px solid #2a2a2a', borderRadius:'8px', padding:'8px 12px', color:'#ffffff', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
+const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#8a8a8a', display:'block', marginBottom:'4px' }
 
 const TABS = [
   { id:'sin_asignar', label:'Sin árbitro',   icon:AlertTriangle },
@@ -91,19 +91,19 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   if (!personaEncontrada && !mostrarCamposNuevo) {
     return (
       <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-        <div style={{ background:'#0d1117', borderRadius:'16px', padding:'28px', width:'400px', border:'1px solid #1e2d3d' }}>
+        <div style={{ background:'#161616', borderRadius:'16px', padding:'28px', width:'400px', border:'1px solid #2a2a2a' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-            <div style={{ fontWeight:'700', fontSize:'1rem', color:'#e8f4fd' }}>Nuevo árbitro</div>
-            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+            <div style={{ fontWeight:'700', fontSize:'1rem', color:'#ffffff' }}>Nuevo árbitro</div>
+            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#8a8a8a' }}><X size={18}/></button>
           </div>
-          <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginBottom:'16px' }}>Primero escribe su número de cédula — así revisamos si ya está registrado en Golmebol.</div>
+          <div style={{ fontSize:'.78rem', color:'#8a8a8a', marginBottom:'16px' }}>Primero escribe su número de cédula — así revisamos si ya está registrado en Golmebol.</div>
           <div><label style={lbl}>Cédula *</label><input value={cedulaBuscar} onChange={e=>setCedulaBuscar(e.target.value)} onKeyDown={e => e.key==='Enter' && handleBuscarCedula()} style={inp} placeholder="Número de cédula" autoFocus/></div>
           {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginTop:'10px' }}>{error}</div>}
           <div style={{ display:'flex', gap:'8px', marginTop:'16px' }}>
             <button onClick={handleBuscarCedula} disabled={buscandoCedula} style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:buscandoCedula?.7:1 }}>
               {buscandoCedula?'Buscando...':'Buscar'}
             </button>
-            <button onClick={onClose} style={{ padding:'10px 16px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+            <button onClick={onClose} style={{ padding:'10px 16px', background:'none', border:'1px solid #2a2a2a', borderRadius:'8px', cursor:'pointer', color:'#8a8a8a' }}>Cancelar</button>
           </div>
         </div>
       </div>
@@ -114,21 +114,21 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   if (personaEncontrada) {
     return (
       <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-        <div style={{ background:'#0d1117', borderRadius:'16px', padding:'28px', width:'420px', border:'1px solid #1e2d3d' }}>
+        <div style={{ background:'#161616', borderRadius:'16px', padding:'28px', width:'420px', border:'1px solid #2a2a2a' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
-            <div style={{ fontWeight:'700', fontSize:'1rem', color:'#e8f4fd' }}>Ya está registrado en Golmebol</div>
-            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+            <div style={{ fontWeight:'700', fontSize:'1rem', color:'#ffffff' }}>Ya está registrado en Golmebol</div>
+            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#8a8a8a' }}><X size={18}/></button>
           </div>
           <div style={{ background:'rgba(0,221,208,.06)', border:'1px solid rgba(0,221,208,.2)', borderRadius:'10px', padding:'14px', marginBottom:'16px', display:'flex', alignItems:'center', gap:'12px' }}>
-            <div style={{ width:'46px', height:'46px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <User size={19} color="#7a9ab5"/>}
+            <div style={{ width:'46px', height:'46px', borderRadius:'50%', overflow:'hidden', background:'#2a2a2a', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {personaEncontrada.photo_face_url||personaEncontrada.photo_url ? <img src={personaEncontrada.photo_face_url||personaEncontrada.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <User size={19} color="#8a8a8a"/>}
             </div>
             <div>
-              <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem' }}>{personaEncontrada.name}</div>
-              <div style={{ fontSize:'.75rem', color:'#7a9ab5', marginTop:'2px', display:'flex', alignItems:'center', gap:'4px' }}><CreditCard size={11}/> {personaEncontrada.numero_cedula} · actualmente <strong style={{ color:'#00ddd0' }}>{rolActualLabel(personaEncontrada)}</strong></div>
+              <div style={{ fontWeight:'700', color:'#ffffff', fontSize:'.95rem' }}>{personaEncontrada.name}</div>
+              <div style={{ fontSize:'.75rem', color:'#8a8a8a', marginTop:'2px', display:'flex', alignItems:'center', gap:'4px' }}><CreditCard size={11}/> {personaEncontrada.numero_cedula} · actualmente <strong style={{ color:'#6fcf3d' }}>{rolActualLabel(personaEncontrada)}</strong></div>
             </div>
           </div>
-          <div style={{ fontSize:'.82rem', color:'#e8f4fd', marginBottom:'16px' }}>
+          <div style={{ fontSize:'.82rem', color:'#ffffff', marginBottom:'16px' }}>
             ¿Es <strong>{personaEncontrada.name}</strong> la persona que estás registrando? Si confirmas, también quedará habilitado como <strong>árbitro</strong>, con los mismos datos y la misma cuenta/contraseña para entrar a los dos portales.
           </div>
           {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginBottom:'10px' }}>{error}</div>}
@@ -136,7 +136,7 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
             <button onClick={handleConfirmarPersonaEncontrada} disabled={loading} style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading?.7:1 }}>
               {loading?'Guardando...':'✓ Sí, también como árbitro'}
             </button>
-            <button onClick={() => { setPersonaEncontrada(null); setCedulaBuscar(''); setError('') }} style={{ padding:'10px 16px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>No, buscar otra</button>
+            <button onClick={() => { setPersonaEncontrada(null); setCedulaBuscar(''); setError('') }} style={{ padding:'10px 16px', background:'none', border:'1px solid #2a2a2a', borderRadius:'8px', cursor:'pointer', color:'#8a8a8a' }}>No, buscar otra</button>
           </div>
         </div>
       </div>
@@ -146,36 +146,36 @@ function ModalNuevoArbitro({ onClose, onCreado }) {
   // Paso 2b: no existe — se completa el resto del formulario
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'#0d1117', borderRadius:'16px', padding:'28px', width:'420px', border:'1px solid #1e2d3d', maxHeight:'90vh', overflowY:'auto' }}>
+      <div style={{ background:'#161616', borderRadius:'16px', padding:'28px', width:'420px', border:'1px solid #2a2a2a', maxHeight:'90vh', overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-          <div style={{ fontWeight:'700', fontSize:'1rem', color:'#e8f4fd' }}>Nuevo árbitro</div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+          <div style={{ fontWeight:'700', fontSize:'1rem', color:'#ffffff' }}>Nuevo árbitro</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#8a8a8a' }}><X size={18}/></button>
         </div>
-        <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginBottom:'16px', display:'flex', alignItems:'center', gap:'5px' }}><AlertTriangle size={12}/> No hay nadie registrado con la cédula <strong style={{ color:'#e8f4fd' }}>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
+        <div style={{ fontSize:'.78rem', color:'#8a8a8a', marginBottom:'16px', display:'flex', alignItems:'center', gap:'5px' }}><AlertTriangle size={12}/> No hay nadie registrado con la cédula <strong style={{ color:'#ffffff' }}>{form.numero_cedula}</strong>. Completa sus datos para crearlo.</div>
         <div style={{ textAlign:'center', marginBottom:'16px' }}>
           <label style={{ cursor:'pointer' }}>
             <input type="file" accept="image/*" onChange={e=>setFotoFile(e.target.files[0])} style={{ display:'none' }}/>
-            <div style={{ width:'70px', height:'70px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', border:`2px dashed ${fotoFile?'#00ddd0':'#2a3a4a'}`, margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {fotoFile ? <img src={URL.createObjectURL(fotoFile)} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Upload size={22} color="#7a9ab5"/>}
+            <div style={{ width:'70px', height:'70px', borderRadius:'50%', overflow:'hidden', background:'#2a2a2a', border:`2px dashed ${fotoFile?'#6fcf3d':'#2a3a4a'}`, margin:'0 auto', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {fotoFile ? <img src={URL.createObjectURL(fotoFile)} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Upload size={22} color="#8a8a8a"/>}
             </div>
-            <div style={{ fontSize:'.68rem', color:'#7a9ab5', marginTop:'4px' }}>Foto del árbitro</div>
+            <div style={{ fontSize:'.68rem', color:'#8a8a8a', marginTop:'4px' }}>Foto del árbitro</div>
           </label>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:'10px', marginBottom:'16px' }}>
           <div><label style={lbl}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={inp} placeholder="Nombre completo"/></div>
-          <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#131e2e', color:'#7a9ab5'}}/></div>
+          <div><label style={lbl}>Cédula *</label><input value={form.numero_cedula} disabled style={{...inp, background:'#131e2e', color:'#8a8a8a'}}/></div>
           <div><label style={lbl}>Teléfono</label><input value={form.telefono} onChange={e=>setForm(f=>({...f,telefono:e.target.value}))} style={inp} placeholder="Teléfono"/></div>
           <div><label style={lbl}>Ciudad</label><input value={form.city} onChange={e=>setForm(f=>({...f,city:e.target.value}))} style={inp} placeholder="Ciudad"/></div>
         </div>
-        <div style={{ background:'rgba(0,221,208,.06)', border:'1px solid rgba(0,221,208,.15)', borderRadius:'8px', padding:'10px 12px', marginBottom:'14px', fontSize:'.75rem', color:'#7a9ab5' }}>
-          <b style={{ color:'#00ddd0' }}>{form.numero_cedula||'cédula'}@golmebol.com</b> · <Key size={10} style={{verticalAlign:'-1px'}}/> <b style={{ color:'#00ddd0' }}>{form.numero_cedula||'cédula'}</b>
+        <div style={{ background:'rgba(0,221,208,.06)', border:'1px solid rgba(0,221,208,.15)', borderRadius:'8px', padding:'10px 12px', marginBottom:'14px', fontSize:'.75rem', color:'#8a8a8a' }}>
+          <b style={{ color:'#6fcf3d' }}>{form.numero_cedula||'cédula'}@golmebol.com</b> · <Key size={10} style={{verticalAlign:'-1px'}}/> <b style={{ color:'#6fcf3d' }}>{form.numero_cedula||'cédula'}</b>
         </div>
         {error && <div style={{ color:'#d93025', fontSize:'.8rem', marginBottom:'10px' }}>{error}</div>}
         <div style={{ display:'flex', gap:'8px' }}>
           <button onClick={handleGuardar} disabled={loading} style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading?.7:1 }}>
             {loading?'Creando...':'Crear árbitro'}
           </button>
-          <button onClick={onClose} style={{ padding:'10px 16px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+          <button onClick={onClose} style={{ padding:'10px 16px', background:'none', border:'1px solid #2a2a2a', borderRadius:'8px', cursor:'pointer', color:'#8a8a8a' }}>Cancelar</button>
         </div>
       </div>
     </div>
@@ -215,16 +215,16 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
       {/* Encabezado: fecha + torneo/jornada */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px 0' }}>
         <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
-          <span style={{ fontSize:'.62rem', fontWeight:'700', color:'#00ddd0', background:'rgba(0,221,208,.08)', borderRadius:'20px', padding:'2px 9px' }}>{p.tournaments?.name}</span>
-          {p.matchday && <span style={{ fontSize:'.62rem', color:'#7a9ab5', fontWeight:'600' }}>Jornada {p.matchday}</span>}
+          <span style={{ fontSize:'.62rem', fontWeight:'700', color:'#6fcf3d', background:'rgba(0,221,208,.08)', borderRadius:'20px', padding:'2px 9px' }}>{p.tournaments?.name}</span>
+          {p.matchday && <span style={{ fontSize:'.62rem', color:'#8a8a8a', fontWeight:'600' }}>Jornada {p.matchday}</span>}
           {p.fase && p.fase!=='grupo' && <span style={{ fontSize:'.62rem', color:'#f9a825', fontWeight:'700' }}>{p.fase.toUpperCase()}</span>}
         </div>
         <div style={{ textAlign:'right', flexShrink:0 }}>
           {p.played_at ? (
-            <div style={{ fontSize:'.68rem', color:'#7a9ab5', fontWeight:'600' }}>
+            <div style={{ fontSize:'.68rem', color:'#8a8a8a', fontWeight:'600' }}>
               {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} · {fmtHoraDate(p.played_at)}
             </div>
-          ) : <div style={{ fontSize:'.65rem', color:'#7a9ab5' }}>Sin fecha</div>}
+          ) : <div style={{ fontSize:'.65rem', color:'#8a8a8a' }}>Sin fecha</div>}
         </div>
       </div>
 
@@ -232,13 +232,13 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
       <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'12px 14px' }}>
         <div style={{ flex:1, display:'flex', alignItems:'center', gap:'7px', justifyContent:'flex-end', minWidth:0 }}>
           {p.home?.logo_url && <img src={p.home.logo_url} style={{ width:'24px', height:'24px', objectFit:'contain', flexShrink:0 }}/>}
-          <span style={{ fontSize:'.85rem', fontWeight:'700', color:'#e8f4fd', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.home?.name}</span>
+          <span style={{ fontSize:'.85rem', fontWeight:'700', color:'#ffffff', textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.home?.name}</span>
         </div>
-        <div style={{ fontWeight:'900', fontSize: esJugado?'.95rem':'.72rem', color: esJugado?'#e8f4fd':'#7a9ab5', background:'#1c2937', padding:'4px 10px', borderRadius:'8px', flexShrink:0, letterSpacing:'.03em' }}>
+        <div style={{ fontWeight:'900', fontSize: esJugado?'.95rem':'.72rem', color: esJugado?'#ffffff':'#8a8a8a', background:'#1c2937', padding:'4px 10px', borderRadius:'8px', flexShrink:0, letterSpacing:'.03em' }}>
           {esJugado ? `${p.home_score}-${p.away_score}` : 'VS'}
         </div>
         <div style={{ flex:1, display:'flex', alignItems:'center', gap:'7px', minWidth:0 }}>
-          <span style={{ fontSize:'.85rem', fontWeight:'700', color:'#e8f4fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.away?.name}</span>
+          <span style={{ fontSize:'.85rem', fontWeight:'700', color:'#ffffff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.away?.name}</span>
           {p.away?.logo_url && <img src={p.away.logo_url} style={{ width:'24px', height:'24px', objectFit:'contain', flexShrink:0 }}/>}
         </div>
       </div>
@@ -246,7 +246,7 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
       {/* Pie: ubicación / árbitros asignados + acción */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', padding:'10px 14px', borderTop:'1px solid #1c2937', background:'rgba(0,0,0,.15)' }}>
         <div style={{ display:'flex', flexDirection:'column', gap:'3px', minWidth:0 }}>
-          {p.location && <span style={{ fontSize:'.68rem', color:'#7a9ab5', display:'flex', alignItems:'center', gap:'3px' }}><MapPin size={10}/> {p.location}</span>}
+          {p.location && <span style={{ fontSize:'.68rem', color:'#8a8a8a', display:'flex', alignItems:'center', gap:'3px' }}><MapPin size={10}/> {p.location}</span>}
           {tieneArbitro && !esJugado && (
             <span style={{ fontSize:'.68rem', color:'#1e8e3e', fontWeight:'600', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'3px' }}><CheckCircle size={10}/> {[arb1?.name,arb2?.name,arb3?.name].filter(Boolean).join(' · ')}</span>
           )}
@@ -262,7 +262,7 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
               background: abierto ? '#1a73e8' : (!tieneArbitro ? 'linear-gradient(135deg,#e8710a,#f9a825)' : 'rgba(30,142,62,.12)'),
               border: abierto ? 'none' : (!tieneArbitro ? 'none' : '1px solid #1e8e3e'),
               borderRadius:'10px', padding:'8px 14px', cursor:'pointer',
-              color: abierto ? '#fff' : (!tieneArbitro ? '#0d1117' : '#1e8e3e'),
+              color: abierto ? '#fff' : (!tieneArbitro ? '#161616' : '#1e8e3e'),
               fontSize:'.75rem', fontWeight:'800', flexShrink:0, display:'flex', alignItems:'center', gap:'5px',
               boxShadow: !tieneArbitro && !abierto ? '0 2px 8px rgba(232,113,10,.35)' : 'none',
               transition:'transform .1s',
@@ -273,7 +273,7 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
         )}
         {esJugado && onEditarPlanilla && (
           <button onClick={()=>onEditarPlanilla(p)}
-            style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'10px', padding:'8px 14px', cursor:'pointer', color:'#7a9ab5', fontSize:'.75rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'5px' }}>
+            style={{ background:'none', border:'1px solid #2a2a2a', borderRadius:'10px', padding:'8px 14px', cursor:'pointer', color:'#8a8a8a', fontSize:'.75rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'5px' }}>
 <Pencil size={12}/> Editar planilla
           </button>
         )}
@@ -287,12 +287,12 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
 
       {/* Panel asignación */}
       {abierto && !esJugado && (
-        <div style={{ borderTop:'1px solid #1c2937', padding:'14px', background:'#0d1117' }}>
-          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em', display:'flex', alignItems:'center', gap:'5px' }}><Circle size={9} color="#f9a825" fill="#f9a825"/> Asignar árbitros</div>
+        <div style={{ borderTop:'1px solid #1c2937', padding:'14px', background:'#161616' }}>
+          <div style={{ fontSize:'.65rem', fontWeight:'700', color:'#8a8a8a', marginBottom:'10px', textTransform:'uppercase', letterSpacing:'.08em', display:'flex', alignItems:'center', gap:'5px' }}><Circle size={9} color="#f9a825" fill="#f9a825"/> Asignar árbitros</div>
 
           {onCambiarPlanilla && (
             <div style={{ marginBottom:'12px' }}>
-              <div style={{ fontSize:'.62rem', fontWeight:'700', color:'#7a9ab5', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.08em' }}>Planilla que llenan los árbitros</div>
+              <div style={{ fontSize:'.62rem', fontWeight:'700', color:'#8a8a8a', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.08em' }}>Planilla que llenan los árbitros</div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
                 {[
                   { tipo:'salon',    titulo:'Fútbol de salón', sub:'Planilla profesional' },
@@ -303,10 +303,10 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
                     <button key={op.tipo} onClick={()=>{ if (!activa) onCambiarPlanilla(p.id, op.tipo) }}
                       style={{ display:'flex', alignItems:'center', gap:'8px', textAlign:'left', padding:'9px 10px',
                         background: activa ? 'rgba(249,168,37,.12)' : '#1c2937', border:`1px solid ${activa?'#f9a825':'#2a3a4a'}`, borderRadius:'9px', cursor: activa ? 'default' : 'pointer' }}>
-                      {activa ? <CheckSquare size={17} color="#f9a825"/> : <Square size={17} color="#7a9ab5"/>}
+                      {activa ? <CheckSquare size={17} color="#f9a825"/> : <Square size={17} color="#8a8a8a"/>}
                       <span style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:'.75rem', fontWeight:'700', color: activa?'#f9a825':'#e8f4fd' }}>{op.titulo}</div>
-                        <div style={{ fontSize:'.62rem', color:'#7a9ab5' }}>{op.sub}</div>
+                        <div style={{ fontSize:'.75rem', fontWeight:'700', color: activa?'#f9a825':'#ffffff' }}>{op.titulo}</div>
+                        <div style={{ fontSize:'.62rem', color:'#8a8a8a' }}>{op.sub}</div>
                       </span>
                     </button>
                   )
@@ -326,9 +326,9 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
               const desplegado   = pickerCampo === campo
               return (
               <div key={campo}>
-                <div style={{ fontSize:'.6rem', color:'#7a9ab5', marginBottom:'4px', fontWeight:'600' }}>{label}</div>
+                <div style={{ fontSize:'.6rem', color:'#8a8a8a', marginBottom:'4px', fontWeight:'600' }}>{label}</div>
                 <button type="button" onClick={()=>setPickerCampo(desplegado?null:campo)}
-                  style={{ width:'100%', background: desplegado?'#1a73e8':'#1c2937', border:`1px solid ${desplegado?'#1a73e8':val?'#00ddd0':'#2a3a4a'}`, borderRadius:'8px', padding:'7px 8px', color: desplegado?'#fff':val?'#00ddd0':'#a9bccb', fontSize:'.72rem', cursor:'pointer', boxSizing:'border-box', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'left' }}>
+                  style={{ width:'100%', background: desplegado?'#1a73e8':'#1c2937', border:`1px solid ${desplegado?'#1a73e8':val?'#6fcf3d':'#2a3a4a'}`, borderRadius:'8px', padding:'7px 8px', color: desplegado?'#fff':val?'#6fcf3d':'#a9bccb', fontSize:'.72rem', cursor:'pointer', boxSizing:'border-box', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'left' }}>
                   {seleccionado ? seleccionado.name : 'Sin asignar'} {desplegado?'▲':'▼'}
                 </button>
               </div>
@@ -342,14 +342,14 @@ function CardPartido({ partido, arbitros, onGuardarAsignacion, modoVer, onEditar
           {pickerCampo && (
             <div style={{ marginTop:'10px', background:'#131e2e', border:'1px solid #2a3a4a', borderRadius:'10px' }}>
               <button type="button" onClick={()=>{ setSeleccion(s=>({...s,[pickerCampo]:null})); setPickerCampo(null) }}
-                style={{ display:'block', width:'100%', textAlign:'left', padding:'10px 12px', background:'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color:'#7a9ab5', fontSize:'.78rem' }}>
+                style={{ display:'block', width:'100%', textAlign:'left', padding:'10px 12px', background:'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color:'#8a8a8a', fontSize:'.78rem' }}>
                 — Sin asignar
               </button>
               {arbitros.map(a=>{
                 const actual = seleccion[pickerCampo] === a.id
                 return (
                 <button key={a.id} type="button" onClick={()=>{ setSeleccion(s=>({...s,[pickerCampo]:a.id})); setPickerCampo(null) }}
-                  style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 12px', background: actual?'rgba(0,221,208,.08)':'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color: actual?'#00ddd0':'#e8f4fd', fontSize:'.78rem', fontWeight: actual?'700':'500' }}>
+                  style={{ display:'flex', alignItems:'center', gap:'8px', width:'100%', textAlign:'left', padding:'9px 12px', background: actual?'rgba(0,221,208,.08)':'none', border:'none', borderBottom:'1px solid #1c2937', cursor:'pointer', color: actual?'#6fcf3d':'#ffffff', fontSize:'.78rem', fontWeight: actual?'700':'500' }}>
                   <div style={{ width:'24px', height:'24px', borderRadius:'50%', overflow:'hidden', background:'#1c2937', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.7rem' }}>
                     {(a.photo_face_url||a.photo_url) ? <img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <Circle size={12} color="#f9a825" fill="#f9a825"/>}
                   </div>
@@ -388,26 +388,26 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'#0d1117', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', border:'1px solid rgba(217,48,37,.4)' }}>
+      <div style={{ background:'#161616', borderRadius:'16px', padding:'24px', width:'100%', maxWidth:'440px', border:'1px solid rgba(217,48,37,.4)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
           <div>
-            <div style={{ fontWeight:'700', color:'#e8f4fd', fontSize:'.95rem', display:'flex', alignItems:'center', gap:'6px' }}><AlertTriangle size={14}/> Registrar reclamo</div>
-            <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginTop:'2px' }}>
+            <div style={{ fontWeight:'700', color:'#ffffff', fontSize:'.95rem', display:'flex', alignItems:'center', gap:'6px' }}><AlertTriangle size={14}/> Registrar reclamo</div>
+            <div style={{ fontSize:'.72rem', color:'#8a8a8a', marginTop:'2px' }}>
               {partido.home?.name} vs {partido.away?.name}
               {partido.played_at && ` · ${new Date(partido.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`}
             </div>
           </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#7a9ab5' }}><X size={18}/></button>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#8a8a8a' }}><X size={18}/></button>
         </div>
 
         {/* Árbitros del partido */}
         <div style={{ marginBottom:'12px' }}>
-          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'6px' }}>Árbitro reclamado *</label>
+          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#8a8a8a', display:'block', marginBottom:'6px' }}>Árbitro reclamado *</label>
           {arbsPartido.length > 0 ? (
             <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
               {arbsPartido.map(a=>(
                 <button key={a.id} onClick={()=>setArbitroId(a.id)}
-                  style={{ padding:'7px 14px', borderRadius:'8px', border:`1px solid ${arbitroId===a.id?'#d93025':'#1e2d3d'}`, background:arbitroId===a.id?'rgba(217,48,37,.15)':'transparent', color:arbitroId===a.id?'#d93025':'#7a9ab5', cursor:'pointer', fontSize:'.82rem', fontWeight:'600' }}>
+                  style={{ padding:'7px 14px', borderRadius:'8px', border:`1px solid ${arbitroId===a.id?'#d93025':'#2a2a2a'}`, background:arbitroId===a.id?'rgba(217,48,37,.15)':'transparent', color:arbitroId===a.id?'#d93025':'#8a8a8a', cursor:'pointer', fontSize:'.82rem', fontWeight:'600' }}>
                   {a.name}
                 </button>
               ))}
@@ -416,7 +416,7 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
             <div>
               <div style={{ fontSize:'.75rem', color:'#e8710a', marginBottom:'8px', display:'flex', alignItems:'center', gap:'5px' }}><AlertTriangle size={12}/> Este partido no tiene árbitros asignados — selecciona de la lista:</div>
               <select value={arbitroId} onChange={e=>setArbitroId(e.target.value)}
-                style={{ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none' }}>
+                style={{ width:'100%', background:'#161616', border:'1px solid #2a2a2a', borderRadius:'8px', padding:'8px 12px', color:'#ffffff', fontSize:'.875rem', outline:'none' }}>
                 <option value="">Seleccionar árbitro...</option>
                 {arbitros.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
@@ -426,11 +426,11 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
 
         {/* Tipo */}
         <div style={{ marginBottom:'12px' }}>
-          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'6px' }}>Tipo de reclamo</label>
+          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#8a8a8a', display:'block', marginBottom:'6px' }}>Tipo de reclamo</label>
           <div style={{ display:'flex', gap:'6px' }}>
             {[{id:'tecnico',label:'Técnico'},{id:'disciplinario',label:'Disciplinario'},{id:'comportamiento',label:'Comportamiento'}].map(t=>(
               <button key={t.id} onClick={()=>setTipo(t.id)}
-                style={{ flex:1, padding:'6px', borderRadius:'7px', border:`1px solid ${tipo===t.id?'#e8710a':'#1e2d3d'}`, background:tipo===t.id?'rgba(232,113,10,.15)':'transparent', color:tipo===t.id?'#e8710a':'#7a9ab5', cursor:'pointer', fontSize:'.68rem', fontWeight:'600' }}>
+                style={{ flex:1, padding:'6px', borderRadius:'7px', border:`1px solid ${tipo===t.id?'#e8710a':'#2a2a2a'}`, background:tipo===t.id?'rgba(232,113,10,.15)':'transparent', color:tipo===t.id?'#e8710a':'#8a8a8a', cursor:'pointer', fontSize:'.68rem', fontWeight:'600' }}>
                 {t.label}
               </button>
             ))}
@@ -439,13 +439,13 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
 
         {/* Descripción */}
         <div style={{ marginBottom:'16px' }}>
-          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#7a9ab5', display:'block', marginBottom:'4px' }}>Descripción *</label>
+          <label style={{ fontSize:'.75rem', fontWeight:'600', color:'#8a8a8a', display:'block', marginBottom:'4px' }}>Descripción *</label>
           <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={3}
-            style={{ width:'100%', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', resize:'vertical', boxSizing:'border-box' }}
+            style={{ width:'100%', background:'#161616', border:'1px solid #2a2a2a', borderRadius:'8px', padding:'8px 12px', color:'#ffffff', fontSize:'.875rem', outline:'none', resize:'vertical', boxSizing:'border-box' }}
             placeholder="Describe el reclamo en detalle..."/>
         </div>
 
-        <div style={{ fontSize:'.72rem', color:'#7a9ab5', marginBottom:'12px', background:'rgba(232,113,10,.06)', border:'1px solid rgba(232,113,10,.15)', borderRadius:'7px', padding:'8px 10px' }}>
+        <div style={{ fontSize:'.72rem', color:'#8a8a8a', marginBottom:'12px', background:'rgba(232,113,10,.06)', border:'1px solid rgba(232,113,10,.15)', borderRadius:'7px', padding:'8px 10px' }}>
 <Smartphone size={11} style={{verticalAlign:'-2px', marginRight:'3px'}}/>El árbitro recibirá una notificación de este reclamo
         </div>
 
@@ -454,7 +454,7 @@ function ModalReclamoLider({ partido, arbitros, onClose, onGuardar }) {
             style={{ flex:1, padding:'10px', background:'#d93025', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading||!arbitroId||!desc.trim()?.5:1 }}>
             {loading?'Registrando...':'Registrar reclamo'}
           </button>
-          <button onClick={onClose} style={{ padding:'10px 14px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+          <button onClick={onClose} style={{ padding:'10px 14px', background:'none', border:'1px solid #2a2a2a', borderRadius:'8px', cursor:'pointer', color:'#8a8a8a' }}>Cancelar</button>
         </div>
       </div>
     </div>
@@ -479,7 +479,7 @@ function MenuTorneos({ grupos, grupo, onGrupo, opciones, valor, totalTodos, onCa
   return (
     <div style={{ marginBottom:'14px' }}>
       {/* Dirijo / No dirijo / Todos */}
-      <div role="tablist" aria-label="Qué torneos ver" style={{ display:'flex', gap:'4px', background:'#0d1117', border:'1px solid #1e2d3d', borderRadius:'14px', padding:'4px', marginBottom:'12px' }}>
+      <div role="tablist" aria-label="Qué torneos ver" style={{ display:'flex', gap:'4px', background:'#161616', border:'1px solid #2a2a2a', borderRadius:'14px', padding:'4px', marginBottom:'12px' }}>
         {grupos.map(g => {
           const activo = grupo === g.id
           return (
@@ -493,25 +493,25 @@ function MenuTorneos({ grupos, grupo, onGrupo, opciones, valor, totalTodos, onCa
       </div>
 
       {opciones.length === 0 ? (
-        <div style={{ textAlign:'center', color:'#7a9ab5', fontSize:'.8rem', padding:'18px 12px', background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', lineHeight:1.45 }}>
+        <div style={{ textAlign:'center', color:'#8a8a8a', fontSize:'.8rem', padding:'18px 12px', background:'#161616', border:'1px solid #2a2a2a', borderRadius:'12px', lineHeight:1.45 }}>
           {grupo === 'dirijo' ? 'No tienes torneos con partidos. Mira «No dirijo» o «Todos».' : 'No hay torneos con partidos en este grupo.'}
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(96px, 1fr))', gap:'8px' }}>
           {/* Todos los torneos del grupo */}
           <button onClick={() => onCambiar('')} aria-pressed={!valor}
-            style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'6px', padding:'10px 6px 9px', borderRadius:'14px', cursor:'pointer', fontFamily:'inherit', background:!valor ? 'rgba(249,168,37,.14)' : '#111827', border:`1.5px solid ${!valor ? '#f9a825' : '#1e2d3d'}`, WebkitTapHighlightColor:'transparent' }}>
-            <div style={{ width:54, height:54, borderRadius:15, background:'#1e2d3d', display:'flex', alignItems:'center', justifyContent:'center' }}><Trophy size={24} color="#f9a825"/></div>
-            <div style={{ fontSize:'.7rem', fontWeight:800, color:'#e8f4fd', lineHeight:1.2 }}>Todos</div>
+            style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'6px', padding:'10px 6px 9px', borderRadius:'14px', cursor:'pointer', fontFamily:'inherit', background:!valor ? 'rgba(249,168,37,.14)' : '#161616', border:`1.5px solid ${!valor ? '#f9a825' : '#2a2a2a'}`, WebkitTapHighlightColor:'transparent' }}>
+            <div style={{ width:54, height:54, borderRadius:15, background:'#2a2a2a', display:'flex', alignItems:'center', justifyContent:'center' }}><Trophy size={24} color="#f9a825"/></div>
+            <div style={{ fontSize:'.7rem', fontWeight:800, color:'#ffffff', lineHeight:1.2 }}>Todos</div>
             <span style={{ fontSize:'.66rem', fontWeight:800, color:'#0b0f17', background:'#f9a825', borderRadius:'9px', padding:'1px 8px' }}>{totalTodos} por jugar</span>
           </button>
           {opciones.map(o => {
             const activo = valor === o.id
             return (
               <button key={o.id} onClick={() => onCambiar(activo ? '' : o.id)} aria-pressed={activo}
-                style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', gap:'6px', padding:'10px 6px 9px', borderRadius:'14px', cursor:'pointer', fontFamily:'inherit', minWidth:0, background:activo ? 'rgba(249,168,37,.14)' : '#111827', border:`1.5px solid ${activo ? '#f9a825' : '#1e2d3d'}`, boxShadow:activo ? '0 0 0 3px rgba(249,168,37,.14)' : 'none', opacity:o.vencido && !activo ? .75 : 1, WebkitTapHighlightColor:'transparent' }}>
+                style={{ position:'relative', display:'flex', flexDirection:'column', alignItems:'center', gap:'6px', padding:'10px 6px 9px', borderRadius:'14px', cursor:'pointer', fontFamily:'inherit', minWidth:0, background:activo ? 'rgba(249,168,37,.14)' : '#161616', border:`1.5px solid ${activo ? '#f9a825' : '#2a2a2a'}`, boxShadow:activo ? '0 0 0 3px rgba(249,168,37,.14)' : 'none', opacity:o.vencido && !activo ? .75 : 1, WebkitTapHighlightColor:'transparent' }}>
                 <LogoTorneo url={o.logo} name={o.name}/>
-                <div style={{ width:'100%', fontSize:'.68rem', fontWeight:700, color:'#e8f4fd', lineHeight:1.2, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', overflowWrap:'anywhere', minHeight:'1.6em' }}>{o.name}</div>
+                <div style={{ width:'100%', fontSize:'.68rem', fontWeight:700, color:'#ffffff', lineHeight:1.2, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden', overflowWrap:'anywhere', minHeight:'1.6em' }}>{o.name}</div>
                 <div style={{ display:'flex', gap:'4px', alignItems:'center', justifyContent:'center' }}>
                   <span title="Sin jugar" style={{ fontSize:'.66rem', fontWeight:800, color:'#ffb066', background:'rgba(232,113,10,.16)', borderRadius:'9px', padding:'1px 7px' }}>{o.n} <span style={{ fontWeight:600, opacity:.8 }}>por jugar</span></span>
                 </div>
@@ -937,13 +937,13 @@ export default function ArbitroLiderPage() {
               const recAbierto   = reclamosMap[p.id]?.some(r=>r.estado==='abierto')
               const tieneArbitro = p.arbitro1_id||p.arbitro2_id||p.arbitro3_id
               return (
-                <div key={p.id} style={{ marginBottom:'8px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${recAbierto?'rgba(217,48,37,.5)':tieneReclamo?'rgba(217,48,37,.2)':'#1e2d3d'}`, background:recAbierto?'rgba(217,48,37,.05)':'transparent' }}>
+                <div key={p.id} style={{ marginBottom:'8px', borderRadius:'12px', overflow:'hidden', border:`1px solid ${recAbierto?'rgba(217,48,37,.5)':tieneReclamo?'rgba(217,48,37,.2)':'#2a2a2a'}`, background:recAbierto?'rgba(217,48,37,.05)':'transparent' }}>
                   <CardPartido partido={p} arbitros={arbitros} onGuardarAsignacion={handleGuardarAsignacion} onEditarPlanilla={abrirPlanilla} onSubirInforme={setInformePartido}/>
-                  <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #1e2d3d', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
+                  <div style={{ padding:'6px 14px 10px', borderTop:'0.5px solid #2a2a2a', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
                       <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', flex:1 }}>
                         {(reclamosMap[p.id]||[]).map((r,i)=>{
                           const arb = arbitros.find(a=>a.id===r.arbitro_id)
-                          return <span key={i} style={{ fontSize:'.62rem', color:r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#7a9ab5', background:r.estado==='abierto'?'rgba(217,48,37,.1)':'rgba(122,154,181,.08)', borderRadius:'5px', padding:'2px 7px', display:'inline-flex', alignItems:'center', gap:'3px' }}><AlertTriangle size={9}/> {arb?.name?.split(' ')[0]||'Árb.'} · {r.estado}</span>
+                          return <span key={i} style={{ fontSize:'.62rem', color:r.estado==='abierto'?'#d93025':r.estado==='resuelto'?'#1e8e3e':'#8a8a8a', background:r.estado==='abierto'?'rgba(217,48,37,.1)':'rgba(122,154,181,.08)', borderRadius:'5px', padding:'2px 7px', display:'inline-flex', alignItems:'center', gap:'3px' }}><AlertTriangle size={9}/> {arb?.name?.split(' ')[0]||'Árb.'} · {r.estado}</span>
                         })}
                       </div>
                       <button onClick={()=>setModalRec(p)} style={{ padding:'4px 10px', background:'none', border:'1px solid #d93025', borderRadius:'7px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700', flexShrink:0, display:'flex', alignItems:'center', gap:'4px' }}><AlertTriangle size={11}/> Reclamo</button>
@@ -966,12 +966,12 @@ export default function ArbitroLiderPage() {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
+    <PaginaPanel>
       {msg && <div style={{ position:'fixed', top:'20px', right:'20px', zIndex:600, padding:'12px 20px', background:msg.type==='ok'?'#e6f4ea':'#fce8e6', color:msg.type==='ok'?'#1e8e3e':'#d93025', borderRadius:'10px', fontWeight:'600', fontSize:'.875rem', boxShadow:'0 4px 16px rgba(0,0,0,.3)' }}>{msg.text.replace('OK|','')}</div>}
       {/* Modal reclamo */}
       {modalResetArb && (
         <div onClick={()=>!reseteando&&setModalResetArb(null)} style={{ position:'fixed', inset:0, zIndex:700, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:'#0f1f33', border:'1px solid #24405e', borderRadius:'14px', padding:'20px', width:'100%', maxWidth:'360px' }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:'#161616', border:'1px solid #2a2a2a', borderRadius:'14px', padding:'20px', width:'100%', maxWidth:'360px' }}>
             <div style={{ fontWeight:'800', color:'#fff', fontSize:'1rem', marginBottom:'8px', display:'flex', alignItems:'center', gap:'6px' }}><Key size={16}/> Reiniciar contraseña</div>
             <div style={{ color:'#9fb6cc', fontSize:'.84rem', lineHeight:1.5, marginBottom:'16px' }}>
               La contraseña de <b style={{color:'#fff'}}>{modalResetArb.name}</b> volverá a ser su cédula{modalResetArb.numero_cedula ? <> (<b style={{color:'#fff'}}>{modalResetArb.numero_cedula}</b>)</> : ''}. Al entrar, la app le pedirá crear una nueva.
@@ -998,7 +998,7 @@ export default function ArbitroLiderPage() {
       {showNuevo && <ModalNuevoArbitro onClose={()=>setShowNuevo(false)} onCreado={()=>{ showMsgFn('Árbitro creado'); fetchArbitros() }}/>}
 
       {informePartido && (
-        <div style={{ position:'fixed', inset:0, zIndex:9600, overflowY:'auto', background:'#07070e' }}>
+        <div style={{ position:'fixed', inset:0, zIndex:9600, overflowY:'auto', background:'#0a0a0a' }}>
           <InformeSolo partido={informePartido} onVolver={() => setInformePartido(null)}/>
         </div>
       )}
@@ -1013,18 +1013,16 @@ export default function ArbitroLiderPage() {
         />
       )}
 
-      <PortalBanner theme="dark" sticky
-        avatarEmoji={<Crown size={22}/>}
-        kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Crown size={11}/> Coordinador de árbitros</span>} title={lider?.name?.split(' ')[0]}
-        subtitle={lider?.genero === 'Femenino' ? 'Coordinadora' : 'Coordinador'} subtitleColor="#f9a825"
-        usuario={lider} actual="arbitro_lider"
-        onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
-      />
+      <EncabezadoPanel nombre={lider?.name} rol={lider?.genero === 'Femenino' ? 'Coordinadora de árbitros' : 'Coordinador de árbitros'}
+        icono={<Crown size={22} color={G.gold}/>} usuario={lider} actual="arbitro_lider"
+        onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}/>
 
-      <div style={{ maxWidth:'700px', margin:'0 auto', padding:'16px' }}>
+      <div style={{ maxWidth:'700px', margin:'0 auto', padding:'22px 16px' }}>
+
+        <Saludo nombre={lider?.name?.split(' ')[0] || ''} texto="Toca un número para ver esos partidos"/>
 
         {/* Resumen en 4 tarjetas */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'8px', marginBottom:'16px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'18px' }}>
           {[
             { label:'Sin árbitro', value:sinAsignar.length, color:'#e8710a', bg:'rgba(232,113,10,.1)', border:'rgba(232,113,10,.3)', icon:AlertTriangle, tab:'sin_asignar' },
             { label:'Asignados',   value:asignados.length,  color:'#1e8e3e', bg:'rgba(30,142,62,.1)',  border:'rgba(30,142,62,.3)',  icon:CheckCircle, tab:'asignados' },
@@ -1032,10 +1030,10 @@ export default function ArbitroLiderPage() {
             { label:'Árbitros',    value:arbitros.length,   color:'#f9a825', bg:'rgba(249,168,37,.1)', border:'rgba(249,168,37,.3)', icon:Circle, tab:'arbitros' },
           ].map(s=>(
             <div key={s.tab} onClick={()=>{ setTab(s.tab); setTorneoFiltro('') }}
-              style={{ background:tab===s.tab?s.bg:'#111827', border:`1px solid ${tab===s.tab?s.border:'#1e2d3d'}`, borderRadius:'12px', padding:'12px', textAlign:'center', cursor:'pointer', transition:'all .15s' }}>
-              <div style={{ marginBottom:'2px', display:'flex', justifyContent:'center' }}><s.icon size={16} color={s.color}/></div>
-              <div style={{ fontSize:'1.5rem', fontWeight:'900', color:s.color, lineHeight:1 }}>{s.value}</div>
-              <div style={{ fontSize:'.6rem', color:'#7a9ab5', marginTop:'2px' }}>{s.label}</div>
+              style={{ background:tab===s.tab?s.bg:'#161616', border:`1px solid ${tab===s.tab?s.border:'#2a2a2a'}`, borderRadius:'16px', padding:'16px 12px', textAlign:'center', cursor:'pointer', transition:'all .15s' }}>
+              <div style={{ marginBottom:'2px', display:'flex', justifyContent:'center' }}><s.icon size={20} color={s.color}/></div>
+              <div style={{ fontSize:'2.3rem', fontWeight:'900', color:s.color, lineHeight:1, letterSpacing:'-.02em', margin:'4px 0' }}>{s.value}</div>
+              <div style={{ fontSize:'.95rem', color:'#c9c9c9', fontWeight:700 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -1051,10 +1049,10 @@ export default function ArbitroLiderPage() {
           const op = opcionesTorneo.find(o => o.id === filtroVigente)
           const dirijo = clasif[filtroVigente] !== 'ajeno'
           return (
-            <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'14px', padding:'10px 12px', background:'#111827', border:`1px solid ${dirijo ? 'rgba(249,168,37,.35)' : '#2a4766'}`, borderRadius:'14px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'14px', padding:'10px 12px', background:'#161616', border:`1px solid ${dirijo ? 'rgba(249,168,37,.35)' : '#2a4766'}`, borderRadius:'14px' }}>
               <LogoTorneo url={op?.logo} name={op?.name} size={40}/>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:'.78rem', fontWeight:800, color:'#e8f4fd', lineHeight:1.2, overflowWrap:'anywhere' }}>{op?.name || 'Torneo'}</div>
+                <div style={{ fontSize:'.78rem', fontWeight:800, color:'#ffffff', lineHeight:1.2, overflowWrap:'anywhere' }}>{op?.name || 'Torneo'}</div>
                 <div style={{ fontSize:'.66rem', color:dirijo ? '#f9a825' : '#7fb2ff', fontWeight:700, marginTop:'2px' }}>{dirijo ? '👑 Lo dirijo' : 'Lo dirige otro coordinador'}</div>
               </div>
               {dirijo ? (
@@ -1103,7 +1101,7 @@ export default function ArbitroLiderPage() {
                   const act = est === b.id
                   return (
                     <button key={b.id} onClick={() => elegirEst(b.id)}
-                      style={{ background:act ? b.bg : '#111827', border:`2px solid ${act ? b.color : '#1e2d3d'}`, borderRadius:'14px', padding:'14px 8px', cursor:'pointer', fontFamily:'inherit', textAlign:'center', WebkitTapHighlightColor:'transparent' }}>
+                      style={{ background:act ? b.bg : '#161616', border:`2px solid ${act ? b.color : '#2a2a2a'}`, borderRadius:'14px', padding:'14px 8px', cursor:'pointer', fontFamily:'inherit', textAlign:'center', WebkitTapHighlightColor:'transparent' }}>
                       <div style={{ fontSize:'1.7rem', fontWeight:900, color:b.color, lineHeight:1 }}>{b.n}</div>
                       <div style={{ fontSize:'.82rem', fontWeight:800, color:act ? '#fff' : '#9fb6cc', marginTop:'4px' }}>{b.label}</div>
                     </button>
@@ -1121,7 +1119,7 @@ export default function ArbitroLiderPage() {
                     const act = x.todos ? sedeVigente === '' : sedeVigente === x.k
                     return (
                       <button key={x.todos ? '__todos' : 's_' + x.k} onClick={() => setSelTorneo({ t:filtroVigente, est, sede:x.k })}
-                        style={{ display:'inline-flex', alignItems:'center', gap:'6px', background:act ? '#f9a825' : '#111827', border:`1px solid ${act ? '#f9a825' : '#2a4766'}`, color:act ? '#0b0f17' : '#cfe0f1', borderRadius:'999px', padding:'8px 13px', fontSize:'.76rem', fontWeight:800, cursor:'pointer', fontFamily:'inherit', maxWidth:'100%', WebkitTapHighlightColor:'transparent' }}>
+                        style={{ display:'inline-flex', alignItems:'center', gap:'6px', background:act ? '#f9a825' : '#161616', border:`1px solid ${act ? '#f9a825' : '#2a4766'}`, color:act ? '#0b0f17' : '#cfe0f1', borderRadius:'999px', padding:'8px 13px', fontSize:'.76rem', fontWeight:800, cursor:'pointer', fontFamily:'inherit', maxWidth:'100%', WebkitTapHighlightColor:'transparent' }}>
                         {!x.todos && <MapPin size={12}/>}
                         <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{x.label}</span>
                         <span style={{ fontSize:'.68rem', fontWeight:900, background:act ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.08)', borderRadius:'8px', padding:'0 7px' }}>{x.n}</span>
@@ -1132,7 +1130,7 @@ export default function ArbitroLiderPage() {
               )}
 
               {est && visibles.length === 0 && (
-                <div style={{ textAlign:'center', padding:'22px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5', fontSize:'.8rem' }}>
+                <div style={{ textAlign:'center', padding:'22px', background:'#161616', borderRadius:'12px', border:'1px solid #2a2a2a', color:'#8a8a8a', fontSize:'.8rem' }}>
                   {est === 'pend' ? 'No hay partidos por jugar aquí' : 'Todavía no se ha jugado ningún partido aquí'}
                 </div>
               )}
@@ -1146,7 +1144,7 @@ export default function ArbitroLiderPage() {
         {!vistaTorneo && tab==='sin_asignar' && (
           <div>
             {sinAsignar.length===0 ? (
-              <div style={{ textAlign:'center', padding:'48px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#1e8e3e' }}>
+              <div style={{ textAlign:'center', padding:'48px', background:'#161616', borderRadius:'12px', border:'1px solid #2a2a2a', color:'#1e8e3e' }}>
                 <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><PartyPopper size={26}/></div>
                 <div style={{ fontWeight:'700' }}>Todos los partidos tienen árbitro</div>
               </div>
@@ -1158,7 +1156,7 @@ export default function ArbitroLiderPage() {
         {!vistaTorneo && tab==='asignados' && (
           <div>
             {asignados.length===0 ? (
-              <div style={{ textAlign:'center', padding:'48px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5' }}>
+              <div style={{ textAlign:'center', padding:'48px', background:'#161616', borderRadius:'12px', border:'1px solid #2a2a2a', color:'#8a8a8a' }}>
                 <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><ClipboardList size={26}/></div>
                 <div>Sin partidos asignados</div>
               </div>
@@ -1170,7 +1168,7 @@ export default function ArbitroLiderPage() {
         {!vistaTorneo && tab==='jugados' && (
           <div>
             {jugados.length===0 ? (
-              <div style={{ textAlign:'center', padding:'48px', background:'#111827', borderRadius:'12px', border:'1px solid #1e2d3d', color:'#7a9ab5' }}>
+              <div style={{ textAlign:'center', padding:'48px', background:'#161616', borderRadius:'12px', border:'1px solid #2a2a2a', color:'#8a8a8a' }}>
                 <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}><ClipboardList size={26}/></div>
                 <div>Sin partidos jugados</div>
               </div>
@@ -1205,13 +1203,13 @@ export default function ArbitroLiderPage() {
               {arbitros.filter(a=>a.name.toLowerCase().includes(busqArb.toLowerCase())).map(a=>{
                 const activo = !!a.user_id // todos los árbitros son gratis y siempre activos
                 return (
-                  <div key={a.id} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'12px 14px', display:'flex', alignItems:'center', gap:'12px' }}>
+                  <div key={a.id} style={{ background:'#161616', border:'1px solid #2a2a2a', borderRadius:'12px', padding:'12px 14px', display:'flex', alignItems:'center', gap:'12px' }}>
                     <label style={{ cursor:'pointer', flexShrink:0, position:'relative' }}>
                       <input type="file" accept="image/*" style={{ display:'none' }} onChange={e=>handleFoto(a,e.target.files[0])}/>
-                      <div style={{ width:'42px', height:'42px', borderRadius:'50%', overflow:'hidden', background:'#1e2d3d', border:`2px solid ${activo?'#00ddd0':'#2a3a4a'}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <div style={{ width:'42px', height:'42px', borderRadius:'50%', overflow:'hidden', background:'#2a2a2a', border:`2px solid ${activo?'#6fcf3d':'#2a3a4a'}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
                         {uploading===a.id?<span style={{ fontSize:'.6rem' }}>...</span>
                           :a.photo_face_url||a.photo_url?<img src={a.photo_face_url||a.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                          :<User size={17} color="#7a9ab5"/>}
+                          :<User size={17} color="#8a8a8a"/>}
                       </div>
                       <div style={{ position:'absolute', bottom:0, right:0, width:'14px', height:'14px', background:'#1a73e8', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center' }}>
                         <Upload size={7} color="#fff"/>
@@ -1219,8 +1217,8 @@ export default function ArbitroLiderPage() {
                     </label>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div onClick={()=>navigate(`/arbitro/perfil/${a.id}`)}
-                        style={{ fontWeight:'700', fontSize:'.88rem', color:'#00ddd0', cursor:'pointer', textDecoration:'underline', textDecorationColor:'rgba(0,221,208,.3)' }}>{a.name}</div>
-                      <div style={{ fontSize:'.68rem', color:'#7a9ab5', marginTop:'2px', display:'flex', gap:'8px' }}>
+                        style={{ fontWeight:'700', fontSize:'.88rem', color:'#6fcf3d', cursor:'pointer', textDecoration:'underline', textDecorationColor:'rgba(0,221,208,.3)' }}>{a.name}</div>
+                      <div style={{ fontSize:'.68rem', color:'#8a8a8a', marginTop:'2px', display:'flex', gap:'8px' }}>
                         <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><ClipboardList size={10}/> {a.stats.total} asig.</span>
                         <span style={{ color:'#1e8e3e', display:'inline-flex',alignItems:'center',gap:'3px' }}><CheckCircle size={10}/> {a.stats.jugados} pitados</span>
                         {a.numero_cedula && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><CreditCard size={10}/> {a.numero_cedula}</span>}
@@ -1232,7 +1230,7 @@ export default function ArbitroLiderPage() {
                       ):activo?(
                         <div>
                           <div style={{ fontSize:'.7rem', color:'#1e8e3e', fontWeight:'700', display:'flex', alignItems:'center', gap:'3px', justifyContent:'flex-end' }}><CheckCircle size={10}/> Activo</div>
-                          <div style={{ fontSize:'.6rem', color:'#7a9ab5' }}>gratis</div>
+                          <div style={{ fontSize:'.6rem', color:'#8a8a8a' }}>gratis</div>
                         </div>
                       ):null}
                       {a.user_id && (
@@ -1249,6 +1247,6 @@ export default function ArbitroLiderPage() {
           </div>
         )}
       </div>
-    </div>
+    </PaginaPanel>
   )
 }

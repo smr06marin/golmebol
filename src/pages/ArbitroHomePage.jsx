@@ -6,7 +6,7 @@ import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, Cli
 import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
 import InformeSolo from '../components/planillaRapida/InformeSolo'
 import BannerCaja, { BotonCuentaDelDia } from '../components/CajaDelDia'
-import PortalBanner from '../components/PortalBanner'
+import { PaginaPanel, CuerpoPanel, EncabezadoPanel, Saludo, TarjetaPanel, CifrasPanel, BarraPanel, BotonVerde, FilaPanel, AvisoPanel, MasOpciones, G } from '../components/PanelUI'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { aplicarAliasMultiTorneo } from '../lib/nombresTorneo'
 
@@ -27,11 +27,11 @@ function ModalCambiarContrasena({ onClose }) {
     setLoading(false)
   }
 
-  const inp = { width:'100%', background:'#1e2d3d', border:'1px solid #2a3a4a', borderRadius:'8px', padding:'8px 12px', color:'#e8f4fd', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
+  const inp = { width:'100%', background:'#2a2a2a', border:'1px solid #2a3a4a', borderRadius:'8px', padding:'8px 12px', color:'#ffffff', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div style={{ background:'#0d1117', borderRadius:'16px', padding:'28px', width:'360px', border:'1px solid #1e2d3d' }}>
-        <div style={{ fontWeight:'700', color:'#e8f4fd', marginBottom:'20px' }}>Cambiar contraseña</div>
+      <div style={{ background:'#161616', borderRadius:'16px', padding:'28px', width:'360px', border:'1px solid #2a2a2a' }}>
+        <div style={{ fontWeight:'700', color:'#ffffff', marginBottom:'20px' }}>Cambiar contraseña</div>
         <div style={{ display:'flex', flexDirection:'column', gap:'10px', marginBottom:'14px' }}>
           <input type="password" value={nueva}   onChange={e=>setNueva(e.target.value)}   style={inp} placeholder="Nueva contraseña"/>
           <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} style={inp} placeholder="Confirmar contraseña"/>
@@ -41,7 +41,7 @@ function ModalCambiarContrasena({ onClose }) {
           <button onClick={handleCambiar} disabled={loading} style={{ flex:1, padding:'10px', background:'#1a73e8', border:'none', borderRadius:'8px', cursor:'pointer', color:'#fff', fontWeight:'700', opacity:loading?.7:1 }}>
             {loading?'Guardando...':'Cambiar'}
           </button>
-          <button onClick={onClose} style={{ padding:'10px 14px', background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', cursor:'pointer', color:'#7a9ab5' }}>Cancelar</button>
+          <button onClick={onClose} style={{ padding:'10px 14px', background:'none', border:'1px solid #2a2a2a', borderRadius:'8px', cursor:'pointer', color:'#8a8a8a' }}>Cancelar</button>
         </div>
       </div>
     </div>
@@ -66,9 +66,9 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
         </div>
 
         {/* Poster imprimible */}
-        <div ref={ref} style={{ padding:'24px', background:'#07070e', minHeight:'400px' }}>
+        <div ref={ref} style={{ padding:'24px', background:'#0a0a0a', minHeight:'400px' }}>
           <div style={{ textAlign:'center', marginBottom:'20px' }}>
-            <div style={{ fontSize:'.65rem', letterSpacing:'.3em', color:'#7a9ab5', textTransform:'uppercase', marginBottom:'8px' }}>GOLMEBOL · ARMENIA</div>
+            <div style={{ fontSize:'.65rem', letterSpacing:'.3em', color:'#8a8a8a', textTransform:'uppercase', marginBottom:'8px' }}>GOLMEBOL · ARMENIA</div>
             {arbitro?.photo_face_url || arbitro?.photo_url ? (
               <div style={{ width:'60px', height:'60px', borderRadius:'50%', overflow:'hidden', margin:'0 auto 10px', border:'2px solid #f9a825' }}>
                 <img src={arbitro.photo_face_url||arbitro.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
@@ -81,12 +81,12 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
           <div style={{ width:'100%', height:'1px', background:'linear-gradient(90deg,transparent,#f9a825,transparent)', marginBottom:'16px' }}/>
 
           {pendientes.length === 0 ? (
-            <div style={{ textAlign:'center', color:'#7a9ab5', padding:'24px', fontSize:'.85rem' }}>Sin partidos pendientes asignados</div>
+            <div style={{ textAlign:'center', color:'#8a8a8a', padding:'24px', fontSize:'.85rem' }}>Sin partidos pendientes asignados</div>
           ) : pendientes.map((p, i) => (
             <div key={p.id} style={{ padding:'10px 12px', marginBottom:'6px', background:'rgba(255,255,255,.04)', borderRadius:'10px', border:'0.5px solid rgba(255,255,255,.08)' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'6px' }}>
                 <span style={{ fontSize:'.65rem', color:'#f9a825', fontWeight:'700' }}>{p.tournaments?.name}</span>
-                <span style={{ fontSize:'.65rem', color:'#7a9ab5' }}>
+                <span style={{ fontSize:'.65rem', color:'#8a8a8a' }}>
                   {p.played_at && new Date(p.played_at).toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'})}
                   {p.played_at && ` ${fmtHoraDate(p.played_at)}`}
                 </span>
@@ -94,15 +94,15 @@ function FlyerPartidos({ arbitro, partidos, onClose }) {
               <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
                 <div style={{ flex:1, display:'flex', alignItems:'center', gap:'6px', justifyContent:'flex-end' }}>
                   {p.home?.logo_url && <img src={p.home.logo_url} style={{ width:'18px', height:'18px', objectFit:'contain' }}/>}
-                  <span style={{ fontSize:'.78rem', fontWeight:'700', color:'#e8f4fd' }}>{p.home?.name}</span>
+                  <span style={{ fontSize:'.78rem', fontWeight:'700', color:'#ffffff' }}>{p.home?.name}</span>
                 </div>
-                <span style={{ fontSize:'.72rem', fontWeight:'800', color:'#7a9ab5', background:'#1e2d3d', padding:'2px 8px', borderRadius:'5px' }}>VS</span>
+                <span style={{ fontSize:'.72rem', fontWeight:'800', color:'#8a8a8a', background:'#2a2a2a', padding:'2px 8px', borderRadius:'5px' }}>VS</span>
                 <div style={{ flex:1, display:'flex', alignItems:'center', gap:'6px' }}>
-                  <span style={{ fontSize:'.78rem', fontWeight:'700', color:'#e8f4fd' }}>{p.away?.name}</span>
+                  <span style={{ fontSize:'.78rem', fontWeight:'700', color:'#ffffff' }}>{p.away?.name}</span>
                   {p.away?.logo_url && <img src={p.away.logo_url} style={{ width:'18px', height:'18px', objectFit:'contain' }}/>}
                 </div>
               </div>
-              {p.location && <div style={{ fontSize:'.62rem', color:'#7a9ab5', marginTop:'4px', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:'3px' }}><MapPin size={9}/> {p.location}</div>}
+              {p.location && <div style={{ fontSize:'.62rem', color:'#8a8a8a', marginTop:'4px', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:'3px' }}><MapPin size={9}/> {p.location}</div>}
             </div>
           ))}
 
@@ -279,18 +279,7 @@ export default function ArbitroHomePage() {
   const lista    = tab === 'proximos' ? proximos : jugados
 
   return (
-    <div style={{ minHeight:'100vh', background:'#07070e', fontFamily:'system-ui,sans-serif', color:'#e8f4fd', paddingBottom:'40px' }}>
-      {/* Panel notificaciones reclamos */}
-      {notifs.length>0 && (
-        <div style={{ background:'rgba(217,48,37,.08)', borderBottom:'1px solid rgba(217,48,37,.2)', padding:'10px 16px' }}>
-          {notifs.map(n=>(
-            <div key={n.id} style={{ fontSize:'.78rem', color:'#e8f4fd', marginBottom:'4px' }}>
-              <span style={{ color:'#d93025', fontWeight:'700', display:'inline-flex', alignItems:'center', gap:'4px' }}><AlertTriangle size={11}/> {n.titulo}</span> — {n.mensaje}
-            </div>
-          ))}
-        </div>
-      )}
-
+    <PaginaPanel>
       {showPass  && <ModalCambiarContrasena onClose={()=>setShowPass(false)}/>}
       {showFlyer && <FlyerPartidos arbitro={arbitro} partidos={partidos} onClose={()=>setShowFlyer(false)}/>}
       {planillaPartido && (
@@ -304,23 +293,23 @@ export default function ArbitroHomePage() {
       )}
 
       {informePartido && (
-        <div style={{ position:'fixed', inset:0, zIndex:9600, overflowY:'auto', background:'#07070e' }}>
+        <div style={{ position:'fixed', inset:0, zIndex:9600, overflowY:'auto', background:'#0a0a0a' }}>
           <InformeSolo partido={informePartido} onVolver={() => setInformePartido(null)}/>
         </div>
       )}
 
       {cierreOk && !planillaPartido && !informePartido && (
         <div onClick={() => setCierreOk(null)} style={{ position:'fixed', inset:0, zIndex:9500, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', padding:'18px' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'16px', padding:'22px 18px', width:'100%', maxWidth:'340px', textAlign:'center', color:'#e8f4fd' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:'#161616', border:'1px solid #2a2a2a', borderRadius:'16px', padding:'22px 18px', width:'100%', maxWidth:'340px', textAlign:'center', color:'#ffffff' }}>
             <div style={{ fontSize:'2.2rem', marginBottom:'6px' }}>✓</div>
             <div style={{ fontSize:'1.05rem', fontWeight:'800' }}>Planilla cerrada</div>
-            <div style={{ fontSize:'.78rem', color:'#7a9ab5', marginTop:'4px' }}>{cierreOk.home?.name} vs {cierreOk.away?.name}</div>
-            <div style={{ fontSize:'.75rem', color:'#7a9ab5', marginTop:'16px' }}>¿Te faltó algo?</div>
+            <div style={{ fontSize:'.78rem', color:'#8a8a8a', marginTop:'4px' }}>{cierreOk.home?.name} vs {cierreOk.away?.name}</div>
+            <div style={{ fontSize:'.75rem', color:'#8a8a8a', marginTop:'16px' }}>¿Te faltó algo?</div>
             <div style={{ display:'flex', gap:'8px', marginTop:'8px' }}>
               <button onClick={() => { setInformePartido(cierreOk); setCierreOk(null) }}
                 style={{ flex:1, padding:'12px 6px', borderRadius:'10px', border:'1px solid rgba(249,168,37,.5)', background:'rgba(249,168,37,.1)', color:'#f9a825', fontWeight:'800', fontSize:'.8rem', cursor:'pointer' }}>📝 Subir informe</button>
               <button onClick={() => reabrirPlanilla(cierreOk)}
-                style={{ flex:1, padding:'12px 6px', borderRadius:'10px', border:'1px solid #1e2d3d', background:'transparent', color:'#e8f4fd', fontWeight:'800', fontSize:'.8rem', cursor:'pointer' }}>↩ Volver a abrir planilla</button>
+                style={{ flex:1, padding:'12px 6px', borderRadius:'10px', border:'1px solid #2a2a2a', background:'transparent', color:'#ffffff', fontWeight:'800', fontSize:'.8rem', cursor:'pointer' }}>↩ Volver a abrir planilla</button>
             </div>
             <BotonCuentaDelDia partido={cierreOk} onAntes={() => setCierreOk(null)}/>
             <button onClick={() => setCierreOk(null)} style={{ marginTop:'10px', width:'100%', padding:'11px', borderRadius:'10px', border:'none', background:'#1a73e8', color:'#fff', fontWeight:'800', fontSize:'.85rem', cursor:'pointer' }}>Listo</button>
@@ -328,51 +317,60 @@ export default function ArbitroHomePage() {
         </div>
       )}
 
-      <PortalBanner theme="dark" sticky
-        avatarUrl={arbitro?.photo_face_url||arbitro?.photo_url}
-        kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Circle size={8} color="#f9a825" fill="#f9a825"/> Árbitro</span>} title={arbitro?.name?.split(' ')[0]}
-        subtitle="Activo (gratis)"
-        usuario={arbitro} actual="arbitro"
-        onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}
-        extraButtons={<>
-          {notifs.length>0 && (
-            <button onClick={async()=>{
-              await supabase.from('notificaciones').update({leida:true}).eq('player_id',arbitro.id).eq('leida',false)
-              setNotifs([])
-            }} style={{ position:'relative', background:'rgba(217,48,37,.15)', border:'1px solid rgba(217,48,37,.4)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#d93025', fontSize:'.72rem', fontWeight:'700' }}>
-              <AlertTriangle size={11} style={{verticalAlign:'-1px', marginRight:'3px'}}/>{notifs.length} reclamo{notifs.length>1?'s':''}
-            </button>
-          )}
-          <button onClick={()=>setShowFlyer(true)} style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#f9a825', fontSize:'.72rem', display:'flex', alignItems:'center', gap:'4px' }}><ClipboardList size={13}/> Mis partidos</button>
-          <button onClick={()=>navigate('/arbitro/encuestas')} style={{ background:'none', border:'1px solid rgba(26,115,232,.3)', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.72rem', fontWeight:'700', display:'flex', alignItems:'center' }}><FileText size={13}/></button>
-          <button onClick={()=>setShowPass(true)}  style={{ background:'none', border:'1px solid #1e2d3d', borderRadius:'8px', padding:'6px 10px', cursor:'pointer', color:'#7a9ab5', fontSize:'.72rem', display:'flex', alignItems:'center' }}><Key size={13}/></button>
-        </>}
-      />
+      <EncabezadoPanel nombre={arbitro?.name} rol="Árbitro" avatarUrl={arbitro?.photo_face_url||arbitro?.photo_url} forma="redonda"
+        usuario={arbitro} actual="arbitro" avisoMenu={0}
+        onLogout={async()=>{ await supabase.auth.signOut(); navigate('/jugador/login') }}/>
 
-      <div style={{ maxWidth:'500px', margin:'0 auto', padding:'16px' }}>
-        {/* Stats */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'10px', marginBottom:'20px' }}>
-          {[
-            { label:'Asignados', value:stats.total,   icon:ClipboardList, color:'#00ddd0' },
-            { label:'Pitados',   value:stats.jugados,  icon:CheckCircle, color:'#1e8e3e' },
-            { label:'Torneos',   value:stats.torneos,  icon:Trophy, color:'#f9a825' },
-          ].map(s=>(
-            <div key={s.label} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-              <div style={{ marginBottom:'4px', display:'flex', justifyContent:'center' }}><s.icon size={18} color={s.color}/></div>
-              <div style={{ fontSize:'1.5rem', fontWeight:'900', color:s.color, lineHeight:1 }}>{s.value}</div>
-              <div style={{ fontSize:'.65rem', color:'#7a9ab5', marginTop:'3px' }}>{s.label}</div>
+      <CuerpoPanel ancho={560}>
+        <Saludo nombre={arbitro?.name?.split(' ')[0] || ''} texto="¿Qué partido vas a pitar hoy?"/>
+
+        {/* Reclamos sin leer: lo más urgente va primero */}
+        {notifs.length>0 && (
+          <div style={{ marginBottom:'14px' }}>
+            <AvisoPanel icono={AlertTriangle} color={G.loss}
+              titulo={`${notifs.length} reclamo${notifs.length>1?'s':''} sin leer`} sub="Toca para marcarlos como leídos"
+              onClick={async()=>{
+                await supabase.from('notificaciones').update({leida:true}).eq('player_id',arbitro.id).eq('leida',false)
+                setNotifs([])
+              }}/>
+            {notifs.map(n=>(
+              <div key={n.id} style={{ fontSize:'.9rem', color:G.text2, lineHeight:1.45, margin:'0 4px 6px' }}>
+                <b style={{ color:'#ff7b72' }}>{n.titulo}</b> — {n.mensaje}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Lo principal de todos los días: cuántos faltan por pitar y a un toque la planilla del siguiente */}
+        <TarjetaPanel icono={ClipboardList} titulo="Mis partidos" derecha={new Date().toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})}>
+          <CifrasPanel cifras={[
+            { valor:proximos.length, etiqueta:'Por pitar', color:G.gold },
+            { valor:jugados.length,  etiqueta:'Pitados',  color:G.green },
+          ]}/>
+          <BarraPanel pct={stats.total ? Math.round((jugados.length/stats.total)*100) : 0}/>
+          {proximos[0] && (
+            <div style={{ background:G.card2, border:`1px solid ${G.border}`, borderRadius:'14px', padding:'12px 14px', marginBottom:'12px' }}>
+              <div style={{ fontSize:'.74rem', fontWeight:800, letterSpacing:'.08em', textTransform:'uppercase', color:G.muted, marginBottom:'4px' }}>Siguiente partido</div>
+              <div style={{ fontWeight:800, fontSize:'1.05rem', lineHeight:1.3 }}>{proximos[0].home?.name} <span style={{ color:G.muted }}>vs</span> {proximos[0].away?.name}</div>
+              <div style={{ fontSize:'.86rem', color:G.muted, marginTop:'3px' }}>
+                {proximos[0].tournaments?.name}{proximos[0].played_at ? ` · ${new Date(proximos[0].played_at).toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})} ${fmtHoraDate(proximos[0].played_at)}` : ''}{proximos[0].location ? ` · ${proximos[0].location}` : ''}
+              </div>
             </div>
-          ))}
-        </div>
+          )}
+          {proximos[0]
+            ? <BotonVerde onClick={()=>abrirPlanilla(proximos[0])}>Llenar planilla del siguiente</BotonVerde>
+            : <BotonVerde onClick={()=>setTab('jugados')} flecha>Ver mis partidos pitados</BotonVerde>}
+        </TarjetaPanel>
 
         {/* Mi caja: cobros del día (solo torneos que cobran en cancha) */}
         <BannerCaja partidos={partidos}/>
 
+        <div style={{ fontSize:'.76rem', fontWeight:800, letterSpacing:'.08em', textTransform:'uppercase', color:G.muted, margin:'6px 4px 8px' }}>Todos mis partidos</div>
         {/* Tabs */}
-        <div style={{ display:'flex', gap:'6px', marginBottom:'16px', background:'#111827', borderRadius:'10px', padding:'4px' }}>
+        <div style={{ display:'flex', gap:'6px', marginBottom:'16px', background:'#161616', borderRadius:'10px', padding:'4px' }}>
           {[{id:'proximos',label:`Próximos (${proximos.length})`},{id:'jugados',label:`Pitados (${jugados.length})`}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)}
-              style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', cursor:'pointer', fontSize:'.78rem', fontWeight:'700', background:tab===t.id?'#1a73e8':'transparent', color:tab===t.id?'#fff':'#7a9ab5' }}>
+              style={{ flex:1, padding:'8px', borderRadius:'8px', border:'none', cursor:'pointer', fontSize:'.78rem', fontWeight:'700', background:tab===t.id?'#6fcf3d':'transparent', color:tab===t.id?'#0a1a05':'#8a8a8a' }}>
               {t.label}
             </button>
           ))}
@@ -380,19 +378,19 @@ export default function ArbitroHomePage() {
 
         {/* Lista */}
         {lista.length===0 ? (
-          <div style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'48px', textAlign:'center', color:'#7a9ab5' }}>
+          <div style={{ background:'#161616', border:'1px solid #2a2a2a', borderRadius:'12px', padding:'48px', textAlign:'center', color:'#8a8a8a' }}>
             <div style={{ marginBottom:'8px', display:'flex', justifyContent:'center' }}>{tab==='proximos'?<Calendar size={26}/>:<CheckCircle size={26}/>}</div>
             <div style={{ fontSize:'.875rem' }}>{tab==='proximos'?'Sin partidos asignados':'Sin partidos pitados'}</div>
           </div>
         ) : lista.map(p=>{
           const esJugado = p.status==='finished'
           return (
-            <div key={p.id} style={{ background:'#111827', border:'1px solid #1e2d3d', borderRadius:'12px', padding:'14px 16px', marginBottom:'10px' }}>
+            <div key={p.id} style={{ background:'#161616', border:'1px solid #2a2a2a', borderRadius:'12px', padding:'14px 16px', marginBottom:'10px' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
-                <span style={{ fontSize:'.7rem', color:'#00ddd0', background:'rgba(0,221,208,.1)', borderRadius:'6px', padding:'2px 8px' }}>{p.tournaments?.name}</span>
+                <span style={{ fontSize:'.7rem', color:'#6fcf3d', background:'rgba(111,207,61,.13)', borderRadius:'6px', padding:'2px 8px' }}>{p.tournaments?.name}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
-                  {p.matchday && <span style={{ fontSize:'.68rem', color:'#7a9ab5' }}>J{p.matchday}</span>}
-                  {p.played_at && <span style={{ fontSize:'.68rem', color:'#7a9ab5', display:'inline-flex', alignItems:'center', gap:'3px' }}><Calendar size={10}/> {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</span>}
+                  {p.matchday && <span style={{ fontSize:'.68rem', color:'#8a8a8a' }}>J{p.matchday}</span>}
+                  {p.played_at && <span style={{ fontSize:'.68rem', color:'#8a8a8a', display:'inline-flex', alignItems:'center', gap:'3px' }}><Calendar size={10}/> {new Date(p.played_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</span>}
                   <span style={{ fontSize:'.65rem', fontWeight:'700', color:esJugado?'#1e8e3e':'#e8710a', background:esJugado?'rgba(30,142,62,.1)':'rgba(232,113,10,.1)', borderRadius:'6px', padding:'1px 6px' }}>
                     {esJugado?'✓ Pitado':'Pendiente'}
                   </span>
@@ -400,23 +398,23 @@ export default function ArbitroHomePage() {
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                 <div style={{ flex:1, display:'flex', alignItems:'center', gap:'6px', justifyContent:'flex-end' }}>
-                  <span style={{ fontWeight:'700', fontSize:'.9rem', color:'#e8f4fd', textAlign:'right' }}>{p.home?.name}</span>
-                  <div style={{ width:'26px', height:'26px', borderRadius:'6px', background:'#1e2d3d', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    {p.home?.logo_url?<img src={p.home.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>:<Shield size={11} color="#7a9ab5"/>}
+                  <span style={{ fontWeight:'700', fontSize:'.9rem', color:'#ffffff', textAlign:'right' }}>{p.home?.name}</span>
+                  <div style={{ width:'26px', height:'26px', borderRadius:'6px', background:'#2a2a2a', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {p.home?.logo_url?<img src={p.home.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>:<Shield size={11} color="#8a8a8a"/>}
                   </div>
                 </div>
-                <div style={{ fontWeight:'900', fontSize:esJugado?'1rem':'.85rem', color:esJugado?'#e8f4fd':'#7a9ab5', background:'#1e2d3d', padding:'4px 12px', borderRadius:'7px', flexShrink:0, minWidth:'52px', textAlign:'center' }}>
+                <div style={{ fontWeight:'900', fontSize:esJugado?'1rem':'.85rem', color:esJugado?'#ffffff':'#8a8a8a', background:'#2a2a2a', padding:'4px 12px', borderRadius:'7px', flexShrink:0, minWidth:'52px', textAlign:'center' }}>
                   {esJugado?`${p.home_score}-${p.away_score}`:'VS'}
                 </div>
                 <div style={{ flex:1, display:'flex', alignItems:'center', gap:'6px' }}>
-                  <div style={{ width:'26px', height:'26px', borderRadius:'6px', background:'#1e2d3d', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    {p.away?.logo_url?<img src={p.away.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>:<Shield size={11} color="#7a9ab5"/>}
+                  <div style={{ width:'26px', height:'26px', borderRadius:'6px', background:'#2a2a2a', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    {p.away?.logo_url?<img src={p.away.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>:<Shield size={11} color="#8a8a8a"/>}
                   </div>
-                  <span style={{ fontWeight:'700', fontSize:'.9rem', color:'#e8f4fd' }}>{p.away?.name}</span>
+                  <span style={{ fontWeight:'700', fontSize:'.9rem', color:'#ffffff' }}>{p.away?.name}</span>
                 </div>
               </div>
               {(p.played_at||p.location) && (
-                <div style={{ marginTop:'6px', display:'flex', gap:'12px', fontSize:'.68rem', color:'#7a9ab5' }}>
+                <div style={{ marginTop:'6px', display:'flex', gap:'12px', fontSize:'.68rem', color:'#8a8a8a' }}>
                   {p.played_at && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><Clock size={10}/> {fmtHoraDate(p.played_at)}</span>}
                   {p.location  && <span style={{display:'inline-flex',alignItems:'center',gap:'3px'}}><MapPin size={10}/> {p.location}</span>}
                 </div>
@@ -428,20 +426,27 @@ export default function ArbitroHomePage() {
                     📝 Subir informe
                   </button>
                   <button onClick={()=>reabrirPlanilla(p)}
-                    style={{ flex:1, padding:'10px 6px', borderRadius:'8px', border:'1px solid #1e2d3d', background:'none', color:'#e8f4fd', fontSize:'.78rem', fontWeight:'800', cursor:'pointer' }}>
+                    style={{ flex:1, padding:'10px 6px', borderRadius:'8px', border:'1px solid #2a2a2a', background:'none', color:'#ffffff', fontSize:'.78rem', fontWeight:'800', cursor:'pointer' }}>
                     ↩ Volver a abrir planilla
                   </button>
                 </div>
               ) : (
                 <button onClick={()=>abrirPlanilla(p)}
-                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background: 'linear-gradient(135deg,#1a73e8,#00ddd0)', color:'#07070e', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
+                  style={{ marginTop:'10px', width:'100%', padding:'9px', borderRadius:'8px', border:'none', cursor:'pointer', background: '#6fcf3d', color:'#0a0a0a', fontSize:'.78rem', fontWeight:'800', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}>
                   <><Check size={14}/> Llenar planilla</>
                 </button>
               )}
             </div>
           )
         })}
-      </div>
-    </div>
+        <div style={{ height:'6px' }}/>
+        {/* Más opciones: cerradas para no abrumar */}
+        <MasOpciones>
+          <FilaPanel icono={Printer} titulo="Mis partidos para imprimir" sub="Un cartel con todos tus partidos pendientes" onClick={()=>setShowFlyer(true)}/>
+          <FilaPanel icono={FileText} titulo="Encuestas" sub="Cuéntanos cómo te fue en los partidos" onClick={()=>navigate('/arbitro/encuestas')}/>
+          <FilaPanel icono={Key} titulo="Cambiar mi contraseña" sub="Pon una clave nueva para entrar" onClick={()=>setShowPass(true)}/>
+        </MasOpciones>
+      </CuerpoPanel>
+    </PaginaPanel>
   )
 }

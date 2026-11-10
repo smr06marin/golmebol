@@ -13,7 +13,7 @@ const PALETAS = {
 // portales que tenga esa misma cuenta, resaltando en cuál está parado ahora
 // mismo. Si la cuenta solo tiene un rol, no se muestra (no hay a dónde más ir).
 // lista: en vez de botoncitos en fila, filas grandes en columna (para usarlo dentro de un menú)
-export default function PortalesMenu({ usuario, actual, theme = 'dark', lista = false }) {
+export default function PortalesMenu({ usuario, actual, theme = 'dark', lista = false, conTitulo = false }) {
   const navigate = useNavigate()
   const { escenarioId } = useParams()
   const [escenarios, setEscenarios] = useState([])
@@ -67,6 +67,7 @@ export default function PortalesMenu({ usuario, actual, theme = 'dark', lista = 
   if (lista) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {conTitulo && <div style={{ fontSize: '.7rem', fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#8a8a8a', padding: '12px 16px 4px', borderTop: '1px solid #2a2a2a' }}>Ir a otro portal</div>}
         {opciones.map((o, i) => {
           const isActual = o.isEscenario
             ? (actual === 'escenario' && (!o.escenarioId || o.escenarioId === escenarioId))

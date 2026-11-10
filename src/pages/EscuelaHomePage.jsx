@@ -2,30 +2,18 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { cargarDatosPrivadosEquipo, conDatosPrivados } from '../lib/equiposPrivado'
-import PortalBanner from '../components/PortalBanner'
-import { Shield, Crown, GraduationCap, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, Building2, ArrowRight, Pencil, Image as ImageIcon, X, User } from 'lucide-react'
+import { Shield, School, Hourglass, Users, ClipboardList, Wallet, Award, Trophy, GraduationCap, Pencil, Image as ImageIcon, X, User, AlertTriangle } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
-import EscuelaFeatureCard from '../components/EscuelaFeatureCard'
+import { PaginaPanel, CuerpoPanel, EncabezadoPanel, Saludo, TarjetaPanel, CifrasPanel, BotonVerde, FilaPanel, AvisoPanel, MasOpciones, G } from '../components/PanelUI'
 
 const S = {
-  navy: '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
-  border: '#1e2d3d', cyan: '#00ddd0', cyanDim: 'rgba(0,221,208,.12)',
-  green: '#22c55e', greenDim: 'rgba(34,197,94,.14)', warn: '#f9a825',
-  gold: '#f9a825', text: '#e8f4fd', text2: '#b8d4e8', muted: '#7a9ab5',
+  navy: G.bg, surface: G.card, card: G.card, card2: G.card2,
+  border: G.border, cyan: G.green, cyanDim: G.greenBg,
+  green: G.green, greenDim: G.greenBg, warn: G.gold,
+  gold: G.gold, text: G.text, text2: G.text2, muted: G.muted,
 }
 
-// Fotos de fondo (muy tenues, solo de ambiente) para cada tarjeta del panel
-// — las mismas que ya se usan para las tarjetas de jugador en otras partes
-// de la app, así no se depende de subir imágenes nuevas.
-const IMG_JUGADORES      = 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=60'
-const IMG_PROFESORES     = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
-const IMG_ASISTENCIA     = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
-const IMG_MENSUALIDADES  = 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?w=800&q=60'
-const IMG_RANKINGS       = 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=800&q=60'
-const IMG_DIA_PARTIDO    = 'https://images.unsplash.com/photo-1518604666860-9ed391f76460?w=800&q=60'
-const IMG_TORNEOS        = 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800&q=60'
-
-const inp = { width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'11px 14px', color:S.text, fontSize:'.9rem', outline:'none', boxSizing:'border-box' }
+const inp = { width:'100%', background:S.card, border:`1px solid ${S.border}`, borderRadius:'10px', padding:'13px 14px', color:S.text, fontSize:'1rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.72rem', fontWeight:'600', color:S.muted, display:'block', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'.05em' }
 
 export default function EscuelaHomePage() {
@@ -175,114 +163,77 @@ export default function EscuelaHomePage() {
 
   const esCoordinador = !!profesor.es_profesor_coordinador
 
-  return (
-    <div style={{ minHeight:'100vh', background:S.navy, fontFamily:'system-ui,sans-serif', color:S.text, paddingBottom:'40px' }}>
-      <PortalBanner theme="dark" sticky
-        avatarUrl={escuela?.logo_url} avatarEmoji={<Shield size={22}/>} avatarShape="rounded"
-        onAvatarUpload={esCoordinador && escuela ? handleLogo : undefined} uploadingAvatar={subiendoLogo}
-        kicker={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}><Building2 size={11}/> Club</span>} title={escuela?.name || 'Sin club todavía'}
-        subtitle={<span style={{display:'inline-flex',alignItems:'center',gap:'4px'}}>{esCoordinador ? <Crown size={11}/> : <GraduationCap size={11}/>} {esCoordinador ? 'Coordinador' : 'Profesor'} · {profesor.name?.split(' ')[0]}</span>}
-        subtitleColor={esCoordinador ? S.gold : S.muted}
-        usuario={profesor} actual="profesor" onLogout={handleLogout}
-      />
+  const primerNombre = profesor.name?.split(' ')[0] || ''
 
-      <div style={{ maxWidth:'600px', margin:'0 auto', padding:'20px 16px' }}>
+  return (
+    <PaginaPanel>
+      <EncabezadoPanel nombre={escuela?.name || 'Sin club todavía'} rol={`${esCoordinador ? 'Coordinador' : 'Profesor'} · ${primerNombre}`}
+        avatarUrl={escuela?.logo_url} icono={<Shield size={22} color={G.muted}/>}
+        onAvatar={esCoordinador && escuela ? handleLogo : undefined} subiendoAvatar={subiendoLogo}
+        usuario={profesor} actual="profesor" onLogout={handleLogout}/>
+
+      <CuerpoPanel ancho={600}>
+        <Saludo nombre={primerNombre}/>
 
         {/* Sin escuela todavía */}
         {!profesor.escuela_id && (
           esCoordinador ? (
-            <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px' }}>
-              <div style={{ marginBottom:'8px' }}><School size={28} color={S.cyan}/></div>
-              <div style={{ fontWeight:'800', fontSize:'1.05rem', marginBottom:'4px' }}>Crea tu club</div>
-              <div style={{ fontSize:'.8rem', color:S.muted, marginBottom:'18px' }}>Ponle el nombre y la categoría — después podrás agregar tus jugadores, la foto del club y a los demás profesores.</div>
-              <div style={{ marginBottom:'12px' }}>
+            <TarjetaPanel icono={School} titulo="Crea tu club">
+              <div style={{ fontSize:'.95rem', color:S.muted, marginBottom:'18px', lineHeight:1.5 }}>Ponle el nombre y la categoría. Después podrás agregar tus jugadores, la foto del club y a los demás profesores.</div>
+              <div style={{ marginBottom:'14px' }}>
                 <label style={lbl}>Nombre del club *</label>
                 <input value={nombreEscuela} onChange={e => setNombreEscuela(e.target.value)} style={inp} placeholder="Ej: Club Chapecó"/>
               </div>
-              <div style={{ marginBottom:'16px' }}>
+              <div style={{ marginBottom:'18px' }}>
                 <label style={lbl}>Categoría</label>
                 <input value={categoria} onChange={e => setCategoria(e.target.value)} style={inp} placeholder="Ej: Sub-10"/>
               </div>
-              {error && <div style={{ color:'#ff6b6b', fontSize:'.78rem', marginBottom:'12px' }}>{error}</div>}
-              <button onClick={handleCrearEscuela} disabled={guardando}
-                style={{ width:'100%', padding:'13px', background:S.cyan, border:'none', borderRadius:'12px', cursor:'pointer', color:'#000', fontWeight:'800', fontSize:'.9rem', opacity:guardando?.7:1 }}>
-                {guardando ? 'Creando...' : 'CREAR CLUB →'}
-              </button>
-            </div>
+              {error && <div style={{ color:'#ff7b72', fontSize:'.9rem', marginBottom:'12px', fontWeight:600 }}>{error}</div>}
+              <BotonVerde onClick={handleCrearEscuela} deshabilitado={guardando}>{guardando ? 'Creando...' : 'Crear club'}</BotonVerde>
+            </TarjetaPanel>
           ) : (
-            <div style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'16px', padding:'22px', textAlign:'center' }}>
-              <div style={{ marginBottom:'8px' }}><Hourglass size={28} color={S.muted}/></div>
-              <div style={{ fontSize:'.85rem', color:S.muted }}>Tu coordinador todavía no te agregó a una escuela. Avísale para que lo haga desde su portal.</div>
-            </div>
+            <TarjetaPanel>
+              <div style={{ textAlign:'center', padding:'6px 0' }}>
+                <div style={{ marginBottom:'8px' }}><Hourglass size={30} color={S.muted}/></div>
+                <div style={{ fontSize:'1rem', color:S.muted, lineHeight:1.5 }}>Tu coordinador todavía no te agregó a una escuela. Avísale para que lo haga desde su portal.</div>
+              </div>
+            </TarjetaPanel>
           )
         )}
 
         {/* Ya tiene escuela */}
         {profesor.escuela_id && escuela && (
-          <div>
-            {esCoordinador && (
-              <button onClick={abrirEditarEscuela}
-                style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'6px', width:'100%', padding:'10px', marginBottom:'14px', background:S.cyanDim, border:`1px solid ${S.cyan}`, borderRadius:'10px', cursor:'pointer', color:S.cyan, fontSize:'.8rem', fontWeight:'700' }}>
-                <Pencil size={13}/> Editar escuela y página pública
-              </button>
+          <>
+            {esCoordinador && cMensualidad > 0 && (
+              <AvisoPanel icono={AlertTriangle} titulo={`${cMensualidad} ${cMensualidad === 1 ? 'pago por vencer o vencido' : 'pagos por vencer o vencidos'}`}
+                sub="Toca para ver quién debe" onClick={() => navigate('/escuela/mensualidades')}/>
             )}
 
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'16px' }}>
-              <div style={{ background:S.card, border:`1px solid ${S.green}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-                <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><Users size={18} color={S.green}/></div>
-                <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.green, lineHeight:1 }}>{numJugadores}</div>
-                <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Jugadores</div>
-                <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>Activos en la escuela</div>
+            {/* Lo de todos los días: cuántos hay y a un toque marcar asistencia */}
+            <TarjetaPanel icono={Users} titulo="Mi escuela" derecha={escuela.categoria || ''}>
+              <CifrasPanel cifras={[
+                { valor:numJugadores, etiqueta: numJugadores === 1 ? 'Jugador' : 'Jugadores', color:G.green },
+                { valor:numProfesores, etiqueta: numProfesores === 1 ? 'Profesor' : 'Profesores', color:G.gold },
+              ]}/>
+              <BotonVerde onClick={() => navigate('/escuela/asistencia')}>Marcar asistencia</BotonVerde>
+              <div style={{ marginTop:'10px' }}>
+                <FilaPanel verde icono={GiSoccerBall} titulo="Día de partido" sub="Convocatoria, formación y en vivo" onClick={() => navigate('/escuela/partido')}/>
               </div>
-              <div style={{ background:S.card, border:`1px solid ${S.gold}44`, borderRadius:'12px', padding:'14px', textAlign:'center' }}>
-                <div style={{ display:'flex', justifyContent:'center', marginBottom:'6px' }}><GraduationCap size={18} color={S.gold}/></div>
-                <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.gold, lineHeight:1 }}>{numProfesores}</div>
-                <div style={{ fontSize:'.72rem', color:S.text, marginTop:'4px', fontWeight:'700' }}>Profesores</div>
-                <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'1px' }}>En el cuerpo técnico</div>
-              </div>
-            </div>
+            </TarjetaPanel>
 
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'10px' }}>
-              <EscuelaFeatureCard onClick={() => navigate('/escuela/jugadores')} bg={IMG_JUGADORES}
-                icon={<Users size={24} color={S.green}/>} title="Jugadores"
-                desc={esCoordinador ? 'Agrega y edita la plantilla' : 'Ver la plantilla de la escuela'}/>
-
-              <EscuelaFeatureCard onClick={() => navigate(`/escuela/profesores/${profesor.id}`)} bg={IMG_PROFESORES}
-                icon={<User size={24} color={S.green}/>} title="Mi perfil"
-                desc="Tu vida futbolística y evaluación"/>
-
-              {esCoordinador && (
-                <EscuelaFeatureCard onClick={() => navigate('/escuela/profesores')} bg={IMG_PROFESORES}
-                  icon={<GraduationCap size={24} color={S.green}/>} title="Profesores"
-                  desc="Agrega a los demás profesores"/>
-              )}
-
-              <EscuelaFeatureCard onClick={() => navigate('/escuela/asistencia')} bg={IMG_ASISTENCIA}
-                icon={<ClipboardList size={24} color={S.green}/>} title="Asistencia"
-                desc="Marca quién vino a entrenar"/>
-
-              {esCoordinador && (
-                <EscuelaFeatureCard onClick={() => navigate('/escuela/mensualidades')} bg={IMG_MENSUALIDADES}
-                  icon={<Wallet size={24} color={S.green}/>} title="Mensualidades"
-                  desc={cMensualidad > 0 ? 'Hay pagos por vencer o vencidos' : 'Avisos y cobros por WhatsApp'}
-                  badge={cMensualidad} warn={cMensualidad > 0}/>
-              )}
-
-              <EscuelaFeatureCard onClick={() => navigate('/escuela/rankings')} bg={IMG_RANKINGS}
-                icon={<Award size={24} color={S.green}/>} title="Rankings"
-                desc="Tabla de goles, minutos y evaluaciones"/>
-
-              <EscuelaFeatureCard onClick={() => navigate('/escuela/partido')} bg={IMG_DIA_PARTIDO}
-                icon={<GiSoccerBall size={22} color={S.green}/>} title="Día de partido"
-                desc="Convocatoria, formación y en vivo"/>
-
-              <EscuelaFeatureCard onClick={() => navigate('/escuela/torneos')} bg={IMG_TORNEOS}
-                icon={<Trophy size={24} color={S.green}/>} title="Torneos"
-                desc="Fase, resultado y premios"/>
-            </div>
-          </div>
+            {/* Más opciones: cerradas para no abrumar */}
+            <MasOpciones hayAvisos={esCoordinador && cMensualidad > 0}>
+              <FilaPanel icono={Users} titulo="Jugadores" sub={esCoordinador ? 'Agrega y edita la plantilla' : 'Ver la plantilla de la escuela'} onClick={() => navigate('/escuela/jugadores')}/>
+              {esCoordinador && <FilaPanel icono={Wallet} titulo="Mensualidades" sub="Avisos y cobros de cada jugador" aviso={cMensualidad > 0 ? `${cMensualidad} por vencer` : ''} onClick={() => navigate('/escuela/mensualidades')}/>}
+              <FilaPanel icono={Trophy} titulo="Torneos" sub="Fase, resultado y premios" onClick={() => navigate('/escuela/torneos')}/>
+              <FilaPanel icono={Award} titulo="Rankings" sub="Tabla de goles, minutos y evaluaciones" onClick={() => navigate('/escuela/rankings')}/>
+              {esCoordinador && <FilaPanel icono={GraduationCap} titulo="Profesores" sub="Agrega a los demás profesores" onClick={() => navigate('/escuela/profesores')}/>}
+              <FilaPanel icono={User} titulo="Mi perfil" sub="Tu vida futbolística y evaluación" onClick={() => navigate(`/escuela/profesores/${profesor.id}`)}/>
+              {esCoordinador && <FilaPanel icono={Pencil} titulo="Editar escuela y página pública" sub="Nombre, ciudad, representante e imagen de fondo" onClick={abrirEditarEscuela}/>}
+            </MasOpciones>
+          </>
         )}
-      </div>
+      </CuerpoPanel>
 
       {/* Modal: editar escuela + imagen de fondo de la página pública */}
       {editandoEscuela && formEscuela && (
@@ -332,6 +283,6 @@ export default function EscuelaHomePage() {
           </div>
         </div>
       )}
-    </div>
+    </PaginaPanel>
   )
 }
