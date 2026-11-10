@@ -152,7 +152,7 @@ function FirmaSlot({ label, firma, onFirmar }) {
   )
 }
 
-function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
+function InputCamiseta({ value, onChange, onDoubleClick, repetido, ocupadoPor, onRechazado }) {
   const ref = useRef(null)
   const [focused, setFocused] = useState(false)
   useEffect(() => {
@@ -161,10 +161,23 @@ function InputCamiseta({ value, onChange, onDoubleClick, repetido }) {
   function handleChange(e) {
     const val = e.target.value.replace(/\D/g, '').slice(0, 2)
     e.target.value = val
+    // Número que ya tiene otro jugador del mismo equipo: NO se deja poner.
+    if (val.length === 2 && rechazarSiOcupado(val)) return
     if (val.length === 2 || val.length === 0) onChange(val)
     if (val.length === 2 && ref.current) ref.current.blur() // apenas se completa el número, vuelve a su tamaño normal
   }
-  function handleBlur(e) { onChange(e.target.value.replace(/\D/g, '').slice(0, 2)); setFocused(false) }
+  function rechazarSiOcupado(val) {
+    const quien = ocupadoPor ? ocupadoPor(val) : null
+    if (!quien) return false
+    if (ref.current) ref.current.value = String(value ?? '') // vuelve al número que tenía
+    if (onRechazado) onRechazado(val, quien)
+    return true
+  }
+  function handleBlur(e) {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 2)
+    if (val !== '' && rechazarSiOcupado(val)) { setFocused(false); return }
+    onChange(val); setFocused(false)
+  }
   function handleDoubleClick() { if (ref.current) ref.current.value = ''; onChange(''); onDoubleClick() }
   const bg = !value ? '#fff3cd' : repetido ? '#ff4444' : '#111'
   const color = !value ? '#e8710a' : '#fff'
@@ -1996,10 +2009,32 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
     accion()
   }
 
+  const [avisoNumero, setAvisoNumero] = useState(null)
   const updateJugador = useCallback((equipo, idx, campo, valor) => {
     const s = equipo === 'local' ? setJugadoresLocal : setJugadoresVisitante
-    s(prev => prev.map((j, i) => i === idx ? { ...j, [campo]: valor } : j))
+    s(prev => {
+      // Segunda barrera: jamás guardar un número que otro del mismo equipo ya tiene.
+      if (campo === 'numero' && valor !== '' && valor != null &&
+          prev.some((j, i) => i !== idx && j.numero !== '' && j.numero != null && Number(j.numero) === Number(valor))) return prev
+      return prev.map((j, i) => i === idx ? { ...j, [campo]: valor } : j)
+    })
   }, [])
+
+  // Nombre del jugador del mismo equipo que ya tiene ese número (o null si está libre)
+  function numeroOcupadoPor(equipo, numero, idxActual) {
+    if (numero === '' || numero == null) return null
+    const jugs = equipo === 'local' ? jugadoresLocal : jugadoresVisitante
+    const otro = jugs.find((j, i) => i !== idxActual && j.numero !== '' && j.numero != null && Number(j.numero) === Number(numero))
+    return otro ? (otro.nombre || otro.name || 'otro jugador') : null
+  }
+  function rechazarNumero(equipo, numero, quien) {
+    setAvisoNumero({ numero, quien, equipo: equipo === 'local' ? partido.home?.name : partido.away?.name })
+  }
+  useEffect(() => {
+    if (!avisoNumero) return
+    const t = setTimeout(() => setAvisoNumero(null), 4500)
+    return () => clearTimeout(t)
+  }, [avisoNumero])
 
   function numeroRepetido(equipo, numero, idxActual) {
     if (numero === '' || numero === null || numero === undefined) return false
@@ -2258,7 +2293,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
                       {j.numero ? <span style={{ fontSize: '9px', fontWeight: '800', color: '#d93025' }}>{j.numero} 🔒</span> : <span style={{ fontSize: '12px' }}>🔒</span>}
                     </td>
                   ) : (
-                    <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}/>
+                    <InputCamiseta value={j.numero} onChange={val => updateJugador(equipo, idx, 'numero', val)} onDoubleClick={() => updateJugador(equipo, idx, 'numero', '')} repetido={repetido}
+                      ocupadoPor={val => numeroOcupadoPor(equipo, val, idx)} onRechazado={(val, quien) => rechazarNumero(equipo, val, quien)}/>
                   )
                 ) : (
                   <td style={{ ...cell, background: '#fff3cd', padding: '1px' }}>
@@ -2475,6 +2511,11 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
         <ModalEspecial tipo={showEspecial} partido={partido} onConfirmar={handleConfirmarEspecial} onCancelar={() => setShowEspecial(null)}/>
       )}
 
+      {avisoNumero && (
+        <div className="no-print" onClick={() => setAvisoNumero(null)} style={{ position: 'fixed', top: '14px', left: '50%', transform: 'translateX(-50%)', zIndex: 9800, background: '#d93025', color: '#fff', padding: '12px 16px', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,.45)', maxWidth: '92vw', width: '360px', fontSize: '.88rem', fontWeight: '700', lineHeight: 1.35, textAlign: 'center' }}>
+          🚫 El N° {avisoNumero.numero} ya lo tiene {avisoNumero.quien}{avisoNumero.equipo ? ` en ${avisoNumero.equipo}` : ''}. Escribe otro número.
+        </div>
+      )}
       {modalInscripcionJugador && (() => {
         // Se cierra solo en cuanto el organizador marca el pago en Finanzas.
         const actual = [...jugadoresLocal, ...jugadoresVisitante].find(x => x.id === modalInscripcionJugador.id)
