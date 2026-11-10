@@ -1,17 +1,14 @@
-import { useState } from 'react'
+import { useState, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '../../lib/supabase'
 import { comprimirImagen } from '../../lib/imageCompress'
-import CardBackground from './CardBackground'
-import CardEffects from './designs/CardEffects'
-import CardDecorations from './designs/CardDecorations'
 import { CARD_DESIGNS } from './designs/cardDesigns'
-import DesignPremium from './designs/DesignPremium'
-import DesignNivel1 from './designs/DesignNivel1'
-import DesignNivel2 from './designs/DesignNivel2'
-import DesignNivel3 from './designs/DesignNivel3'
+import { W, H, FUENTE, NOMBRE_NIVEL, arteDe, poligonoCss, ArteDefs, ArteFondo, ArteFrente, ESTILOS_ARTE } from './designs/cardArte'
 
-const CARD_PATH = "M 20 0 L 120 0 L 134 10 L 154 2 L 170 0 L 186 2 L 206 10 L 220 0 L 320 0 Q 338 0 340 17 L 340 380 Q 340 422 305 448 Q 278 466 244 476 Q 218 485 170 486 Q 122 485 96 476 Q 62 466 35 448 Q 0 422 0 380 L 0 17 Q 2 0 20 0 Z"
+// ── Tarjeta del jugador ───────────────────────────────────────────────────────────────────────
+// Lo que se VE se dibuja en SVG sobre un lienzo fijo de 340×520 (se ve igual en cualquier tamaño y celular).
+// Encima va una capa transparente con los botones (números, escudos, subir foto), ubicados por porcentaje.
+// El arte de cada nivel vive en designs/cardArte.jsx.
 
 const TORNEOS_DEFAULT = [
   { id: 't1', nombre: 'GOLM BCN', svg: `<svg viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="g1" cx="48%" cy="36%" r="56%"><stop offset="0%" stop-color="#ff99cc" stop-opacity=".74"/><stop offset="100%" stop-color="#260010" stop-opacity=".96"/></radialGradient></defs><circle cx="35" cy="35" r="33" fill="url(#g1)"/><circle cx="35" cy="35" r="33" fill="none" stroke="#ff66aa" stroke-width="2"/><text x="35" y="27.5" text-anchor="middle" fill="#fff" font-size="8" font-family="Impact">GOLM</text><text x="35" y="37.5" text-anchor="middle" fill="rgba(255,222,238,.92)" font-size="7" font-family="Impact">BCN</text><text x="35" y="46.5" text-anchor="middle" fill="rgba(255,200,225,.6)" font-size="4.5" font-family="Impact">T1 · 2025</text></svg>` },
@@ -29,37 +26,6 @@ const STATS_DEFAULT = {
   amarillas: 3, azules: 1,
 }
 
-function getBorderStyle(design) {
-  if (design.borde === 'gradiente_fuego') return 'url(#brdFuego)'
-  if (design.borde === 'gradiente_galaxia') return 'url(#brdGalaxia)'
-  if (design.borde === 'gradiente_diamante') return 'url(#brdDiamante)'
-  if (design.borde === 'gradiente_arcoiris') return 'url(#brdArcoiris)'
-  if (design.borde === 'gradiente_negro_oro') return 'url(#brdNegroOro)'
-  return design.borde || '#00ddd0'
-}
-
-function Escudo({ item, color, isPremium, size = 62 }) {
-  if (!item) return null
-  if (item.logo_url) {
-    return (
-      <div style={{ width: size, height: size, filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', animation: 'sflt 4.2s ease-in-out infinite', flexShrink: 0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <img src={item.logo_url} alt={item.nombre || item.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
-      </div>
-    )
-  }
-  if (item.svg) {
-    return (
-      <div style={{ width: size, height: size, cursor: 'pointer', animation: 'sflt 4.2s ease-in-out infinite', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))' }}
-        dangerouslySetInnerHTML={{ __html: item.svg }}/>
-    )
-  }
-  const iniciales = (item.nombre || item.name || '?').substring(0, 2).toUpperCase()
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: `radial-gradient(circle at 40% 35%, ${color}88, rgba(0,0,0,.8))`, border: `1.5px solid ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'sflt 4.2s ease-in-out infinite', filter: 'drop-shadow(0 4px 10px rgba(0,0,0,.6))', flexShrink: 0 }}>
-      <span style={{ fontFamily: 'Impact, sans-serif', fontSize: '18px', color: '#fff', fontWeight: '900' }}>{iniciales}</span>
-    </div>
-  )
-}
 
 // Elección guardada en el celular: la próxima vez la tarjeta muestra el torneo/equipo que la persona dejó
 function leerSeleccion(playerId, clave, lista) {
@@ -78,21 +44,6 @@ function guardarSeleccion(playerId, clave, id) {
   } catch { /* sin almacenamiento: solo se pierde la memoria de la elección */ }
 }
 
-// Botón redondo y grande al lado del escudo: toca para elegir entre todos los torneos/equipos.
-// Late unas veces al abrir para que se note; el número dice cuántos hay.
-function BotonCambiar({ total, actual, onClick, color, isPremium }) {
-  const acento = isPremium ? '#D6B65D' : color
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
-      <style>{`@keyframes gmPulsoElegir { 0% { box-shadow: 0 0 0 0 ${acento}aa } 70% { box-shadow: 0 0 0 9px ${acento}00 } 100% { box-shadow: 0 0 0 0 ${acento}00 } }`}</style>
-      <button type="button" onClick={onClick} aria-label="Elegir otro"
-        style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(0,0,0,.72)', border: `2px solid ${acento}`, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, fontSize: '1.15rem', fontWeight: 900, lineHeight: 1, animation: 'gmPulsoElegir 1.6s ease-out 4' }}>
-        ⇅
-      </button>
-      <span style={{ fontFamily: 'system-ui, sans-serif', fontSize: '.62rem', fontWeight: 800, color: '#fff', letterSpacing: '.03em' }}>{actual + 1}/{total}</span>
-    </div>
-  )
-}
 
 // Hoja que sube desde abajo con todas las opciones, grandes y con su nombre. Se dibuja fuera de la tarjeta
 // (portal) porque la tarjeta tiene sombra/filtro y eso descolocaría una capa fija.
@@ -138,26 +89,50 @@ function HojaElegir({ titulo, items, indice, onElegir, onCerrar }) {
   )
 }
 
+
+// Posición de una zona del lienzo, en porcentaje (para la capa de botones)
+const zona = (x, y, w, h) => ({ position: 'absolute', left: `${(x / W) * 100}%`, top: `${(y / H) * 100}%`, width: `${(w / W) * 100}%`, height: `${(h / H) * 100}%` })
+
+// Escudo del torneo o del equipo (ocupa todo su contenedor)
+function EscudoImg({ item, acento }) {
+  if (!item) return null
+  if (item.logo_url) return <img src={item.logo_url} alt={item.nombre || item.name || ''} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}/>
+  if (item.svg) return <div style={{ width: '100%', height: '100%' }} dangerouslySetInnerHTML={{ __html: item.svg }}/>
+  const iniciales = (item.nombre || item.name || '?').substring(0, 2).toUpperCase()
+  return (
+    <svg viewBox="0 0 48 48" style={{ width: '100%', height: '100%', display: 'block' }}>
+      <circle cx="24" cy="24" r="22" fill="rgba(0,0,0,.55)" stroke={acento} strokeWidth="2"/>
+      <text x="24" y="31" textAnchor="middle" fontFamily={FUENTE} fontSize="20" fill="#fff">{iniciales}</text>
+    </svg>
+  )
+}
+
+// Rectángulo de tarjeta (amarilla / azul / roja) dibujado, en vez de un emoji
+const COLOR_TARJETA = { '🟨': '#f5c518', '🟦': '#3b82f6', '🟥': '#e5433d' }
+const NOMBRE_TARJETA = { '🟨': 'Tarjetas amarillas', '🟦': 'Tarjetas azules', '🟥': 'Tarjetas rojas' }
+
 export default function PlayerCard({
   playerName      = 'JHONATAN',
   stats           = STATS_DEFAULT,
-  cardType        = 'normal_teal',
+  cardType        = 'nivel1_verde',
   customDesign    = null,
   onStatClick,
   hideShields     = false,
   photoUrlExterno = null,
-  playerId        = null,   // si viene, "+ SUBIR FOTO" queda guardada de una vez como foto de tarjeta (players.photo_url)
+  playerId        = null,   // si viene, "Subir mi foto" queda guardada de una vez como foto de tarjeta (players.photo_url)
   onFotoSubida    = null,   // (nuevaUrl) => ... para sincronizar el estado del padre
   esPortero       = false,
   esDefensa       = false,
   torneosData     = null,
   equiposData     = null,
-  // Modo escuela: no hay torneo de club que mostrar (solo el escudo del
-  // equipo/escuela), y las stats son las de la ficha de evolución del niño
-  // en vez de las de un jugador de club (P.G/P.E/P.P no aplican).
+  // Modo escuela: no hay torneo de club que mostrar (solo el escudo de la escuela), y las estadísticas
+  // son las de la ficha de evolución del niño en vez de las de un jugador de club.
   modoEscuela     = false,
-  // Invitación a tocar: un brillo suave recorre los números (se apaga solo cuando la persona toca uno)
+  // Invitación a tocar: un brillo suave recorre los números (se apaga cuando la persona toca uno)
   pista           = false,
+  subtitulo       = null,   // texto bajo el nombre; si no viene se arma con la posición y el equipo
+  mini            = false,  // miniatura para la colección: sin botones ni animaciones
+  inclinable      = false,  // se inclina un poco al pasar el dedo o el mouse
 }) {
   const [tI, setTI] = useState(() => leerSeleccion(playerId, 't', torneosData))
   const [eI, setEI] = useState(() => leerSeleccion(playerId, 'e', equiposData))
@@ -166,21 +141,18 @@ export default function PlayerCard({
   const [subiendoFoto, setSubiendoFoto] = useState(false)
   const [errorFoto, setErrorFoto] = useState('')
   const photoUrl = photoUrlExterno || photoLocal
+  const uid = 'gc' + useId().replace(/[^a-zA-Z0-9]/g, '')
+  const refInclina = useRef(null)
+  const refLuz = useRef(null)
 
   const TORNEOS = (torneosData && torneosData.length > 0) ? torneosData : TORNEOS_DEFAULT
   const EQUIPOS = (equiposData && equiposData.length > 0) ? equiposData : EQUIPOS_DEFAULT
 
-  const design    = CARD_DESIGNS.find(d => d.id === cardType) || customDesign || CARD_DESIGNS[0]
-  const isPremium = design.premium === true
-  const fondo     = design.fondo || ['#00e8d8', '#1558e2', '#110450']
-  const color     = design.color || '#00ddd0'
-  const color2    = design.colorSecundario || color
-  const color3    = design.colorTerciario  || color2
-  const borde     = getBorderStyle(design)
-  const gradienteFondo = `linear-gradient(168deg, ${fondo[0]} 0%, ${fondo[1]||fondo[0]} 35%, ${fondo[2]||fondo[1]} 70%, ${fondo[3]||fondo[2]} 100%)`
-  const isNivel1  = design.nivel === 1
-  const isNivel2  = design.nivel === 2
-  const isNivel3  = design.nivel === 3
+  const design = CARD_DESIGNS.find(d => d.id === cardType) || customDesign || CARD_DESIGNS[0]
+  const c = arteDe(design)
+  const conFoto = !!photoUrl
+  const animado = !mini
+  const acento = c.clara ? c.a : c.b
 
   // Antes esto solo hacía un preview local (FileReader) y nunca se guardaba
   // en ningún lado: al recargar la página desaparecía y la foto de "tarjeta"
@@ -218,49 +190,76 @@ export default function PlayerCard({
     setSubiendoFoto(false)
   }
 
-  const statsIzquierda = modoEscuela
+
+  // ── Datos que muestra la tarjeta ──
+  const eficacia = stats.eficacia ?? (stats.pj > 0 ? Math.round(((stats.pg || 0) / stats.pj) * 100) : 0)
+  const fila1 = modoEscuela
     ? (esPortero
         ? [
-            { label: 'ALT', value: stats.estatura ? `${stats.estatura}cm` : '—', key: 'alt',    dot: false },
-            { label: 'TÉC', value: stats.promTecnico ?? '—',                     key: 'tec',    dot: true  },
-            { label: 'AST', value: stats.asistencias || 0,                       key: 'ast_gk', dot: false },
+            { label: 'ESTATURA', value: stats.estatura ? `${stats.estatura}` : '—', key: 'alt',    nombre: 'Estatura en centímetros' },
+            { label: 'TÉCNICA',  value: stats.promTecnico ?? '—',                  key: 'tec',    nombre: 'Promedio técnico' },
+            { label: 'ASISTENCIAS', value: stats.asistencias || 0,                 key: 'ast_gk', nombre: 'Asistencias' },
           ]
         : [
-            { label: 'GOLES', value: stats.golesEscuela ?? 0,  key: 'goles_esc', dot: true  },
-            { label: 'TÉC',   value: stats.promTecnico ?? '—', key: 'tec',       dot: false },
-            { label: 'AST',   value: stats.asistencias || 0,   key: 'ast',       dot: false },
+            { label: 'GOLES',    value: stats.golesEscuela ?? 0,  key: 'goles_esc', nombre: 'Goles' },
+            { label: 'TÉCNICA',  value: stats.promTecnico ?? '—', key: 'tec',       nombre: 'Promedio técnico' },
+            { label: 'ASISTENCIAS', value: stats.asistencias || 0, key: 'ast',      nombre: 'Asistencias' },
           ])
     : [
-        { label: 'GOLES', value: stats.golesContra,  key: 'gc',      dot: true  },
-        { label: '🟨',    value: stats.amarillas||0, key: 'am_club', dot: false },
-        { label: '🟦',    value: stats.azules||0,    key: 'az_club', dot: false },
+        { label: esPortero ? 'RECIBIDOS' : 'GOLES', value: stats.golesContra ?? 0, key: 'gc',   nombre: esPortero ? 'Goles recibidos' : 'Goles' },
+        { label: 'GANADOS',  value: stats.pg ?? 0,    key: 'pg',   nombre: 'Partidos ganados' },
+        { label: 'EFICACIA', value: `${eficacia}%`,   key: 'efic', nombre: 'Eficacia (partidos ganados de cada 100)' },
       ]
-
-  // Columna derecha: en modo club es el récord P.G/P.E/P.P, en modo escuela
-  // no hay récord de equipo así que se usan MVP/amarillas/rojas del niño.
-  const statsDerecha = modoEscuela
+  const fila2 = modoEscuela
     ? [
-        { label: 'MVP', value: stats.mvp || 0,       key: 'mvp_esc' },
+        { label: 'MVP', value: stats.mvp || 0,       key: 'mvp_esc',  nombre: 'Veces figura del partido' },
         { label: '🟨',  value: stats.amarillas || 0, key: 'ama_esc' },
-        { label: '🟥',  value: stats.rojas || 0,      key: 'roja_esc' },
+        { label: '🟥',  value: stats.rojas || 0,     key: 'roja_esc' },
       ]
     : [
-        { label: 'P.G', value: stats.pg, key: 'pg' },
-        { label: 'P.E', value: stats.pe, key: 'pe' },
-        { label: 'P.P', value: stats.pp, key: 'pp' },
+        { label: 'EMPATES',  value: stats.pe ?? 0,        key: 'pe', nombre: 'Partidos empatados' },
+        { label: 'PERDIDOS', value: stats.pp ?? 0,        key: 'pp', nombre: 'Partidos perdidos' },
+        { label: '🟨',       value: stats.amarillas || 0, key: 'am_club' },
+        { label: '🟦',       value: stats.azules || 0,    key: 'az_club' },
       ]
+  const X1 = [74, 170, 266]
+  const X2 = fila2.length === 4 ? [66, 148, 222, 274] : [74, 170, 266]
+  const A2 = fila2.length === 4 ? [80, 84, 52, 52] : [96, 96, 96]
 
-  // Id de recorte ÚNICO por tarjeta: antes todas las tarjetas del documento
-  // compartían el id "activeCardClip" (con escalas distintas por diseño) y el
-  // navegador usaba la primera que encontrara — en Android eso dañaba el fondo
-  // y desubicaba el contenido cuando había varias tarjetas en pantalla.
-  const [clipId] = useState(() => 'cardClip_' + Math.random().toString(36).slice(2, 9))
+  const nombre = String(playerName || '').toUpperCase()
+  const tamNombre = nombre.length <= 7 ? 46 : nombre.length <= 9 ? 40 : nombre.length <= 11 ? 33 : nombre.length <= 14 ? 27 : 22
+  const equipoActual = EQUIPOS[eI]
+  const rol = esPortero ? 'ARQUERO' : esDefensa ? 'DEFENSA' : (modoEscuela ? 'JUGADOR' : 'JUGADOR DE CAMPO')
+  const nombreEquipo = (!hideShields && (equiposData && equiposData.length > 0)) ? String(equipoActual?.nombre || equipoActual?.name || '').toUpperCase() : ''
+  let sub = subtitulo != null ? String(subtitulo).toUpperCase() : [rol, nombreEquipo].filter(Boolean).join(' · ')
+  if (sub.length > 36) sub = sub.slice(0, 35).trimEnd() + '…'
+
+  const tintaArriba = conFoto ? '#ffffff' : c.arriba
+  const sombraTexto = conFoto ? { paintOrder: 'stroke', stroke: 'rgba(0,0,0,.45)', strokeWidth: 3, strokeLinejoin: 'round' } : null
+  const interactiva = !mini && !!onStatClick
+  const verEscudos = !hideShields
+  const yTorneo = 172, yEquipo = modoEscuela ? 172 : 238
+
+  // Inclinación suave al mover el dedo o el mouse (solo transform: liviano en cualquier celular)
+  function mover(e) {
+    const el = refInclina.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height
+    el.style.transform = `perspective(900px) rotateY(${((px - .5) * 9).toFixed(2)}deg) rotateX(${((.5 - py) * 7).toFixed(2)}deg)`
+    if (refLuz.current) { refLuz.current.style.opacity = '1'; refLuz.current.style.background = `radial-gradient(circle at ${(px * 100).toFixed(0)}% ${(py * 100).toFixed(0)}%, rgba(255,255,255,.22), rgba(255,255,255,0) 46%)` }
+  }
+  function soltar() {
+    if (refInclina.current) refInclina.current.style.transform = 'perspective(900px) rotateY(0deg) rotateX(0deg)'
+    if (refLuz.current) refLuz.current.style.opacity = '0'
+  }
+  const eventosInclina = inclinable && !mini ? { onPointerMove: mover, onPointerLeave: soltar, onPointerUp: soltar, onPointerCancel: soltar } : null
+
+  const botonInvisible = { background: 'transparent', border: 'none', padding: 0, margin: 0, cursor: 'pointer', borderRadius: '10px', WebkitTapHighlightColor: 'rgba(255,255,255,.12)' }
 
   return (
-    <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto', filter: `drop-shadow(0 10px 30px rgba(0,0,0,.75)) drop-shadow(0 0 10px ${color}55)` }}>
-      {pista && (
-        <style>{`@keyframes gmPistaFila { 0%, 60%, 100% { background: transparent; box-shadow: none } 28% { background: ${isPremium ? '#D6B65D' : color}2e; box-shadow: inset 0 0 0 1px ${isPremium ? '#D6B65D' : color}55 } } @media (prefers-reduced-motion: reduce) { .gm-pista { animation: none !important } }`}</style>
-      )}
+    <div style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '0 auto', filter: mini ? undefined : `drop-shadow(0 12px 28px rgba(0,0,0,.7)) drop-shadow(0 0 12px ${c.clara ? '#e9c75e' : c.a}44)` }}>
+      {!mini && <style>{ESTILOS_ARTE}</style>}
       {hoja === 'torneo' && (
         <HojaElegir titulo="Elige el torneo" items={TORNEOS} indice={tI}
           onElegir={i => { setTI(i); guardarSeleccion(playerId, 't', TORNEOS[i]?.id); setHoja(null) }} onCerrar={() => setHoja(null)}/>
@@ -269,244 +268,162 @@ export default function PlayerCard({
         <HojaElegir titulo={modoEscuela ? 'Elige la escuela' : 'Elige tu equipo'} items={EQUIPOS} indice={eI}
           onElegir={i => { setEI(i); guardarSeleccion(playerId, 'e', EQUIPOS[i]?.id); setHoja(null) }} onCerrar={() => setHoja(null)}/>
       )}
-      <div style={{ position: 'relative', width: '100%', paddingBottom: '155%' }}>
 
-        {isPremium ? (
-          <DesignPremium variant={design.premiumVariant || 'inicio'} clipId={clipId} />
-        ) : isNivel1 ? (
-          <DesignNivel1 color={color} colorSecundario={color2} cardId={design.id} clipId={clipId} />
-        ) : isNivel2 ? (
-          <DesignNivel2 variant={design.nivel2Variant || 'inicio'} clipId={clipId} />
-        ) : isNivel3 ? (
-          <DesignNivel3 variant={design.nivel3Variant || 'inicio'} clipId={clipId} />
-        ) : (
-          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }} viewBox="0 0 340 492" fill="none">
-            <defs>
-              <linearGradient id="brdFuego" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ff4400"/><stop offset="50%" stopColor="#ff8800"/><stop offset="100%" stopColor="#ffcc00"/>
-              </linearGradient>
-              <linearGradient id="brdGalaxia" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#0a003c"/><stop offset="50%" stopColor="#6432ff"/><stop offset="100%" stopColor="#ff00c8"/>
-              </linearGradient>
-              <linearGradient id="brdDiamante" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#a0d8ff"/><stop offset="50%" stopColor="#ffffff"/><stop offset="100%" stopColor="#a0d8ff"/>
-              </linearGradient>
-              <linearGradient id="brdArcoiris" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ff0064"/><stop offset="25%" stopColor="#ff8800"/><stop offset="50%" stopColor="#00ff96"/><stop offset="75%" stopColor="#0064ff"/><stop offset="100%" stopColor="#ff00c8"/>
-              </linearGradient>
-              <linearGradient id="brdNegroOro" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ffd700"/><stop offset="50%" stopColor="#ff8800"/><stop offset="100%" stopColor="#ffd700"/>
-              </linearGradient>
-              <clipPath id={clipId} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.002033)">
-                <path d={CARD_PATH}/>
-              </clipPath>
-            </defs>
-            <path d={CARD_PATH} fill="none" stroke={borde} strokeWidth="3.5"/>
-            <path d="M 23 4 L 121 4 L 134 13 L 153 5.5 L 170 4 L 187 5.5 L 206 13 L 217 4 L 317 4 Q 333 4 335 20 L 335 379 Q 335 417 302 442 Q 276 459 242 469 Q 217 477 170 478 Q 123 477 98 469 Q 64 459 38 442 Q 5 417 5 379 L 5 20 Q 7 4 23 4 Z"
-              fill="none" stroke={`${color}28`} strokeWidth="1"/>
-            <line x1="170" y1="0" x2="170" y2="29" stroke={`${color}aa`} strokeWidth="1.5"/>
-            <line x1="134" y1="10" x2="134" y2="27" stroke={`${color}77`} strokeWidth="1"/>
-            <line x1="206" y1="10" x2="206" y2="27" stroke={`${color}77`} strokeWidth="1"/>
-            <path d="M 96 476 Q 133 490 170 492 Q 207 490 244 476" fill="none" stroke={`${color}44`} strokeWidth="1.2"/>
-          </svg>
+      <div ref={refInclina} {...eventosInclina}
+        style={{ position: 'relative', width: '100%', paddingBottom: `${(H / W) * 100}%`, transition: 'transform .18s ease-out', willChange: inclinable ? 'transform' : undefined, touchAction: 'pan-y' }}>
+
+        {/* 1 · Fondo del material */}
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} aria-hidden="true">
+          <ArteDefs c={c} uid={uid}/>
+          <ArteFondo c={c} uid={uid}/>
+          {!conFoto && (
+            <g clipPath={`url(#${uid}f)`} fill={c.arriba} opacity={c.clara ? .16 : .13}>
+              <circle cx="204" cy="150" r="36"/>
+              <path d="M 126 322 Q 126 216 204 208 Q 282 216 282 322 Z"/>
+            </g>
+          )}
+        </svg>
+
+        {/* 2 · Foto del jugador, recortada con la silueta de la tarjeta */}
+        {conFoto && (
+          <div style={{ position: 'absolute', inset: 0, clipPath: poligonoCss(c.n), WebkitClipPath: poligonoCss(c.n), pointerEvents: 'none' }}>
+            <img src={photoUrl} alt="" data-foto-tarjeta="1"
+              style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '63%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}/>
+          </div>
         )}
 
-        {isNivel3 && (
-          <svg style={{ position: 'absolute', width: 0, height: 0 }} viewBox="0 0 340 510">
-            <defs>
-              {/* Def de respaldo con id propio (el activo lo define DesignNivel3) */}
-              <clipPath id={clipId + '_n3'} clipPathUnits="objectBoundingBox" transform="scale(0.002941,0.001957)">
-                <path d="M 0 52 L 0 420 Q 0 460 35 478 Q 62 490 96 496 Q 122 502 170 503 Q 218 502 244 496 Q 278 490 305 478 Q 340 460 340 420 L 340 52 L 268 52 L 268 0 L 72 0 L 72 52 Z"/>
-              </clipPath>
-            </defs>
-          </svg>
-        )}
+        {/* 3 · Placa, marco, adornos y textos */}
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
+          role="img" aria-label={`Tarjeta de ${nombre}: ${stats.pj ?? 0} partidos jugados`}>
+          <ArteFrente c={c} uid={uid} conFoto={conFoto} animado={animado}/>
 
-        {!isPremium && !isNivel2 && !isNivel3 && (
-          <CardDecorations decoracion={design.decoracion} color={color} colorSecundario={color2} colorTerciario={color3}/>
-        )}
+          {/* Partidos jugados */}
+          {pista && interactiva && <rect x="26" y="46" width="96" height="78" rx="14" fill={conFoto ? '#fff' : c.a} fillOpacity=".1" className="gmc-pista"/>}
+          <text x="34" y="101" fontFamily={FUENTE} fontSize="68" fill={tintaArriba} style={sombraTexto}>{stats.pj ?? 0}</text>
+          <text x="36" y="117" fontFamily={FUENTE} fontSize="12.5" letterSpacing="2.4" fill={tintaArriba} opacity=".92" style={conFoto ? { paintOrder: 'stroke', stroke: 'rgba(0,0,0,.5)', strokeWidth: 2 } : null}>
+            {stats.pj === 1 ? 'PARTIDO' : 'PARTIDOS'}
+          </text>
 
-        <div style={{ position: 'absolute', inset: 0, clipPath: `url(#${clipId})`, WebkitClipPath: `url(#${clipId})`, transform: 'translateZ(0)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-          {isPremium ? (
-            <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(168deg, ${design.fondo[0]} 0%, ${design.fondo[1]} 35%, ${design.fondo[2]} 70%, ${design.fondo[3]} 100%)`, zIndex: 0 }} />
-          ) : (
-            <>
-              <div style={{ position: 'absolute', inset: 0, background: gradienteFondo, zIndex: 0 }} />
-              {isNivel1 && (
-                <div style={{
-                  position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none',
-                  backgroundImage:
-                    design.id === 'nivel1_verde'  ? `repeating-linear-gradient(0deg, rgba(0,255,68,.06) 0px, rgba(0,255,68,.06) 26px, transparent 26px, transparent 52px)` :
-                    design.id === 'nivel1_azul'   ? `repeating-linear-gradient(135deg, rgba(0,153,255,.05) 0px, rgba(0,153,255,.05) 2px, transparent 2px, transparent 20px)` :
-                    design.id === 'nivel1_bronce' ? `repeating-linear-gradient(45deg, rgba(221,136,51,.06) 0px, rgba(221,136,51,.06) 2px, transparent 2px, transparent 14px)` :
-                    design.id === 'nivel1_plata'  ? `repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0px, rgba(255,255,255,.04) 1px, transparent 1px, transparent 8px)` :
-                    `radial-gradient(circle at 30% 40%, rgba(255,204,0,.08) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(255,238,0,.06) 0%, transparent 40%)`
-                }} />
+          {/* Bases de los escudos */}
+          {verEscudos && (
+            <g>
+              {!modoEscuela && (
+                <>
+                  <text x="34" y={yTorneo - 32} fontFamily={FUENTE} fontSize="9.5" letterSpacing="2" fill={tintaArriba} opacity=".8" style={conFoto ? { paintOrder: 'stroke', stroke: 'rgba(0,0,0,.5)', strokeWidth: 2 } : null}>TORNEO</text>
+                  <circle cx="58" cy={yTorneo} r="26" fill={c.clara && !conFoto ? 'rgba(255,255,255,.6)' : 'rgba(0,0,0,.5)'} stroke={conFoto ? '#fff' : acento} strokeOpacity={conFoto ? .55 : .8} strokeWidth="1.4"/>
+                </>
               )}
-            </>
+              <text x="34" y={yEquipo - 32} fontFamily={FUENTE} fontSize="9.5" letterSpacing="2" fill={tintaArriba} opacity=".8" style={conFoto ? { paintOrder: 'stroke', stroke: 'rgba(0,0,0,.5)', strokeWidth: 2 } : null}>{modoEscuela ? 'ESCUELA' : 'EQUIPO'}</text>
+              <circle cx="58" cy={yEquipo} r="26" fill={c.clara && !conFoto ? 'rgba(255,255,255,.6)' : 'rgba(0,0,0,.5)'} stroke={conFoto ? '#fff' : acento} strokeOpacity={conFoto ? .55 : .8} strokeWidth="1.4"/>
+            </g>
           )}
-
-          {!isPremium && <CardEffects efectos={design.efectos} color={color} />}
-
-          {photoUrl && (
-            <img src={photoUrl} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', zIndex: 2, pointerEvents: 'none' }} alt="jugador"/>
-          )}
-
-          {/* PJ arriba */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '24% 6% 0 13%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div onClick={() => onStatClick?.('pj')} style={{ cursor: 'pointer', lineHeight: 1 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '4rem', lineHeight: '.80', color: isPremium ? '#F4E6A1' : '#fff', animation: 'pjp 3.5s ease-in-out infinite', marginTop: '30px' }}>
-                {stats.pj}
-              </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.28em', color: isPremium ? '#D6B65Dcc' : `${color}cc`, marginTop: '2px' }}>PJ</div>
-            </div>
-            {/* Nota: ya no hay lápiz para "cambiar" la foto acá — una vez subida
-                queda bloqueada (solo se puede subir una vez), igual que el
-                formulario de abajo. Si no sirve, un admin/coordinador debe
-                borrarla desde su panel para habilitar una nueva subida. */}
-          </div>
-
-          {/* Zona media — zIndex explícito (no "auto") para que el panel de
-              escudos (zIndex 12 más abajo) quede garantizado por encima de
-              la foto (zIndex 2) en todos los navegadores. Dejarlo en "auto"
-              funciona en iPhone/Safari pero en varios Android con este mismo
-              contenedor recortado por clip-path + translateZ(0), el z-index
-              interno del panel de escudos no se respetaba y la foto tapaba
-              el escudo del equipo. */}
-          <div style={{ position: 'relative', flex: 1, overflow: 'hidden', minHeight: 0, zIndex: 10 }}>
-
-            {/* Panel izquierdo escudos */}
-            {!hideShields && (
-              /* Sin backdropFilter: el desenfoque detrás de un recorte SVG se
-                 daña en varios Android — se reemplaza por fondo más opaco */
-              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '25%', zIndex: 12, display: 'flex', flexDirection: 'column', padding: '4% 0 2% 8%', gap: '5px', background: 'rgba(0,0,0,.45)', borderRight: '1px solid rgba(255,255,255,.08)' }}>
-
-                {/* TORNEO — no aplica en modo escuela, solo se ve el escudo del equipo/escuela */}
-                {!modoEscuela && (
-                  <>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                      <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>TORNEO</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div onClick={() => onStatClick?.(TORNEOS[tI]?.id)} style={{ cursor: 'pointer' }}>
-                          <Escudo item={TORNEOS[tI]} color={color} isPremium={isPremium} size={60}/>
-                        </div>
-                        {TORNEOS.length > 1 && (
-                          <BotonCambiar total={TORNEOS.length} actual={tI} onClick={() => setHoja('torneo')} color={color} isPremium={isPremium}/>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ height: '1px', background: `linear-gradient(90deg,rgba(255,255,255,.06),${isPremium ? '#D6B65D44' : `${color}44`},rgba(255,255,255,.06))`, marginRight: '6px' }}/>
-                  </>
-                )}
-
-                {/* EQUIPO (o ESCUELA en modo escuela) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '.rem', letterSpacing: '.18em', color: isPremium ? '#D6B65D99' : `${color}99` }}>{modoEscuela ? 'ESCUELA' : 'EQUIPO'}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div onClick={() => onStatClick?.(EQUIPOS[eI]?.id)} style={{ cursor: 'pointer' }}>
-                      <Escudo item={EQUIPOS[eI]} color={color} isPremium={isPremium} size={60}/>
-                    </div>
-                    {EQUIPOS.length > 1 && (
-                      <BotonCambiar total={EQUIPOS.length} actual={eI} onClick={() => setHoja('equipo')} color={color} isPremium={isPremium}/>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Muñeco */}
-            {!photoUrl && (
-              <div style={{ position: 'absolute', inset: 0, zIndex: 3 }}>
-                <svg viewBox="0 0 228 314" fill="none" style={{ width: '100%', height: '100%' }}>
-                  <ellipse cx="114" cy="310" rx="70" ry="9" fill="rgba(0,0,0,.48)"/>
-                  <path d="M78 292 Q74 303 70 307 Q66 311 83 311 Q100 311 101 303 Q101 292 93 290Z" fill="rgba(11,11,28,.96)"/>
-                  <path d="M122 292 Q120 303 118 307 Q114 311 131 311 Q148 311 149 303 Q149 292 141 290Z" fill="rgba(11,11,28,.96)"/>
-                  <rect x="77" y="257" width="22" height="37" rx="8" fill="rgba(16,16,46,.9)"/>
-                  <rect x="119" y="257" width="22" height="37" rx="8" fill="rgba(16,16,46,.9)"/>
-                  <path d="M75 199 Q80 244 93 252 Q113 262 133 252 Q146 244 151 199Z" fill="rgba(18,18,55,.94)"/>
-                  <path d="M68 113 Q62 146 62 173 L62 203 L164 203 L164 173 Q164 146 158 113 Q142 100 113 98 Q84 100 68 113Z" fill="rgba(178,48,128,.52)"/>
-                  <text x="113" y="173" textAnchor="middle" fill="rgba(255,255,255,.52)" fontSize="26" fontFamily="Impact">1</text>
-                  <path d="M68 116 Q50 130 32 152 Q22 165 26 176 Q30 185 42 180 L60 163 L70 148Z" fill="rgba(178,48,128,.52)"/>
-                  <circle cx="20" cy="178" r="25" fill="rgba(202,188,160,.26)" stroke="rgba(255,255,255,.44)" strokeWidth="2"/>
-                  <rect x="106" y="86" width="17" height="16" rx="7" fill="rgba(185,146,108,.42)"/>
-                  <ellipse cx="113" cy="62" rx="30" ry="32" fill="rgba(185,146,108,.46)"/>
-                  <ellipse cx="113" cy="37" rx="28" ry="17" fill="rgba(16,11,5,.85)"/>
-                  <path d="M85 46 Q89 24 113 20 Q137 24 141 46" fill="rgba(16,11,5,.8)"/>
-                </svg>
-              </div>
-            )}
-
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '36%', zIndex: 4, background: `linear-gradient(0deg,rgba(10,2,42,.99) 0%,rgba(10,2,42,.68) 48%,transparent 100%)`, pointerEvents: 'none' }}/>
-
-            {!photoUrl && !hideShields && (
-              <div style={{ position: 'absolute', bottom: '42%', left: '30%', right: 0, zIndex: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                <label style={{ fontFamily: 'var(--font-display)', fontSize: '.36rem', letterSpacing: '.12em', color: isPremium ? '#D6B65D77' : `${color}77`, border: `1px dashed ${isPremium ? '#D6B65D44' : `${color}44`}`, padding: '3px 8px', borderRadius: '3px', cursor: subiendoFoto ? 'default' : 'pointer', background: 'rgba(0,0,0,.3)' }}>
-                  {subiendoFoto ? 'SUBIENDO...' : '+ SUBIR FOTO'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} disabled={subiendoFoto}/>
-                </label>
-                {errorFoto && (
-                  <span style={{ fontFamily: 'system-ui, sans-serif', fontSize: '.32rem', color: '#ff6b6b', background: 'rgba(0,0,0,.5)', padding: '2px 6px', borderRadius: '3px' }}>{errorFoto}</span>
-                )}
-              </div>
-            )}
-          </div>
 
           {/* Nombre */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, textAlign: 'center', padding: '1.3% 4% .5%', background: 'linear-gradient(0deg,rgba(10,2,44,.98) 0%,rgba(10,2,44,.84) 46%,transparent 100%)' }}>
-            <div style={{ height: '1.5px', width: '82%', margin: '0 auto 4px', background: `linear-gradient(90deg,transparent,${isPremium ? '#D6B65Dbb' : `${color}bb`},transparent)` }}/>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(1.4rem,7vw,2rem)', letterSpacing: '.1em', color: '#fff', lineHeight: 1, textShadow: `0 2px 14px rgba(0,0,0,.98),0 0 28px ${isPremium ? '#D6B65D44' : `${color}44`}` }}>
-              {playerName}
-            </div>
-          </div>
+          <text x="170" y="332" textAnchor="middle" fontFamily={FUENTE} fontSize={tamNombre} letterSpacing="2.5" fill={c.tinta}>{nombre}</text>
+          {sub && <text x="170" y="350" textAnchor="middle" fontFamily={FUENTE} fontSize="12" letterSpacing="2.2" fill={acento}>{sub}</text>}
+          <line x1="70" y1="358" x2="270" y2="358" stroke={acento} strokeOpacity=".5" strokeWidth="1"/>
 
-          {/* Stats */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, padding: '1.5% 12% 1% 12%', background: 'rgba(4,1,22,.92)', borderTop: `1.5px solid ${isPremium ? '#D6B65D44' : `${color}44`}` }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                {statsIzquierda.map(({ label, value, key, dot }, ix) => (
-                  <div key={key} onClick={() => onStatClick?.(key)} className={pista ? 'gm-pista' : undefined}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px', ...(pista ? { animation: `gmPistaFila 6s ease-in-out ${(ix * 0.55).toFixed(2)}s infinite` } : null) }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>
-                      {dot && <span style={{ fontSize: '.3rem', color: isPremium ? '#D6B65D' : color, marginRight: '1.5px', verticalAlign: 'middle' }}>●</span>}
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ width: '1.5px', height: '50px', margin: '0 3%', background: `linear-gradient(180deg,transparent,${isPremium ? '#D6B65D99' : `${color}99`},transparent)`, flexShrink: 0 }}/>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                {statsDerecha.map(({ label, value, key }, ix) => (
-                  <div key={key} onClick={() => onStatClick?.(key)} className={pista ? 'gm-pista' : undefined}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2.5px 4px', cursor: 'pointer', borderRadius: '3px', ...(pista ? { animation: `gmPistaFila 6s ease-in-out ${(ix * 0.55 + 0.27).toFixed(2)}s infinite` } : null) }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.07)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', color: '#fff' }}>{value}</span>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.1em', color: 'rgba(255,255,255,.74)' }}>{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          {/* Fila principal: tres datos grandes */}
+          {fila1.map((s, i) => (
+            <g key={s.key}>
+              {pista && interactiva && <rect x={X1[i] - 44} y="363" width="88" height="46" rx="12" fill={c.a} fillOpacity={c.clara ? .14 : .16} className="gmc-pista" style={{ animationDelay: `${0.6 + i * 0.55}s` }}/>}
+              <text x={X1[i]} y="391" textAnchor="middle" fontFamily={FUENTE} fontSize="34" fill={c.tinta}>{s.value}</text>
+              <text x={X1[i]} y="405" textAnchor="middle" fontFamily={FUENTE} fontSize="12" letterSpacing="1.8" fill={c.suave}>{s.label}</text>
+              {i > 0 && <line x1={X1[i] - 48} y1="367" x2={X1[i] - 48} y2="403" stroke={acento} strokeOpacity=".35" strokeWidth="1"/>}
+            </g>
+          ))}
+          <line x1="44" y1="413" x2="296" y2="413" stroke={c.tinta} strokeOpacity=".14" strokeWidth="1"/>
 
-          {/* Ribbon */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, textAlign: 'center', padding: '.7% 4% .55%', background: 'rgba(2,0,14,.88)', borderTop: `1px solid ${isPremium ? '#D6B65D33' : `${color}33`}` }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: '.90rem', letterSpacing: '.16em', color: isPremium ? '#D6B65Ddd' : `${color}dd` }}>GOLMEBOL</span>
-          </div>
+          {/* Fila secundaria: datos de apoyo */}
+          {fila2.map((s, i) => {
+            const tarjeta = COLOR_TARJETA[s.label]
+            return tarjeta ? (
+              <g key={s.key}>
+                <rect x={X2[i] - 13} y="419" width="9" height="13" rx="1.6" fill={tarjeta} stroke="rgba(0,0,0,.35)" strokeWidth=".6"/>
+                <text x={X2[i] + 2} y="431.5" fontFamily={FUENTE} fontSize="18" fill={c.tinta}>{s.value}</text>
+              </g>
+            ) : (
+              <text key={s.key} x={X2[i]} y="431.5" textAnchor="middle" fontFamily={FUENTE} fill={c.tinta}>
+                <tspan fontSize="11" letterSpacing="1.2" fill={c.suave}>{s.label}</tspan>
+                <tspan fontSize="18" dx="5">{s.value}</tspan>
+              </text>
+            )
+          })}
 
-          {/* Emblem */}
-          <div style={{ position: 'relative', zIndex: 10, flexShrink: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '.4% 0 .95%', background: 'rgba(2,0,14,.88)' }}>
-            <svg width="20" height="20" viewBox="0 0 28 28" fill="none" style={{ opacity: .5 }}>
-              <path d="M14 3 L17 10 L25 10 L19 15 L21 22 L14 18 L7 22 L9 15 L3 10 L11 10 Z" stroke={isPremium ? '#D6B65D' : color} strokeWidth="1.3" fill={isPremium ? '#D6B65D11' : `${color}11`}/>
-            </svg>
-          </div>
+          {/* Cinta del nivel: nombre + los 5 pasos del nivel */}
+          <text x="170" y="455" textAnchor="middle" fontFamily={FUENTE} fontSize="12.5" letterSpacing="3.4" fill={acento}>{c.p ? NOMBRE_NIVEL[c.n] : 'GOLMEBOL'}</text>
+          {c.p > 0 && [0, 1, 2, 3, 4].map(i => (
+            <circle key={i} cx={146 + i * 12} cy="469" r="3.2" fill={i < c.p ? acento : 'none'} stroke={acento} strokeWidth="1.1" opacity={i < c.p ? 1 : .55}/>
+          ))}
+        </svg>
 
-        </div>
+        {/* Luz que sigue al dedo */}
+        {inclinable && !mini && (
+          <div ref={refLuz} style={{ position: 'absolute', inset: 0, opacity: 0, transition: 'opacity .25s', pointerEvents: 'none', clipPath: poligonoCss(c.n), WebkitClipPath: poligonoCss(c.n), mixBlendMode: 'screen' }}/>
+        )}
+
+        {/* 4 · Capa de botones (transparente) */}
+        {verEscudos && (
+          <>
+            {!modoEscuela && (
+              <button type="button" onClick={() => !mini && onStatClick?.(TORNEOS[tI]?.id)} aria-label={`Torneo: ${TORNEOS[tI]?.nombre || ''}`} tabIndex={mini ? -1 : 0}
+                style={{ ...botonInvisible, ...zona(38, yTorneo - 20, 40, 40), borderRadius: '50%', overflow: 'hidden', pointerEvents: mini ? 'none' : 'auto' }}>
+                <EscudoImg item={TORNEOS[tI]} acento={c.a}/>
+              </button>
+            )}
+            <button type="button" onClick={() => !mini && onStatClick?.(EQUIPOS[eI]?.id)} aria-label={`${modoEscuela ? 'Escuela' : 'Equipo'}: ${equipoActual?.nombre || ''}`} tabIndex={mini ? -1 : 0}
+              style={{ ...botonInvisible, ...zona(38, yEquipo - 20, 40, 40), borderRadius: '50%', overflow: 'hidden', pointerEvents: mini ? 'none' : 'auto' }}>
+              <EscudoImg item={equipoActual} acento={c.a}/>
+            </button>
+            {!mini && !modoEscuela && TORNEOS.length > 1 && (
+              <BotonCambiar y={yTorneo} total={TORNEOS.length} actual={tI} onClick={() => setHoja('torneo')} acento={conFoto ? '#ffffff' : acento} queCambia="torneo"/>
+            )}
+            {!mini && EQUIPOS.length > 1 && (
+              <BotonCambiar y={yEquipo} total={EQUIPOS.length} actual={eI} onClick={() => setHoja('equipo')} acento={conFoto ? '#ffffff' : acento} queCambia={modoEscuela ? 'escuela' : 'equipo'}/>
+            )}
+          </>
+        )}
+
+        {interactiva && (
+          <>
+            <button type="button" onClick={() => onStatClick('pj')} aria-label={`Partidos jugados: ${stats.pj ?? 0}. Ver ranking`} style={{ ...botonInvisible, ...zona(24, 44, 100, 82) }}/>
+            {fila1.map((s, i) => (
+              <button key={s.key} type="button" onClick={() => onStatClick(s.key)} aria-label={`${s.nombre}: ${s.value}. Ver ranking`} style={{ ...botonInvisible, ...zona(X1[i] - 47, 361, 94, 50) }}/>
+            ))}
+            {fila2.map((s, i) => (
+              <button key={s.key} type="button" onClick={() => onStatClick(s.key)} aria-label={`${s.nombre || NOMBRE_TARJETA[s.label] || s.label}: ${s.value}`} style={{ ...botonInvisible, ...zona(X2[i] - A2[i] / 2, 414, A2[i], 28) }}/>
+            ))}
+          </>
+        )}
+
+        {/* Subir la foto de la tarjeta (solo si todavía no hay) */}
+        {!conFoto && !mini && !hideShields && (
+          <div style={{ ...zona(110, 246, 200, 60), height: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minHeight: '44px', padding: '0 16px', borderRadius: '999px', cursor: subiendoFoto ? 'default' : 'pointer',
+              background: c.clara ? 'rgba(29,22,6,.86)' : 'rgba(0,0,0,.6)', border: `1.5px solid ${c.clara ? '#e9c75e' : c.a}`, color: '#fff', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif', fontSize: '14px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              {subiendoFoto ? 'Subiendo…' : 'Subir mi foto'}
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhoto} disabled={subiendoFoto}/>
+            </label>
+            {errorFoto && <span style={{ fontFamily: 'system-ui,sans-serif', fontSize: '13px', fontWeight: 700, color: '#fff', background: 'rgba(229,67,61,.92)', padding: '4px 10px', borderRadius: '8px', textAlign: 'center' }}>{errorFoto}</span>}
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+// Botón redondo al lado del escudo: toca para elegir entre todos los torneos o equipos.
+// Late unas veces al abrir para que se note; el número dice cuántos hay.
+function BotonCambiar({ y, total, actual, onClick, acento, queCambia }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={`Elegir otro ${queCambia} (${actual + 1} de ${total})`}
+      style={{ ...zona(88, y - 17, 34, 34), background: 'rgba(0,0,0,.72)', border: `2px solid ${acento}`, borderRadius: '50%', color: '#fff', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'gmPulsoCambiar 1.6s ease-out 4' }}>
+      <style>{`@keyframes gmPulsoCambiar { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.55) } 70% { box-shadow: 0 0 0 9px rgba(255,255,255,0) } 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0) } }`}</style>
+      <svg viewBox="0 0 24 24" style={{ width: '58%', height: '58%' }} fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M8 4v15M8 4 4.5 7.5M8 4l3.5 3.5M16 20V5M16 20l-3.5-3.5M16 20l3.5-3.5"/>
+      </svg>
+      <span style={{ position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)', marginLeft: '4px', fontFamily: 'system-ui,sans-serif', fontSize: '10px', fontWeight: 800, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,.9)', whiteSpace: 'nowrap' }}>{actual + 1}/{total}</span>
+    </button>
   )
 }

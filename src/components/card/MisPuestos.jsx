@@ -38,7 +38,7 @@ function Esqueleto() {
   )
 }
 
-export default function MisPuestos({ playerId, userId, pj, onAbrir }) {
+export default function MisPuestos({ playerId, userId, pj, onAbrir, enInicio = false }) {
   const [agregado, setAgregado] = useState(() => leerAgregadoGuardado(userId))
   const [fallo, setFallo] = useState(false)
 
@@ -54,7 +54,7 @@ export default function MisPuestos({ playerId, userId, pj, onAbrir }) {
   // Jugador nuevo: invitación suave, sin ranking todavía
   if (!pj) {
     return (
-      <div style={{ position:'relative', zIndex:1, maxWidth:'400px', margin:'20px auto 0', padding:'14px 16px', background:G.card, border:`1px solid ${G.border}`, borderRadius:'16px', textAlign:'center', fontSize:'.92rem', color:G.text2, lineHeight:1.5 }}>
+      <div style={{ position:'relative', zIndex:1, maxWidth: enInicio ? 'none' : '400px', margin: enInicio ? '0' : '20px auto 0', padding:'14px 16px', background:G.card, border:`1px solid ${G.border}`, borderRadius:'16px', textAlign:'center', fontSize:'.92rem', color:G.text2, lineHeight:1.5 }}>
         <b style={{ color:G.text }}>Tu tarjeta cobra vida con tu primer partido.</b><br/>
         Desde ahí aparecerás en los rankings de goles, partidos y más.
       </div>
@@ -67,10 +67,10 @@ export default function MisPuestos({ playerId, userId, pj, onAbrir }) {
   if (agregado && claves.length === 0) return null
 
   return (
-    <div style={{ position:'relative', zIndex:1, maxWidth:'440px', margin:'22px auto 0' }}>
+    <div style={{ position:'relative', zIndex:1, maxWidth: enInicio ? 'none' : '440px', margin: enInicio ? '4px 0 0' : '22px auto 0' }}>
       <div style={{ padding:'0 4px 10px' }}>
         <div style={{ fontSize:'1.05rem', fontWeight:900, color:G.text }}>Tus puestos en Golmebol</div>
-        <div style={{ fontSize:'.85rem', color:G.muted, marginTop:'2px', lineHeight:1.4 }}>Toca una ficha o un número de tu tarjeta para ver el top completo.</div>
+        <div style={{ fontSize:'.85rem', color:G.muted, marginTop:'2px', lineHeight:1.4 }}>{enInicio ? 'Toca una ficha para ver el top completo y quién va adelante.' : 'Toca una ficha o un número de tu tarjeta para ver el top completo.'}</div>
       </div>
       <div className="gm-fichas-fila" style={{ display:'flex', gap:'10px', overflowX:'auto', padding:'2px 4px 8px', margin:'0 -4px', scrollSnapType:'x proximity', scrollbarWidth:'none', WebkitOverflowScrolling:'touch' }}>
         {calc

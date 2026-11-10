@@ -1,5 +1,5 @@
 import { PantallaCargando } from '../components/PantallaCargando'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
@@ -9,10 +9,15 @@ import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import StatRankingModal from '../components/card/StatRankingModal'
 import MisPuestos from '../components/card/MisPuestos'
+import ColeccionTarjetas from '../components/card/ColeccionTarjetas'
+import InicioJugador from '../components/jugador/InicioJugador'
+import { obtenerAgregado, misPuestos } from '../lib/rankingsJugadores'
+import { calcularNovedades } from '../lib/novedadesJugador'
+import { arteDe, NOMBRE_NIVEL, poligonoCss } from '../components/card/designs/cardArte'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
-import { EncabezadoPanel, Saludo, CuerpoPanel, TarjetaPanel, CifrasPanel, BotonVerde, BotonContorno, FilaPanel, AvisoPanel, MasOpciones, BotonVolver, G } from '../components/PanelUI'
-import { Crown, History, Target, Newspaper, Layers, Printer, Bell, Hourglass } from 'lucide-react'
+import { EncabezadoPanel, Saludo, CuerpoPanel, TarjetaPanel, BotonVerde, BotonContorno, FilaPanel, AvisoPanel, MasOpciones, BotonVolver, G } from '../components/PanelUI'
+import { Crown, Target, Newspaper, Layers, Printer, Bell, Hourglass } from 'lucide-react'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { abrirChatAyuda } from '../lib/abrirChat'
@@ -113,6 +118,10 @@ export default function PlayerHomePage() {
   // Logros, progreso y stats precargados UNA vez: así al tocar cualquier
   // tarjeta la lista de logros sale AL INSTANTE (antes eran 3 consultas por toque)
   const [logrosData,        setLogrosData]        = useState(null)
+  const [proximo,           setProximo]           = useState(undefined) // próximo partido programado (null = no hay; undefined = aún buscando)
+  const [puestos,           setPuestos]           = useState(null)      // mis puestos en los rankings globales
+  const [novedades,         setNovedades]         = useState([])        // qué cambió desde la última visita
+  const datosFrescos = useRef(false)                                    // true cuando las estadísticas ya vienen de la base (no de la copia guardada)
   const [previewLogrosListo, setPreviewLogrosListo] = useState(false) // ya terminó de buscar (aunque no haya logros)
   const [equiposDueno,      setEquiposDueno]      = useState([]) // equipos de los que este jugador es dueño
 
@@ -243,6 +252,7 @@ export default function PlayerHomePage() {
 
     const statsCalc = { pj, goles, recibidos, pg, pe, pp, eficacia, promedio, rachaVictorias, titulos, esPortero: esPort, esDefensa, amarillas, rojas, azules, vallasCero, golesComoJug, golesComoArq }
     setStats(statsCalc)
+    datosFrescos.current = true
 
     setSponsors(spons || [])
     setCardLevelProgress(clp || [])
@@ -280,17 +290,23 @@ export default function PlayerHomePage() {
     // Aviso del partido de las próximas 24 h: se busca DESPUÉS de mostrar la
     // pantalla (no bloquea la entrada) y se agrega arriba de la lista.
     const cargarProximoPartido = async () => {
-      if (!regs || regs.length === 0) return
-      const { data: proximosPartidos } = await supabase
+      const idsEquipos = [...new Set((regs || []).map(r => r.team_id).filter(Boolean))]
+      if (idsEquipos.length === 0) { setProximo(null); return }
+      // Antes solo se buscaban los partidos donde el equipo era LOCAL: de visitante nunca avisaba.
+      const lista = idsEquipos.join(',')
+      const { data: proximosPartidos, error: errProx } = await supabase
         .from('matches')
-        .select('*, home:home_team_id(name), away:away_team_id(name)')
-        .in('home_team_id', regs.map(r => r.team_id).filter(Boolean))
+        .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
+        .or(`home_team_id.in.(${lista}),away_team_id.in.(${lista})`)
         .gte('played_at', ahora.toISOString())
-        .lte('played_at', new Date(ahora.getTime() + 24 * 60 * 60 * 1000).toISOString())
         .eq('status', 'scheduled')
         .order('played_at', { ascending: true })
         .limit(1)
+      if (errProx) return
+      setProximo(proximosPartidos?.[0] || null)
       if (!proximosPartidos || proximosPartidos.length === 0) return
+      // El aviso de arriba solo sale si el partido es en las próximas 24 horas
+      if (new Date(proximosPartidos[0].played_at) - ahora > 24 * 60 * 60 * 1000) return
       const partido   = proximosPartidos[0]
       const fecha     = new Date(partido.played_at)
       const horaStr   = fmtHoraDate(fecha)
@@ -471,6 +487,19 @@ export default function PlayerHomePage() {
 
   function getSponsor(cardId) { return sponsors.find(s => s.card_id === cardId) || null }
 
+  // Logros de una tarjeta con lo que ya se precargó (sin ir a la base). null si aún no ha llegado.
+  function logrosDeTarjeta(cardId) {
+    if (!logrosData || !player) return null
+    const levelId = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)?.card_level_id
+      || logrosData.cardLevels.find(l => l.card_design_id === cardId)?.id
+    if (!levelId) return null
+    const pos = getPosicionTipo(player)
+    const cache = logrosData.cache || {}
+    return logrosData.achievements
+      .filter(l => l.card_level_id === levelId && ['universal', pos].includes(l.tipo))
+      .map(l => ({ nombre: l.nombre, completado: !!logrosData.progresoMap[l.id]?.completado, valorActual: Number(cache[l.stat_key] || 0), meta: Number(l.meta) }))
+  }
+
   async function fetchLogrosPreview(cardId) {
     setPreviewLogrosListo(false)
     // Buscar card_level_id — puede ser estático o custom. Antes solo se buscaba
@@ -574,6 +603,20 @@ export default function PlayerHomePage() {
     }
   }
 
+  // Mis puestos en los rankings (misma consulta que usan las fichas y la ventana del ranking: se pide una sola vez)
+  useEffect(() => {
+    if (!player?.id || !user?.id || !(stats?.pj > 0)) return
+    let vivo = true
+    obtenerAgregado(user.id).then(a => { if (vivo) setPuestos(misPuestos(a, player.id)?.puestos || null) }).catch(() => {})
+    return () => { vivo = false }
+  }, [player?.id, user?.id, stats?.pj])
+
+  // Novedades desde la última visita (solo con datos frescos de la base, nunca con la copia guardada)
+  useEffect(() => {
+    if (!user?.id || !stats || !datosFrescos.current) return
+    setNovedades(calcularNovedades(user.id, stats, puestos, stats.esPortero))
+  }, [user?.id, stats, puestos])
+
   if (loading) return <PantallaCargando/>
 
   if (!player) return null
@@ -606,10 +649,9 @@ export default function PlayerHomePage() {
   )
 
   const esPortero  = stats?.esPortero || false
-  const nivelTexto = (stats?.pj || 0) < 10 ? 'Nivel 1' : (stats?.pj || 0) < 25 ? 'Nivel 2' : 'Nivel 3'
-  const nivelColor = (stats?.pj || 0) < 10 ? '#1e8e3e' : (stats?.pj || 0) < 25 ? '#1a73e8' : '#6c35de'
   const cardDesign = CARD_DESIGNS.find(d => d.id === cardType) || CARD_DESIGNS[0]
   const cardColor  = cardDesign?.color || '#00ee55'
+  const nivelTarjeta = (() => { const t = NOMBRE_NIVEL[arteDe(cardDesign).n] || ''; return t.charAt(0) + t.slice(1).toLowerCase() })()
 
   const esDefensa  = stats?.esDefensa || false
   const cardStats = {
@@ -642,13 +684,16 @@ export default function PlayerHomePage() {
   }
 
   const tarjetasDesbloqueadas = CARD_DESIGNS.filter(d => estaDesbloqueada(d.id))
+  const totalTarjetas = CARD_DESIGNS.length + tarjetasCustom.length
+  const totalMias = tarjetasDesbloqueadas.length + tarjetasCustom.filter(c => estaDesbloqueada(c.id)).length
 
-  const GRUPOS = [
-    { label: 'Iniciación', ids: CARD_DESIGNS.filter(d => d.nivel === 1).map(d => d.id), color: '#00ee55' },
-    { label: 'Competidor', ids: CARD_DESIGNS.filter(d => d.nivel === 2).map(d => d.id), color: '#4488FF' },
-    { label: 'Élite',      ids: CARD_DESIGNS.filter(d => d.nivel === 3).map(d => d.id), color: '#9955ff' },
-    { label: 'Leyenda',    ids: CARD_DESIGNS.filter(d => d.nivel === 6).map(d => d.id), color: '#f9a825' },
-  ]
+  // La próxima tarjeta por desbloquear (la primera bloqueada, en orden) y el logro que tiene más cerca
+  const siguienteDesign = CARD_DESIGNS.find(d => !estaDesbloqueada(d.id)) || null
+  const siguienteTarjeta = siguienteDesign ? (() => {
+    const pendientes = (logrosDeTarjeta(siguienteDesign.id) || []).filter(l => !l.completado && l.meta > 0)
+    const cerca = pendientes.sort((a, b) => (b.valorActual / b.meta) - (a.valorActual / a.meta))[0] || null
+    return { design: siguienteDesign, prog: getProgreso(siguienteDesign.id), cerca }
+  })() : null
 
   const tarjetaNotif = nuevasTarjetas[notifIndex]
 
@@ -709,9 +754,9 @@ export default function PlayerHomePage() {
         const marcaAgua = sponsor?.nombre || 'GOLMEBOL'
         const previewColor = previewCard.color || '#00ee55'
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.9)', zIndex: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', overflowY: 'auto' }}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.9)', zIndex: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
             onClick={() => setPreviewCard(null)}>
-            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '360px', margin: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontWeight: '700', color: '#fff', fontSize: '1rem', marginBottom: '2px' }}>{previewCard.nombre}</div>
                 <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.45)' }}>Vista previa · Desbloquea para usarla</div>
@@ -735,37 +780,37 @@ export default function PlayerHomePage() {
   photoUrlExterno={player.photo_url || null}
   hideShields={true}
 />
-                <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'hidden', borderRadius: '12px' }}>
+                <div style={{ position: 'absolute', inset: 0, zIndex: 20, pointerEvents: 'none', overflow: 'hidden', borderRadius: '12px', clipPath: poligonoCss(arteDe(CARD_DESIGNS.find(d => d.id === previewCard.id) || previewCard).n), WebkitClipPath: poligonoCss(arteDe(CARD_DESIGNS.find(d => d.id === previewCard.id) || previewCard).n) }}>
                   {[...Array(10)].map((_, row) => (
                     <div key={row} style={{ position: 'absolute', top: `${row * 13 - 10}%`, left: '-30%', width: '160%', display: 'flex', gap: '32px', transform: 'rotate(-35deg)', whiteSpace: 'nowrap' }}>
                       {[...Array(6)].map((_, col) => (
-                        <span key={col} style={{ fontSize: '1.4rem', fontWeight: '900', color: 'rgba(255,255,255,.45)', letterSpacing: '.18em', textTransform: 'uppercase', flexShrink: 0, fontFamily: 'system-ui' }}>{marcaAgua}</span>
+                        <span key={col} style={{ fontSize: '1.4rem', fontWeight: '900', color: 'rgba(255,255,255,.07)', letterSpacing: '.18em', textTransform: 'uppercase', flexShrink: 0, fontFamily: 'system-ui' }}>{marcaAgua}</span>
                       ))}
                     </div>
                   ))}
                 </div>
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 25, pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                  <div style={{ width: '90px', height: '90px', borderRadius: '50%', background: 'rgba(30,30,30,.85)', backdropFilter: 'blur(10px)', border: '2px solid rgba(180,180,180,.4)', boxShadow: '0 6px 30px rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {sponsor?.logo_url ? <img src={sponsor.logo_url} style={{ width: '90px', height: '90px', objectFit: 'cover' }}/> : <span style={{ fontSize: '2.6rem', filter: 'grayscale(100%) brightness(0.6)' }}>🔒</span>}
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 25, pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '26%', gap: '8px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(30,30,30,.85)', backdropFilter: 'blur(10px)', border: '2px solid rgba(180,180,180,.4)', boxShadow: '0 6px 30px rgba(0,0,0,.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {sponsor?.logo_url ? <img src={sponsor.logo_url} style={{ width: '64px', height: '64px', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.7rem', filter: 'grayscale(100%) brightness(1.4)' }}>🔒</span>}
                   </div>
                   <div style={{ background: 'rgba(30,30,30,.85)', backdropFilter: 'blur(6px)', borderRadius: '20px', padding: '4px 16px', fontSize: '.65rem', color: 'rgba(230,230,230,.9)', fontWeight: '700', letterSpacing: '.14em', border: '1px solid rgba(180,180,180,.3)' }}>
                     {sponsor?.logo_url ? sponsor.nombre.toUpperCase() : 'BLOQUEADA'}
                   </div>
                 </div>
               </div>
-              <div style={{ background: '#fff', borderRadius: '14px', padding: '16px 18px', width: '100%' }}>
-                <div style={{ fontSize: '.7rem', color: '#9aa0a6', fontWeight: '600', letterSpacing: '.08em', marginBottom: '8px' }}>CÓMO DESBLOQUEAR</div>
-                <div style={{ fontSize: '.85rem', color: '#d93025', fontWeight: '600', marginBottom: '12px' }}>🔒 {prog?.descripcion || 'Completa los logros requeridos'}</div>
+              <div style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: '16px', padding: '16px 18px', width: '100%', boxSizing: 'border-box', color: G.text }}>
+                <div style={{ fontSize: '0.9rem', color: G.muted, fontWeight: '600', letterSpacing: '.08em', marginBottom: '8px' }}>CÓMO DESBLOQUEAR</div>
+                <div style={{ fontSize: '1rem', color: G.gold, fontWeight: '600', marginBottom: '12px' }}>🔒 {prog?.descripcion || 'Completa los logros requeridos'}</div>
                 {prog && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '.75rem', color: '#5f6368' }}>Tu progreso</span>
-                      <span style={{ fontSize: '.75rem', fontWeight: '700', color: '#202124' }}>{prog.actual} / {prog.meta} logros</span>
+                      <span style={{ fontSize: '0.9rem', color: G.text2 }}>Tu progreso</span>
+                      <span style={{ fontSize: '0.9rem', fontWeight: '700', color: G.text }}>{prog.actual} / {prog.meta} logros</span>
                     </div>
-                    <div style={{ background: '#f1f3f4', borderRadius: '10px', height: '10px', overflow: 'hidden', marginBottom: '8px' }}>
-                      <div className="gm-barra-shimmer" style={{ height: '100%', width: `${prog.pct}%`, background: 'linear-gradient(90deg,#1a73e8,#6c35de)', borderRadius: '10px', transition: 'width .6s ease' }}/>
+                    <div style={{ background: G.soft, borderRadius: '10px', height: '10px', overflow: 'hidden', marginBottom: '8px' }}>
+                      <div className="gm-barra-shimmer" style={{ height: '100%', width: `${prog.pct}%`, background: `linear-gradient(90deg,${G.green},${G.gold})`, borderRadius: '10px', transition: 'width .6s ease' }}/>
                     </div>
-                    <div style={{ fontSize: '.75rem', color: prog.pct >= 80 ? '#e8710a' : '#9aa0a6', textAlign: 'center', fontWeight: prog.pct >= 80 ? '800' : '500', marginBottom: previewLogros.length > 0 ? '12px' : '0' }}>
+                    <div style={{ fontSize: '0.9rem', color: prog.pct >= 80 ? G.gold : G.muted, textAlign: 'center', fontWeight: prog.pct >= 80 ? '800' : '500', marginBottom: previewLogros.length > 0 ? '12px' : '0' }}>
                       {prog.pct >= 100 ? <>¡Lista para romper! <span className="gm-trofeo">🏆</span></>
                         : prog.pct >= 80 ? `🔥 ${prog.pct}% — ¡Estás a NADA de romperla!`
                         : `${prog.pct}% completado — ¡tú puedes! 💪`}
@@ -774,7 +819,7 @@ export default function PlayerHomePage() {
                 )}
                 {previewLogros.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '600', marginBottom: '4px' }}>LOGROS REQUERIDOS</div>
+                    <div style={{ fontSize: '0.82rem', color: G.muted, fontWeight: '600', marginBottom: '4px' }}>LOGROS REQUERIDOS</div>
                     {previewLogros.map((l, i) => {
                       const pctL  = Math.min(100, Math.round((l.valorActual / l.meta) * 100))
                       const falta = Math.max(0, l.meta - l.valorActual)
@@ -782,162 +827,65 @@ export default function PlayerHomePage() {
                       return (
                       <div key={i} className={`gm-logro${casi ? ' gm-casi' : ''}`}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 10px', borderRadius: '10px',
-                          background: l.completado ? '#e6f4ea' : casi ? '#fff8e1' : '#f8f9fa',
-                          border: `1.5px solid ${l.completado ? '#1e8e3e55' : casi ? '#f9a825' : '#e8eaed'}` }}>
+                          background: l.completado ? G.greenBg : casi ? G.goldBg : G.card2,
+                          border: `1.5px solid ${l.completado ? G.green + '66' : casi ? G.gold : G.border}` }}>
                         <span style={{ fontSize: '1rem', flexShrink: 0 }}>{l.completado ? '✅' : l.tipo === 'universal' ? '⭐' : l.tipo === 'arquero' ? '🧤' : l.tipo === 'defensa' ? '🛡️' : '⚽'}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '.78rem', fontWeight: l.completado || casi ? '700' : '500', color: l.completado ? '#1e8e3e' : '#202124' }}>{l.nombre}</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: l.completado || casi ? '700' : '500', color: l.completado ? G.green : G.text }}>{l.nombre}</div>
                           {!l.completado && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                              <div style={{ flex: 1, background: '#e8eaed', borderRadius: '4px', height: '5px', overflow: 'hidden' }}>
-                                <div className={pctL > 0 ? 'gm-barra-shimmer' : ''} style={{ height: '100%', width: `${pctL}%`, background: casi ? 'linear-gradient(90deg,#f9a825,#ff6f00)' : '#1a73e8', borderRadius: '4px', transition: 'width .6s ease' }}/>
+                              <div style={{ flex: 1, background: G.border, borderRadius: '4px', height: '5px', overflow: 'hidden' }}>
+                                <div className={pctL > 0 ? 'gm-barra-shimmer' : ''} style={{ height: '100%', width: `${pctL}%`, background: casi ? 'linear-gradient(90deg,#f9a825,#ff6f00)' : G.green, borderRadius: '4px', transition: 'width .6s ease' }}/>
                               </div>
-                              <span style={{ fontSize: '.64rem', color: casi ? '#e8710a' : '#9aa0a6', fontWeight: casi ? '800' : '400', flexShrink: 0 }}>{l.valorActual}/{l.meta}</span>
+                              <span style={{ fontSize: '0.82rem', color: casi ? G.gold : G.muted, fontWeight: casi ? '800' : '400', flexShrink: 0 }}>{l.valorActual}/{l.meta}</span>
                             </div>
                           )}
-                          {casi && <div style={{ fontSize: '.66rem', color: '#e8710a', fontWeight: '800', marginTop: '3px' }}>🔥 ¡Te falta{falta === 1 ? '' : 'n'} {falta} para romperlo!</div>}
+                          {casi && <div style={{ fontSize: '0.82rem', color: G.gold, fontWeight: '800', marginTop: '3px' }}>🔥 ¡Te falta{falta === 1 ? '' : 'n'} {falta} para romperlo!</div>}
                         </div>
-                        {l.completado && <span style={{ fontSize: '.66rem', color: '#1e8e3e', fontWeight: '800', flexShrink: 0 }}>¡ROTO! 💥</span>}
+                        {l.completado && <span style={{ fontSize: '0.82rem', color: G.green, fontWeight: '800', flexShrink: 0 }}>¡ROTO! 💥</span>}
                       </div>
                       )
                     })}
                   </div>
                 )}
                 {previewLogros.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '8px', color: '#9aa0a6', fontSize: '.72rem' }}>
+                  <div style={{ textAlign: 'center', padding: '8px', color: G.muted, fontSize: '0.9rem' }}>
                     {previewLogrosListo ? '📋 Esta tarjeta aún no tiene logros configurados' : 'Cargando logros...'}
                   </div>
                 )}
                 {sponsor && (
-                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #f1f3f4', fontSize: '.7rem', color: '#9aa0a6', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${G.border}`, fontSize: '0.9rem', color: G.muted, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     {sponsor.logo_url && <img src={sponsor.logo_url} style={{ height: '14px', objectFit: 'contain' }}/>}
-                    Patrocinado por <span style={{ fontWeight: '600', color: '#5f6368' }}>{sponsor.nombre}</span>
+                    Patrocinado por <span style={{ fontWeight: '600', color: G.text2 }}>{sponsor.nombre}</span>
                   </div>
                 )}
               </div>
-              <button onClick={() => setPreviewCard(null)} style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.2)', borderRadius: '10px', padding: '10px 32px', cursor: 'pointer', color: '#fff', fontSize: '.85rem', fontWeight: '500' }}>Cerrar</button>
+              <button onClick={() => setPreviewCard(null)} style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.2)', borderRadius: '10px', padding: '10px 32px', cursor: 'pointer', color: '#fff', fontSize: '1rem', fontWeight: '500' }}>Cerrar</button>
             </div>
           </div>
         )
       })()}
 
-      {/* SELECTOR */}
+      {/* COLECCIÓN DE TARJETAS */}
       {showSelector && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }} onClick={() => setShowSelector(false)}>
-          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '20px', width: '100%', maxWidth: '500px', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <div>
-                <div style={{ fontWeight: '600', color: '#202124', fontSize: '1rem' }}>Elige tu tarjeta</div>
-                <div style={{ fontSize: '.75rem', color: '#5f6368', marginTop: '2px' }}>{tarjetasDesbloqueadas.length} / {CARD_DESIGNS.length + tarjetasCustom.length} desbloqueadas</div>
-              </div>
-              <button onClick={() => setShowSelector(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#5f6368' }}>✕</button>
-            </div>
-
-            {/* Carrusel deslizable de tarjetas */}
-            {GRUPOS.map(grupo => (
-              <div key={grupo.label} style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '.72rem', fontWeight: '700', color: grupo.color, marginBottom: '10px', letterSpacing: '.06em' }}>{grupo.label}</div>
-                <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  {grupo.ids.map(cid => {
-                    const d       = CARD_DESIGNS.find(x => x.id === cid)
-                    const desbloq = estaDesbloqueada(cid)
-                    const activa  = cid === cardType
-                    const prog    = getProgreso(cid)
-                    if (!d) return null
-                    return (
-                      <div key={cid} onClick={() => desbloq ? handleSeleccionarTarjeta(cid) : handleClickTarjeta(d)}
-                        style={{ flexShrink: 0, width: '160px', scrollSnapAlign: 'start', position: 'relative', cursor: 'pointer' }}>
-                        {/* Tarjeta completa con foto y escudos reales */}
-                        <div style={{ width: '160px', opacity: 1 }}>
-                          <PlayerCard
-                            playerName={nombre}
-                            stats={cardStats}
-                            cardType={cid}
-                            esPortero={esPortero}
-                            esDefensa={esDefensa}
-                            photoUrlExterno={player.photo_url || null}
-                            torneosData={torneosData}
-                            equiposData={equiposData}
-                          />
-                        </div>
-                        {/* Overlay si bloqueada */}
-                        {!desbloq && (
-                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.55)', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', zIndex: 10 }}>
-                            <span style={{ fontSize: '1.5rem' }}>🔒</span>
-                            {prog && (
-                              <div style={{ width: '80%' }}>
-                                <div style={{ background: 'rgba(255,255,255,.2)', borderRadius: '4px', height: '3px', overflow: 'hidden' }}>
-                                  <div style={{ height: '100%', width: `${prog.pct}%`, background: '#fff', borderRadius: '4px' }}/>
-                                </div>
-                                <div style={{ fontSize: '.55rem', color: 'rgba(255,255,255,.7)', textAlign: 'center', marginTop: '2px' }}>{prog.actual}/{prog.meta}</div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {/* Badge activa */}
-                        {activa && (
-                          <div style={{ position: 'absolute', top: '6px', right: '6px', background: '#1a73e8', borderRadius: '20px', padding: '2px 8px', fontSize: '.6rem', fontWeight: '700', color: '#fff', zIndex: 11 }}>✓ Activa</div>
-                        )}
-                        {/* Nombre debajo */}
-                        <div style={{ marginTop: '6px', fontSize: '.7rem', fontWeight: '600', color: activa?'#1a73e8':desbloq?'#202124':'#9aa0a6', textAlign: 'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.nombre}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-
-            {/* Tarjetas custom */}
-            {tarjetasCustom.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '.72rem', fontWeight: '600', color: '#e8710a', marginBottom: '8px', letterSpacing: '.06em' }}>⭐ ESPECIALES</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {tarjetasCustom.map(card => {
-                    const cardObj  = { id: card.id, nombre: card.nombre, color: card.color || '#e8710a', isCustom: true, descripcion: card.descripcion }
-                    const desbloq  = estaDesbloqueada(card.id)
-                    const activa   = card.id === cardType
-                    const prog     = getProgreso(card.id)
-                    const sponsor  = getSponsor(`custom_${card.id}`)
-                    return (
-                      <div key={card.id} onClick={() => handleClickTarjeta(cardObj)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '10px', border: activa ? `2px solid ${card.color}` : '1px solid #e8eaed', background: activa ? `${card.color}11` : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
-                        <div style={{ position: 'relative', flexShrink: 0 }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: card.color || '#e8710a', filter: desbloq ? 'none' : 'grayscale(80%) brightness(0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.9rem' }}>⭐</div>
-                          {!desbloq && <span style={{ position: 'absolute', top: '-4px', right: '-4px', fontSize: '.65rem' }}>🔒</span>}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '.82rem', fontWeight: activa ? '700' : '500', color: activa ? card.color : desbloq ? '#202124' : '#9aa0a6' }}>{card.nombre}</div>
-                          {card.descripcion && <div style={{ fontSize: '.65rem', color: '#9aa0a6', marginTop: '1px' }}>{card.descripcion}</div>}
-                          {sponsor && <div style={{ fontSize: '.65rem', color: '#9aa0a6' }}>✦ {sponsor.nombre}</div>}
-                          {prog && !desbloq && (
-                            <>
-                              <div style={{ background: '#f1f3f4', borderRadius: '6px', height: '3px', marginTop: '4px', overflow: 'hidden' }}>
-                                <div style={{ height: '100%', width: `${prog.pct}%`, background: card.color || '#e8710a', borderRadius: '6px' }}/>
-                              </div>
-                              <div style={{ fontSize: '.6rem', color: '#9aa0a6', marginTop: '2px' }}>{prog.actual} / {prog.meta} logros</div>
-                            </>
-                          )}
-                        </div>
-                        {activa      && <span style={{ fontSize: '.7rem', fontWeight: '700', color: card.color, flexShrink: 0 }}>✓ Activa</span>}
-                        {desbloq && !activa && <span style={{ fontSize: '.7rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '1px 8px', flexShrink: 0 }}>Usar</span>}
-                        {!desbloq    && <span style={{ fontSize: '.72rem', color: '#1a73e8', flexShrink: 0 }}>👁 Ver</span>}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <ColeccionTarjetas
+          onCerrar={() => setShowSelector(false)}
+          cardType={cardType} guardando={guardandoCard}
+          estaDesbloqueada={estaDesbloqueada} getProgreso={getProgreso}
+          onUsar={handleSeleccionarTarjeta} onVerBloqueada={handleClickTarjeta}
+          nombre={nombre} cardStats={cardStats} esPortero={esPortero} esDefensa={esDefensa}
+          photoUrl={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
+          tarjetasCustom={tarjetasCustom} getSponsor={getSponsor}
+        />
       )}
 
-      <EncabezadoPanel nombre={player.name} rol={`${nivelTexto} · ${stats?.pj || 0} PJ`} avatarUrl={player.photo_face_url} forma="redonda"
+      <EncabezadoPanel nombre={player.name} rol={`${nivelTarjeta} · ${stats?.pj || 0} ${stats?.pj === 1 ? 'partido' : 'partidos'}`} avatarUrl={player.photo_face_url} forma="redonda"
         usuario={player} actual="jugador" onLogout={handleLogout}/>
 
       {/* INICIO: lo de todos los días, grande y ordenado */}
       {tab === 'inicio' && (
         <CuerpoPanel>
-          <Saludo nombre={player.name?.split(' ')[0] || ''}/>
+          <Saludo nombre={player.name?.split(' ')[0] || ''} texto="Así vas hoy en Golmebol"/>
 
           {notifs.slice(0, 2).map(n => (
             <AvisoPanel key={n.id} icono={Bell} titulo={n.titulo} sub={n.texto} color={G.gold}
@@ -948,16 +896,17 @@ export default function PlayerHomePage() {
               onClick={eq.id ? () => navigate(`/equipos/${eq.id}`) : undefined}/>
           ))}
 
-          <TarjetaPanel icono={Layers} titulo="Mi tarjeta" derecha={nivelTexto}>
-            <CifrasPanel cifras={[
-              { valor: stats?.pj || 0, etiqueta: 'Partidos', color: G.green },
-              { valor: esPortero ? (stats?.recibidos || 0) : (stats?.goles || 0), etiqueta: esPortero ? 'Goles recibidos' : 'Goles', color: G.gold },
-            ]}/>
-            <BotonVerde onClick={() => setTab('tarjeta')}>Ver mi tarjeta</BotonVerde>
-            <div style={{ marginTop: '10px' }}>
-              <FilaPanel verde icono={History} titulo="Mi historial" sub="Tus partidos y resultados" onClick={() => setTab('historial')}/>
-            </div>
-          </TarjetaPanel>
+          <InicioJugador
+            player={player} userId={user?.id} nombre={nombre} stats={stats} cardStats={cardStats} cardType={cardType}
+            esPortero={esPortero} esDefensa={esDefensa} torneosData={torneosData} equiposData={equiposData}
+            novedades={novedades} proximo={proximo} historial={historial}
+            siguiente={siguienteTarjeta} desbloqueadas={totalMias} totalTarjetas={totalTarjetas}
+            onVerTarjeta={() => setTab('tarjeta')}
+            onVerColeccion={() => setShowSelector(true)}
+            onVerHistorial={() => setTab('historial')}
+            onAbrirRanking={abrirRanking}
+            onVerSiguiente={handleClickTarjeta}
+          />
 
           {PREDIX_ACTIVO && (
           <TarjetaPanel icono={Target} titulo="Predix">
@@ -968,7 +917,6 @@ export default function PlayerHomePage() {
 
           <MasOpciones>
             <FilaPanel icono={Newspaper} titulo="Noticias del torneo" sub="Pre-partido, resultados y más" onClick={() => navigate('/jugador/noticias')}/>
-            <FilaPanel icono={Layers} titulo="Mis tarjetas" sub={`${tarjetasDesbloqueadas.length} desbloqueadas de ${CARD_DESIGNS.length + tarjetasCustom.length}`} onClick={() => { setTab('tarjeta'); setShowSelector(true) }}/>
             <FilaPanel icono={Printer} titulo="Imprimir mi tarjeta en acrílico" sub="Te ayudamos por el chat" onClick={handleImprimirAcrilico}/>
           </MasOpciones>
         </CuerpoPanel>
@@ -1011,7 +959,7 @@ export default function PlayerHomePage() {
               <PlayerCard
                 playerName={nombre} stats={cardStats} cardType={cardType} esPortero={esPortero} esDefensa={esDefensa}
                 photoUrlExterno={player.photo_url || null} torneosData={torneosData} equiposData={equiposData}
-                onStatClick={handleCardClick} pista={pistaTops}
+                onStatClick={handleCardClick} pista={pistaTops} inclinable
                 playerId={player.id}
                 onFotoSubida={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
               />
@@ -1020,7 +968,7 @@ export default function PlayerHomePage() {
             {torneos.length > 0 && (
               <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', margin: '18px auto 0', maxWidth: '360px', fontSize: '.95rem', color: G.text2, lineHeight: 1.5 }}>
                 Toca el escudo para ver el torneo o el equipo.
-                {(torneosData.length > 1 || equiposData.length > 1) && <> Si juegas en varios, toca el botón verde <b style={{ color: G.green }}>⇅</b> junto al escudo para elegir cuál se ve en tu tarjeta.</>}
+                {(torneosData.length > 1 || equiposData.length > 1) && <> Si juegas en varios, toca el botón de flechas que está junto al escudo para elegir cuál se ve en tu tarjeta.</>}
               </div>
             )}
           </div>
@@ -1062,7 +1010,7 @@ export default function PlayerHomePage() {
               <Layers size={22} color={G.green}/>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '1rem', fontWeight: 800 }}>Mis tarjetas</div>
-                <div style={{ fontSize: '.88rem', color: G.muted, marginTop: '2px' }}>{tarjetasDesbloqueadas.length} desbloqueadas de {CARD_DESIGNS.length + tarjetasCustom.length}</div>
+                <div style={{ fontSize: '.88rem', color: G.muted, marginTop: '2px' }}>{totalMias} desbloqueadas de {totalTarjetas}</div>
               </div>
               <span style={{ color: G.green, fontWeight: 800, fontSize: '.95rem' }}>Ver todas</span>
             </button>

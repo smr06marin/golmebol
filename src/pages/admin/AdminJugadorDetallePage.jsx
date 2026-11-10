@@ -380,17 +380,9 @@ export default function AdminJugadorDetallePage() {
     if (!cardRef.current) return
     setDescargandoTarjeta(true)
     try {
-      const { default: html2canvas } = await import('html2canvas')
-      const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: '#07070e', scale: 3, useCORS: true, allowTaint: true,
-        logging: false, foreignObjectRendering: false, imageTimeout: 15000,
-        onclone: (doc) => {
-          const style = doc.createElement('style')
-          style.innerHTML = `:root { --font-display: Impact, sans-serif; --font-body: Arial, sans-serif; --color-primary: #00ddd0; }`
-          doc.head.appendChild(style)
-        }
-      })
-      const url = canvas.toDataURL('image/png')
+      // La tarjeta es un dibujo (SVG): se pasa directo a imagen, nítida para imprimir
+      const { tarjetaAPng } = await import('../../lib/tarjetaImagen')
+      const url = await tarjetaAPng(cardRef.current)
       const a   = document.createElement('a')
       a.href = url; a.download = `${(jugador?.name || 'jugador').replace(/\s+/g, '_')}_cedula_${jugador?.numero_cedula || 's-c'}_golmebol.png`
       document.body.appendChild(a); a.click(); document.body.removeChild(a)
