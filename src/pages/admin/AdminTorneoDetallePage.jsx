@@ -5532,7 +5532,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       Mira el <b>escudo</b>, el <b>dueño</b> y los <b>torneos</b> que ya jugó. Si es <b>el mismo equipo</b>, tócalo: así conserva toda su historia.
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
-                      {equiposDisponibles.map(e => (
+                      {[...equiposDisponibles].sort((a, b) => (a.en_este_torneo ? 1 : 0) - (b.en_este_torneo ? 1 : 0)).map(e => (
                         <FichaEquipo key={e.id} equipo={e}>
                           {e.en_este_torneo || e.desactivado_en_este_torneo ? null : (
                             <button onClick={() => handleAgregarEquipo(e)} style={{ width: '100%', padding: '11px', background: '#1a73e8', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.9rem', fontWeight: '800' }}>✓ Es este equipo — inscribirlo</button>
@@ -5570,8 +5570,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     </div>
                     <div style={{ fontSize: '.78rem', color: '#5f6368', marginBottom: '10px' }}>¿Es uno de estos? Tócalo. Si es otro equipo distinto, agrégalo abajo.</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {equiposDeCedula.map(e => (
-                        <FichaEquipo key={e.id} equipo={e} resaltado>
+                      {[...equiposDeCedula].sort((a, b) => (a.en_este_torneo ? 1 : 0) - (b.en_este_torneo ? 1 : 0)).map(e => (
+                        <FichaEquipo key={e.id} equipo={e}>
                           {e.en_este_torneo || e.desactivado_en_este_torneo ? null : (
                             <button type="button" onClick={() => usarEquipoExistente(e)} disabled={agregandoEquipoRef.current} style={{ width: '100%', padding: '12px', background: '#1e8e3e', border: 'none', borderRadius: '10px', cursor: 'pointer', color: '#fff', fontSize: '.92rem', fontWeight: '800' }}>✓ Es este equipo — inscribirlo</button>
                           )}

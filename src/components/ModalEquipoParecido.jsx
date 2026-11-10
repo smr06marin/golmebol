@@ -26,9 +26,9 @@ export default function ModalEquipoParecido({ equipos, onUsar, onCrearNuevo, onC
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: '16px 0' }}>
-          {equipos.map(e => (
-            <FichaEquipo key={e.id} equipo={e} resaltado>
-              {e.en_este_torneo || e.desactivado_en_este_torneo ? null : (
+          {[...equipos].sort((a, b) => (a.en_este_torneo ? 1 : 0) - (b.en_este_torneo ? 1 : 0)).map(e => (
+            <FichaEquipo key={e.id} equipo={e} mostrarCedula>
+              {(
                 <button onClick={() => onUsar(e)} disabled={creando} style={btnUsar}>✓ Sí, es este equipo — usarlo</button>
               )}
             </FichaEquipo>
