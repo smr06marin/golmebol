@@ -104,15 +104,20 @@ export function resumenCaja(partidos, configs, cobros) {
     const cancha = (p.location || '').trim() || 'Sin cancha'
     const g = (porCancha[cancha] ||= {
       cancha, partidos: [], pitados: 0, ws: 0, desiertos: 0, sinTerminar: 0, equiposArbitraje: 0,
-      arbitrajes: 0, tarjetas: 0, recogido: 0, transferencia: 0, efectivo: 0, leCorresponde: 0, fotos: [], tarjetasLista: [],
+      arbitrajes: 0, tarjetas: 0, recogido: 0, transferencia: 0, efectivo: 0, leCorresponde: 0, fotos: [], tarjetasLista: [], detalle: [],
     })
     const fc = configs[p.tournament_id] || {}
     g.partidos.push(p)
+    // Una línea por partido: así el árbitro ve de dónde salió cada peso
+    const linea = { partido: p, cerrado: p.status === 'finished', tipo: p.tipo_resultado || 'normal', equipos: 0, arbitraje: 0, tarjetas: 0, pago: 0 }
+    g.detalle.push(linea)
     if (p.status !== 'finished') { g.sinTerminar += 1; return }
-    if (p.tipo_resultado === 'w') { g.ws += 1; g.leCorresponde += Number(fc.pago_arbitro_w) || 0 }
+    if (p.tipo_resultado === 'w') { g.ws += 1; linea.pago = Number(fc.pago_arbitro_w) || 0 }
     else if (p.tipo_resultado === 'desierto') g.desiertos += 1
-    else { g.pitados += 1; g.leCorresponde += Number(fc.pago_arbitro_partido) || 0 }
+    else { g.pitados += 1; linea.pago = Number(fc.pago_arbitro_partido) || 0 }
+    g.leCorresponde += linea.pago
     const n = equiposQuePagan(p).length
+    linea.equipos = n; linea.arbitraje = n * montoArbitraje(p, fc)
     g.equiposArbitraje += n
     g.arbitrajes += n * montoArbitraje(p, fc)
   })
@@ -122,7 +127,7 @@ export function resumenCaja(partidos, configs, cobros) {
     const p = porId[c.match_id]
     const g = porCancha[(p.location || '').trim() || 'Sin cancha']
     const monto = Number(c.monto) || 0
-    if (c.tipo === 'tarjeta') { g.tarjetas += monto; g.tarjetasLista.push({ ...c, partido: p }) }
+    if (c.tipo === 'tarjeta') { g.tarjetas += monto; g.tarjetasLista.push({ ...c, partido: p }); const l = g.detalle.find(x => x.partido.id === p.id); if (l) l.tarjetas += monto }
     else if (c.tipo === 'transferencia') { g.transferencia += monto; g.fotos.push({ id: c.id, ruta: c.comprobante_path, monto, partido: p, hora: c.cobrado_at, por: c.cobrado_por_nombre }) }
   })
   Object.values(porCancha).forEach(g => {

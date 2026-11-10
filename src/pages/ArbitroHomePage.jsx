@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, ClipboardList, CheckCircle, Trophy, Calendar, Clock, Lock, FileText, Key, Circle } from 'lucide-react'
 import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
 import InformeSolo from '../components/planillaRapida/InformeSolo'
-import BannerCaja from '../components/CajaDelDia'
+import BannerCaja, { BotonCuentaDelDia } from '../components/CajaDelDia'
 import PortalBanner from '../components/PortalBanner'
 import { fmtHoraDate } from '../lib/horaHelpers'
 
@@ -320,6 +320,7 @@ export default function ArbitroHomePage() {
               <button onClick={() => reabrirPlanilla(cierreOk)}
                 style={{ flex:1, padding:'12px 6px', borderRadius:'10px', border:'1px solid #1e2d3d', background:'transparent', color:'#e8f4fd', fontWeight:'800', fontSize:'.8rem', cursor:'pointer' }}>↩ Volver a abrir planilla</button>
             </div>
+            <BotonCuentaDelDia partido={cierreOk} onAntes={() => setCierreOk(null)}/>
             <button onClick={() => setCierreOk(null)} style={{ marginTop:'10px', width:'100%', padding:'11px', borderRadius:'10px', border:'none', background:'#1a73e8', color:'#fff', fontWeight:'800', fontSize:'.85rem', cursor:'pointer' }}>Listo</button>
           </div>
         </div>
