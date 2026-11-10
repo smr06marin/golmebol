@@ -610,6 +610,19 @@ function SlotSeleccion({ equipo, i, valores, setArr, jugs, dropKeyPrefix, ultima
   )
 }
 
+
+// Números de camiseta repetidos dentro de un mismo equipo. Los goles, faltas y tarjetas se asignan POR NÚMERO, así que
+// con dos jugadores con el mismo número el gol se le cuenta a los dos (y las estadísticas suman de más).
+function numerosRepetidos(jugadores, equipo) {
+  const porNumero = {}
+  ;(jugadores || []).forEach(j => {
+    const n = String(j?.numero ?? '').trim()
+    if (!n) return
+    ;(porNumero[n] = porNumero[n] || []).push((j.nombre || 'Jugador sin nombre').trim())
+  })
+  return Object.entries(porNumero).filter(([, nombres]) => nombres.length > 1)
+    .map(([numero, nombres]) => ({ equipo: equipo || '', numero, nombres }))
+}
 export default function PlanillaPartido({ partido, onClose, onGuardarResultado, oculta = false }) {
   // Mientras la planilla está abierta se esconden el título y el menú de abajo del panel y el botón de Ayuda:
   // la planilla ocupa toda la pantalla (así su botón de «Atrás» y la ✕ nunca quedan tapados). Ver index.css.
@@ -675,6 +688,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
 
   const [golesLocal,      setGolesLocal]      = useState(Array(24).fill(null))
   const [golesVisitante,  setGolesVisitante]  = useState(Array(24).fill(null))
+  // Marcador que el partido ya tenía guardado cuando se cargó SIN goleadores (carga rápida con "escribir marcador"):
+  // la planilla no tiene a quién ponerle esos goles, pero el resultado no debe verse ni guardarse como 0-0.
+  const [marcadorCargado, setMarcadorCargado] = useState({ l: 0, v: 0 })
   // Ida y vuelta: si este partido tiene "hermano" (mismo torneo, misma fase,
   // mismos dos equipos) y ese hermano ya se jugó, se muestra el marcador
   // GLOBAL sumando los goles de ambos partidos — así el árbitro y los
@@ -788,6 +804,9 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
   // celular asignado a este partido pueda retomarlo tal cual. No bloquea la
   // interfaz ni rompe nada si falla (ej. sin internet): es solo un respaldo.
   function sincronizarRemoto(snap, { inmediato = false } = {}) {
+    // Un partido ya cerrado no deja borradores en la base: al abrir su planilla para revisarla se autoguardaba un
+    // borrador (vacío) que después tapaba los datos reales. Si se edita, los cambios solo cuentan al "Guardar resultado".
+    if (partido.status === 'finished') return
     clearTimeout(syncTimerRef.current)
     const subir = () => {
       guardarEnVivo(partido.id, 'completa', snap, snap.savedAt)
@@ -1343,6 +1362,16 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
       else if (!esLocal && slotV < 24) { golesVisRec[slotV] = gol; slotV++ }
     })
 
+    // Partido ya cerrado con marcador pero sin goleadores anotados (ej. cargado con la carga rápida en modo
+    // "escribir marcador"): se conserva ese marcador en vez de mostrar 0-0 y pisarlo al guardar.
+    try {
+      const { data: mRow } = await supabase.from('matches').select('home_score, away_score, status').eq('id', partido.id).maybeSingle()
+      if (mRow?.status === 'finished') {
+        const mL = Number(mRow.home_score) || 0, mV = Number(mRow.away_score) || 0
+        if (mL > golesLocRec.filter(Boolean).length || mV > golesVisRec.filter(Boolean).length) setMarcadorCargado({ l: mL, v: mV })
+      }
+    } catch (e) {}
+
     const fAL = { p1: Array(5).fill(null), p2: Array(5).fill(null) }
     const fAV = { p1: Array(5).fill(null), p2: Array(5).fill(null) }
     evs.filter(e => e.event_type === 'falta_acum').forEach(e => {
@@ -1403,8 +1432,16 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
     let restaurado = false
     try {
       const local = localStorage.getItem(localKey)
-      const localSnap  = local ? JSON.parse(local) : null
-      const remoteSnap = liveDB?.data?.live_state || null
+      let localSnap  = local ? JSON.parse(local) : null
+      let remoteSnap = liveDB?.data?.live_state || null
+      // Un borrador SIN goles no puede tapar un partido que en la base SÍ tiene goles guardados: ese borrador vacío
+      // se creó al abrir la planilla de un partido ya cerrado (se autoguarda al abrirla) y desde entonces la
+      // mostraba vacía aunque los datos estuvieran bien. Se descarta y se usan los datos reales.
+      if (evs.some(e => e.event_type === 'goal')) {
+        const sinGoles = sn => !!sn && !(sn.golesLocal || []).some(Boolean) && !(sn.golesVisitante || []).some(Boolean)
+        if (sinGoles(localSnap))  { localSnap = null;  try { localStorage.removeItem(localKey) } catch (e) {} }
+        if (sinGoles(remoteSnap)) { remoteSnap = null }
+      }
       const localTime  = localSnap?.pendienteSync ? new Date(localSnap.savedAt || 0).getTime() : -1
       const remoteTime = remoteSnap ? new Date(liveDB.data.live_state_updated_at || remoteSnap.savedAt || 0).getTime() : -1
       if (localTime >= 0 || remoteTime >= 0) {
@@ -1434,6 +1471,16 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
   // esEspecial: { tipo: 'w'|'desierto', equipoGana: 'local'|'visitante'|null }
   // mvpIdFinal: id del jugador MVP (viene del modal)
   async function guardarEnDB(esEspecial = null, mvpIdFinal = null) {
+    // No se guarda con números repetidos en un mismo equipo (W o desierto no anotan jugadores, no aplica).
+    if (!esEspecial) {
+      const repetidos = [...numerosRepetidos(jugadoresLocal, partido.home?.name), ...numerosRepetidos(jugadoresVisitante, partido.away?.name)]
+      if (repetidos.length > 0) {
+        alert('⚠️ NO SE GUARDÓ: hay números de camiseta repetidos.\n\n' +
+          repetidos.map(r => `• ${r.equipo}: el #${r.numero} lo tienen ${r.nombres.join(' y ')}`).join('\n') +
+          '\n\nCada jugador de un equipo debe tener un número distinto. Corrígelo en la columna N° y vuelve a guardar.')
+        return
+      }
+    }
     setGuardandoDB(true)
 
     // Si el partido YA estaba cerrado (finalizado) antes de este guardado, es una
@@ -1476,8 +1523,8 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
         } catch (e) { console.error('No se pudo subir la foto del equipo (W):', e.message) }
       }
     } else {
-      golesLocalTotal = golesLocal.filter(Boolean).length
-      golesVisTotal   = golesVisitante.filter(Boolean).length
+      golesLocalTotal = Math.max(golesLocal.filter(Boolean).length, marcadorCargado.l)
+      golesVisTotal   = Math.max(golesVisitante.filter(Boolean).length, marcadorCargado.v)
     }
 
     // Torneos de "registro simple" (los internacionales): un jugador SIN
@@ -1558,21 +1605,26 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
     if (tipoPartido) updatePartido.tipo_resultado = tipoPartido
     if (fotoWUrl) updatePartido.foto_w_url = fotoWUrl
     if (hubopenales) { updatePartido.penales_local = parseInt(penalesLocal) || 0; updatePartido.penales_visitante = parseInt(penalesVisitante) || 0; updatePartido.penales_ganador = normalizarGanador(penalesGanador) }
-    let { error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido)
-    // Si la BD no tiene alguna columna opcional (falta una migración), se quita
-    // esa columna y se reintenta: el RESULTADO nunca se debe quedar sin subir
-    // por un dato secundario (nombres de árbitros, firmas, capitanes, foto W...).
-    const columnasOpcionales = ['firmas', 'capitan_local', 'capitan_visitante', 'arbitro1', 'arbitro2', 'arbitro3', 'foto_w_url']
-    let reintentos = 0
-    while (errPartido && reintentos < 3) {
-      const msgErr = errPartido.message || ''
-      const faltantes = columnasOpcionales.filter(c => msgErr.includes(`'${c}'`))
-      if (faltantes.length === 0) break
-      faltantes.forEach(c => delete updatePartido[c])
-      ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido))
-      reintentos++
+    // El partido se marca como JUGADO al FINAL (ver finalizarPartido() más abajo): primero se guardan eventos,
+    // arqueros y estadísticas. Así, si el guardado se corta a la mitad (sin señal, app en segundo plano), el partido
+    // NO queda cerrado con las estadísticas vacías: sigue pendiente y se puede volver a guardar.
+    const finalizarPartido = async () => {
+  let { error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido)
+      // Si la BD no tiene alguna columna opcional (falta una migración), se quita
+      // esa columna y se reintenta: el RESULTADO nunca se debe quedar sin subir
+      // por un dato secundario (nombres de árbitros, firmas, capitanes, foto W...).
+      const columnasOpcionales = ['firmas', 'capitan_local', 'capitan_visitante', 'arbitro1', 'arbitro2', 'arbitro3', 'foto_w_url']
+      let reintentos = 0
+      while (errPartido && reintentos < 3) {
+        const msgErr = errPartido.message || ''
+        const faltantes = columnasOpcionales.filter(c => msgErr.includes(`'${c}'`))
+        if (faltantes.length === 0) break
+        faltantes.forEach(c => delete updatePartido[c])
+        ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updatePartido))
+        reintentos++
+      }
+      if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
     }
-    if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
     // Guardar arqueros del partido — TAMBIÉN los sin registro (con su nombre
     // y número escritos), para que al reabrir no vuelva a pedir arquero
@@ -1641,6 +1693,15 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
     } else if (tipoPartido) {
       // W o desierto sin nadie anotado: nadie jugó, se limpian estadísticas de un guardado previo.
       await borrarStatsDePartido(partido.id)
+    }
+
+    // Recién ahora (eventos, arqueros y estadísticas ya guardados) se marca el partido como jugado.
+    // Si algo anterior falló, el partido NO se cierra y la planilla queda como borrador para reintentar.
+    if (erroresGuardado.length === 0) await finalizarPartido()
+    if (erroresGuardado.length > 0) {
+      setGuardandoDB(false)
+      alert('⚠️ NO SE PUDO GUARDAR EL RESULTADO:\n\n' + erroresGuardado.join('\n') + '\n\nEl partido NO se cerró y tus datos siguen guardados como borrador. Intenta de nuevo con buena señal, o avisa al administrador con este mensaje.')
+      return
     }
 
     // Sanción automática por tarjeta roja: mínimo 1 fecha de suspensión, sin
@@ -2063,8 +2124,10 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
     setEditandoDuracion(false)
   }
 
-  const golesLocalTotal = golesLocal.filter(Boolean).length
-  const golesVisTotal   = golesVisitante.filter(Boolean).length
+  const golesLocalTotal = Math.max(golesLocal.filter(Boolean).length, marcadorCargado.l)
+  const golesVisTotal   = Math.max(golesVisitante.filter(Boolean).length, marcadorCargado.v)
+  const numRepetidos = [...numerosRepetidos(jugadoresLocal, partido.home?.name), ...numerosRepetidos(jugadoresVisitante, partido.away?.name)]
+  const hayGolesSinAutor = golesLocalTotal > golesLocal.filter(Boolean).length || golesVisTotal > golesVisitante.filter(Boolean).length
   const fecha    = partido.played_at ? new Date(partido.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
   const hora     = partido.played_at ? fmtHoraDate(partido.played_at) : ''
   const etapaNombre = partido.matchday ? `Jornada ${partido.matchday}` : ''
@@ -2711,6 +2774,13 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
             )}
           </div>
 
+          {numRepetidos.length > 0 && (
+            <div className="no-print" style={{ padding: '10px 16px', background: '#fce8e6', borderBottom: '1px solid #f5b5ae', fontSize: '.76rem', color: '#a50e0e', fontWeight: '700', lineHeight: 1.5 }}>
+              ⚠️ Número de camiseta repetido — no se podrá guardar así:
+              {numRepetidos.map((r, i) => <div key={i} style={{ fontWeight: '600' }}>• {r.equipo}: el #{r.numero} lo tienen {r.nombres.join(' y ')}</div>)}
+            </div>
+          )}
+
           {/* Penales */}
           <div className="no-print" style={{ padding: '8px 16px', background: '#f8f9fa', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '.8rem', fontWeight: '600', color: '#202124' }}>
@@ -2878,6 +2948,7 @@ export default function PlanillaPartido({ partido, onClose, onGuardarResultado, 
                     </div>
                     {hubopenales && penalesGanador && <div style={{ fontSize:'8px', color:'#1a73e8', fontWeight:'700' }}>Penales: {penalesLocal} — {penalesVisitante}<br/>🏆 {penalesGanador==='local'?partido.home?.name:partido.away?.name}</div>}
                     <div style={{ fontSize:'8px', color:'#5f6368' }}>{partido.home?.name} vs {partido.away?.name}</div>
+                    {hayGolesSinAutor && <div style={{ fontSize:'8px', color:'#b06000', fontWeight:'700', marginTop:'3px', lineHeight:1.3 }}>Marcador cargado sin goleadores. Se conserva así al guardar.</div>}
                     {mvpId && <div style={{ marginTop:'4px', fontSize:'8px', color:'#e8710a', fontWeight:'700' }}>⭐ MVP: {[...jugadoresLocal, ...jugadoresVisitante].find(j => j.id === mvpId)?.nombre || ''}</div>}
                   </td>
                 </tr>

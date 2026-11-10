@@ -1466,17 +1466,22 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       updateFinal.capitan_local = hojaFinal.local.capitan || null
       updateFinal.capitan_visitante = hojaFinal.visitante.capitan || null
     }
-    let { error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal)
-    // Si la base no tiene alguna columna de la hoja (falta la migración), se
-    // quita y se reintenta: el RESULTADO nunca se debe perder por un dato secundario.
-    for (let intento = 0; errPartido && intento < 3; intento++) {
-      const msgErr = errPartido.message || ''
-      const faltantes = ['planilla_papel', 'capitan_local', 'capitan_visitante'].filter(c => msgErr.includes(`'${c}'`))
-      if (faltantes.length === 0) break
-      faltantes.forEach(c => delete updateFinal[c])
-      ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal))
+    // El partido se marca como JUGADO al FINAL (ver finalizarPartido() más abajo): primero se guardan eventos,
+    // arqueros y estadísticas. Así, si el guardado se corta a la mitad (sin señal, app en segundo plano), el partido
+    // NO queda cerrado con las estadísticas vacías: sigue pendiente y se puede volver a guardar.
+    const finalizarPartido = async () => {
+  let { error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal)
+      // Si la base no tiene alguna columna de la hoja (falta la migración), se
+      // quita y se reintenta: el RESULTADO nunca se debe perder por un dato secundario.
+      for (let intento = 0; errPartido && intento < 3; intento++) {
+        const msgErr = errPartido.message || ''
+        const faltantes = ['planilla_papel', 'capitan_local', 'capitan_visitante'].filter(c => msgErr.includes(`'${c}'`))
+        if (faltantes.length === 0) break
+        faltantes.forEach(c => delete updateFinal[c])
+        ;({ error: errPartido } = await guardarResultadoPartido(partido.id, updateFinal))
+      }
+      if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
     }
-    if (errPartido) erroresGuardado.push('Resultado: ' + errPartido.message)
 
     // Detalle de cada cobro (de aquí salen los penales atajados del arquero).
     // Si falta la migración, el partido igual se guarda y se avisa al final.
@@ -1536,6 +1541,15 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       const { error } = await supabase.from('player_match_stats').upsert(statsRows, { onConflict: 'match_id,player_id' })
       if (error) erroresGuardado.push('Estadísticas: ' + error.message)
       else await limpiarStatsObsoletas(partido.id, statsRows.map(r => r.player_id))
+    }
+
+    // Recién ahora (eventos, arqueros y estadísticas ya guardados) se marca el partido como jugado.
+    // Si algo anterior falló, el partido NO se cierra y la planilla queda como borrador para reintentar.
+    if (erroresGuardado.length === 0) await finalizarPartido()
+    if (erroresGuardado.length > 0) {
+      setGuardandoDB(false)
+      alert('⚠️ NO SE PUDO GUARDAR EL RESULTADO:\n\n' + erroresGuardado.join('\n') + '\n\nEl partido NO se cerró y tus datos siguen como borrador. Intenta de nuevo con buena señal.')
+      return
     }
 
     // Sanción automática por tarjeta roja: mínimo 1 fecha, igual que en la
