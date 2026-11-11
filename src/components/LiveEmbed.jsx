@@ -239,8 +239,12 @@ export function cargarYouTubeAPI() {
 // panel de control (admin o el link de otro celular) para leer hasta dónde
 // se devolvió Sebas a mano con la barra de YouTube, justo antes de armar la
 // repetición manual.
-const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo, bajarVolumen = false, onNoDisponible, onVerificado }, ref) {
+const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repeticion, logoTorneo, bajarVolumen = false, onNoDisponible, onVerificado, soloSiEnVivo = false }, ref) {
   const plataforma = detectarPlataforma(url)
+  // `soloSiEnVivo` (la portada pública): en YouTube NO se dibuja el reproductor mientras YouTube no confirme que el video
+  // está transmitiendo AHORA (un directo ya terminado, una sala de espera o un video normal no salen). Se vuelve a
+  // preguntar cada 45 s, así que cuando empieza aparece solo. Sin esta opción (panel de admin, link de control) se muestra siempre.
+  const [ytVivo, setYtVivo] = useState(false)
   // `onNoDisponible`: se llama cuando YouTube dice que el video ya no existe, es privado o no se puede incrustar
   // (códigos 100 / 101 / 150). La portada lo usa para esconder la transmisión en vez de mostrar "Video no disponible".
   const noDisponibleRef = useRef(onNoDisponible)
@@ -254,6 +258,28 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
   // Se pregunta a /api/yt-video-estado; si esa consulta falla se comporta como antes (se muestra).
   const programadoRef = useRef(null)
   useEffect(() => {
+    if (plataforma === 'youtube' && soloSiEnVivo) {
+      const id = parseYouTubeId(url)
+      programadoRef.current = false
+      setYtVivo(false)
+      if (!id) return undefined
+      let activo = true
+      let sondeo = null
+      const preguntar = async () => {
+        let e = null
+        try {
+          const r = await fetch(apiUrl('/api/yt-video-estado?v=' + encodeURIComponent(id)))
+          if (r.ok) e = (await r.json()).estado || null
+        } catch { /* sin respuesta: se queda oculto y se vuelve a preguntar */ }
+        if (!activo || e !== 'vivo') return
+        clearInterval(sondeo)
+        setYtVivo(true)
+        verificadoRef.current?.()
+      }
+      preguntar()
+      sondeo = setInterval(preguntar, 45000)
+      return () => { activo = false; clearInterval(sondeo) }
+    }
     if (plataforma === 'youtube') {
       const id = parseYouTubeId(url)
       programadoRef.current = null
@@ -286,7 +312,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
     }
     verificadoRef.current?.()
     return undefined
-  }, [plataforma, url])
+  }, [plataforma, url, soloSiEnVivo])
   const [pantallaCompleta, setPantallaCompleta] = useState(false)
   const [mostrandoEtiqueta, setMostrandoEtiqueta] = useState(false) // "REPETICIÓN" debajo del reloj, dura toda la repetición
   const [faseBumper, setFaseBumper] = useState(null) // null | 'entra' | 'sale' — la gráfica de repetición, solo al principio
@@ -403,7 +429,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
       ytPlayerRef.current = null
       if (player?.destroy) player.destroy()
     }
-  }, [plataforma, url, idIframeYoutube])
+  }, [plataforma, url, idIframeYoutube, ytVivo])
 
   // Mientras está en nuestra pantalla completa: bloquea el scroll de fondo
   // (igual que cualquier modal de la app) y permite cerrarla con Escape.
@@ -607,6 +633,7 @@ const LiveEmbed = forwardRef(function LiveEmbed({ url, titulo, S, overlay, repet
   if (plataforma === 'youtube') {
     const id = parseYouTubeId(url)
     if (!id) return <LinkFallback url={url} S={S}/>
+    if (soloSiEnVivo && !ytVivo) return null // todavía no transmite (o ya terminó): ni se descarga el reproductor
     const origen = typeof window !== 'undefined' ? window.location.origin : ''
     return (
       <div ref={cajaRef} style={pantallaCompleta ? cajaCompleta : cajaNormal}>

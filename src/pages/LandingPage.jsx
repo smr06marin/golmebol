@@ -486,7 +486,17 @@ export default function LandingPage({ modo = 'inicio' }) {
   const canalesEnVivo = useCanalesEnVivo(streamsMontar ? streamsConfig : SIN_STREAMS)
   // Videos que YouTube dice que ya no existen / son privados: la transmisión se esconde en vez de mostrar "Video no disponible"
   const [streamsCaidos, setStreamsCaidos] = useState({}) // { [idTransmisión]: url }
-  const streamsVivos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo).filter(s => streamsCaidos[s.id] !== s.url), [streamsConfig, canalesEnVivo, streamsCaidos])
+  const streamsResueltos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo).filter(s => streamsCaidos[s.id] !== s.url), [streamsConfig, canalesEnVivo, streamsCaidos])
+  // Solo sale lo que está EN VIVO de verdad:
+  //  · YouTube: el propio reproductor consulta si el video transmite ahora (LiveEmbed con soloSiEnVivo); canales: ya se filtran arriba.
+  //  · Facebook/Instagram: no hay forma de saber si siguen transmitiendo, así que salen únicamente mientras el partido ligado
+  //    a esa transmisión (o el torneo en "torneo_auto") se está jugando. Antes salían siempre, aunque la transmisión hubiera terminado.
+  const esYouTube = u => /(^|\/\/|\.)(youtube\.com|youtu\.be)/i.test(String(u || ''))
+  const clavePartidoStream = streamsResueltos.filter(s => !esYouTube(s.url) && partidoActivoDeStream(s, partidosVivo)).map(s => s.id).join('|')
+  const streamsVivos = useMemo(() => {
+    const conPartido = clavePartidoStream ? clavePartidoStream.split('|') : []
+    return streamsResueltos.filter(s => esYouTube(s.url) || conPartido.includes(s.id))
+  }, [streamsResueltos, clavePartidoStream])
   const idsTorneoAuto = useMemo(() => streamsVivos.map(s => s.torneo_auto).filter(Boolean), [streamsVivos])
   const streamsVisibles = streamsVivos.filter(s => streamsOk[s.id] === s.url)
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
@@ -1108,7 +1118,7 @@ export default function LandingPage({ modo = 'inicio' }) {
                 <div key={s.id} style={streamsOk[s.id] === s.url ? undefined : { position: 'fixed', left: '-200vw', top: 0, width: 'min(860px, 100vw)', pointerEvents: 'none' }}>
                   {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
                   <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} onVerificado={() => setStreamsOk(o => (o[s.id] === s.url ? o : { ...o, [s.id]: s.url }))} onNoDisponible={() => setStreamsCaidos(c => (c[s.id] === s.url ? c : { ...c, [s.id]: s.url }))} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
+                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} soloSiEnVivo onVerificado={() => setStreamsOk(o => (o[s.id] === s.url ? o : { ...o, [s.id]: s.url }))} onNoDisponible={() => setStreamsCaidos(c => (c[s.id] === s.url ? c : { ...c, [s.id]: s.url }))} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
                     overlay={(
                       <>
                         {marcadorStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={marcadorStream}/>}
