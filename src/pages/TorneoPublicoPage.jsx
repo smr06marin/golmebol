@@ -12,10 +12,11 @@ import { computeTablaGeneral, computeVallaEquipos, conMarcadorEnVivo, mergeGolea
 import { hydratePlayersPublico } from '../lib/playersPublico'
 import { cargarRostersTorneo, cargarRosterEquipo } from '../lib/rosterTorneo'
 import { fmtHoraDate } from '../lib/horaHelpers'
-import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
+import { guardarCacheRapido, leerCacheRapido, fechaCacheRapido } from '../lib/cacheRapido'
 import { traerPartidosTorneo, derivarBracket } from '../lib/partidosPublicos'
 import { cargarTorneoPublico } from '../lib/torneoPublicoDatos'
 import PantallaCargaTorneo from '../components/PantallaCargaTorneo'
+import { urlMini, alFallarMini } from '../lib/imagenMini'
 import { BotonAvisosTorneo } from '../components/BotonAvisos'
 import PartidoDetalleModal from '../components/PartidoDetalleModal'
 import { aplicarMarcaPagina, esHostPropioGolmebol } from '../lib/marcaPagina'
@@ -33,7 +34,7 @@ const FASE_LABEL_ELIM = { octavos: '⚔️ Octavos', cuartos: '🔥 Cuartos', se
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
-  if (logo_url) return <img src={logo_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+  if (logo_url) return <img src={urlMini(logo_url, Math.max(size, 40))} onError={alFallarMini} loading="lazy" decoding="async" alt={name} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
   return (
     <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ fontSize: size * 0.32 + 'px', fontWeight: '800', color: '#fff', fontFamily: 'system-ui' }}>{iniciales}</span>
@@ -453,6 +454,53 @@ function ProximosPartidos({ partidos, abrirRoster, esIntergrupo = () => false })
   )
 }
 
+// Hace cuánto es la copia que se está mostrando, en palabras
+function haceCuanto(ms) {
+  if (!ms) return 'antes'
+  const min = Math.round((Date.now() - ms) / 60000)
+  if (min < 2) return 'hace un momento'
+  if (min < 60) return `hace ${min} minutos`
+  const h = Math.round(min / 60)
+  if (h < 24) return h === 1 ? 'hace 1 hora' : `hace ${h} horas`
+  const d = Math.round(h / 24)
+  return d === 1 ? 'ayer' : `hace ${d} días`
+}
+
+// Aviso de "estás viendo datos de antes". Mientras llegan los frescos solo aparece si tardan (con buena
+// señal no alcanza a verse); si no hay señal queda fijo, con botón para reintentar.
+function AvisoFrescura({ frescura, onReintentar }) {
+  const [tarda, setTarda] = useState(0) // 0 = aún no se muestra · 1 = "Actualizando…" · 2 = "la señal está lenta"
+  useEffect(() => {
+    setTarda(0)
+    if (frescura.estado !== 'actualizando') return
+    const a = setTimeout(() => setTarda(1), 1500)
+    const b = setTimeout(() => setTarda(2), 10000)
+    return () => { clearTimeout(a); clearTimeout(b) }
+  }, [frescura.estado])
+
+  const { estado, desde } = frescura
+  if (estado === 'fresco' || (estado === 'actualizando' && tarda === 0)) return null
+  const alerta = estado !== 'actualizando' || tarda === 2
+  const texto = estado === 'actualizando'
+    ? (tarda === 2 ? `La señal está lenta. Estás viendo los datos de ${haceCuanto(desde)}.` : `Actualizando… estás viendo los datos de ${haceCuanto(desde)}.`)
+    : estado === 'viejo'
+      ? `Sin conexión. Estás viendo los datos de ${haceCuanto(desde)}: puede faltar lo más reciente.`
+      : 'No se pudieron cargar todos los datos. Puede faltar información.'
+  return (
+    <div role="status" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '14px', padding: '12px 14px', borderRadius: '14px', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif',
+      background: alerta ? '#fff7e0' : '#eef4ff', border: `1px solid ${alerta ? '#f0c04a' : '#c7d7fe'}`, color: alerta ? '#6b4200' : '#1e3a8a' }}>
+      {estado === 'actualizando' && <span aria-hidden="true" style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2.5px solid currentColor', borderTopColor: 'transparent', animation: 'gmSpin .8s linear infinite', flexShrink: 0 }}/>}
+      <span style={{ flex: 1, minWidth: '180px', fontSize: '.95rem', fontWeight: 700, lineHeight: 1.4 }}>{texto}</span>
+      {alerta && (
+        <button type="button" onClick={onReintentar}
+          style={{ minHeight: '42px', padding: '0 18px', borderRadius: '12px', border: 'none', background: '#6b4200', color: '#fff', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+          Reintentar
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function TorneoPublicoPage({ tournamentId } = {}) {
   const params = useParams()
   const id = tournamentId || params.id
@@ -479,6 +527,12 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   const [sponsors,  setSponsors]  = useState([])
   const [loading,   setLoading]   = useState(true)
   const [datosListos, setDatosListos] = useState(false) // llegaron los datos; la pantalla de carga termina de llenarse y suelta
+  // ¿Lo que se ve es de AHORA o es la copia guardada? 'fresco' | 'actualizando' | 'viejo' (no hubo señal) | 'incompleto'
+  const [frescura,  setFrescura]  = useState({ estado: 'fresco', desde: null })
+  const [intento,   setIntento]   = useState(0)     // sube para volver a pedir los datos (botón Reintentar, vuelve la señal, se reabre la app)
+  const [errorCarga, setErrorCarga] = useState(false) // no hay copia guardada y tampoco hubo señal
+  const idCargado = useRef(null)
+  const ultimaBuena = useRef(null)                   // cuándo llegaron datos frescos por última vez
   const [tab,       setTab]       = useState('posiciones')
   // Partidos en vivo de ESTE torneo — antes esto solo existía en la página
   // de inicio de Golmebol (golmebol.com), así que en el dominio propio de un
@@ -668,6 +722,10 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   useLayoutEffect(() => {
     const cache = leerCacheRapido(`torneo_${id}`)
     if (cache?.t) { aplicarBaseTorneo(cache); setDatosListos(true) } // la animación de entrada se muestra SIEMPRE; con copia guardada solo se llena más rápido
+    ultimaBuena.current = null
+    setErrorCarga(false)
+    // Se está mostrando la copia guardada: se avisa hasta que lleguen los datos de ahora
+    setFrescura(cache?.t ? { estado: 'actualizando', desde: fechaCacheRapido(`torneo_${id}`) } : { estado: 'fresco', desde: null })
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Carga rápida de la página pública: lo que se necesita para pintar la TABLA
@@ -746,20 +804,40 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
     async function fetchAll() {
       const cache = leerCacheRapido(claveCache)
-      setDatosListos(!!cache?.t); setLoading(true)
+      const primeraVez = idCargado.current !== id
+      idCargado.current = id
+      // La animación de entrada solo al ENTRAR al torneo; un reintento actualiza sin tapar la pantalla
+      if (primeraVez) { setDatosListos(!!cache?.t); setLoading(true) }
+      else setFrescura(f => ({ estado: 'actualizando', desde: ultimaBuena.current || f.desde }))
 
       // Los datos pueden venir ya adelantados (al pasar por la tarjeta del
       // torneo en la portada) o pedirse ahora: es el mismo pedido, sin duplicar.
-      const r = await cargarTorneoPublico(id)
+      let r = null
+      try { r = await cargarTorneoPublico(id) } catch (e) { r = null }
       if (cancelado) return
+      const fallo = !r || r.incompleto
+      const hayAlgoEnPantalla = !!cache?.t || !!ultimaBuena.current
+      // Sin señal y ya se estaba mostrando algo: se deja eso (no se borra) y se AVISA que es de antes.
+      if (fallo && hayAlgoEnPantalla) {
+        setFrescura({ estado: 'viejo', desde: ultimaBuena.current || fechaCacheRapido(claveCache) })
+        setDatosListos(true)
+        return
+      }
+      // Sin señal y sin nada guardado: pantalla de "no se pudo cargar" con botón para reintentar
+      // (si el torneo de verdad no existe, la base contesta que no hay fila: eso NO es un error de señal)
+      if (!r || (!r.base.t && r.errorTorneo && r.errorTorneo.code !== 'PGRST116')) {
+        setErrorCarga(true); setDatosListos(true)
+        return
+      }
+      setErrorCarga(false)
       const t = r.base.t
-      // Sin señal y ya se estaba mostrando la copia guardada: se deja esa, no se borra.
-      if (!t && cache?.t && r.errorTorneo) return
 
       // La tabla sale YA; goleadores y patrocinadores se suman cuando llegan.
       aplicarBaseTorneo({ ...r.base, goleadores: cache?.t ? undefined : [], sponsors: cache?.t ? undefined : [] })
       // El logo termina de llenarse y recién ahí se entra (siempre, haya o no copia guardada).
       setDatosListos(true)
+      if (fallo) setFrescura({ estado: 'incompleto', desde: null })   // llegó el torneo pero faltó algo (p. ej. los partidos)
+      else { ultimaBuena.current = Date.now(); setFrescura({ estado: 'fresco', desde: null }) }
       r.extras.then(ex => {
         if (cancelado) return
         setGoleadores(ex.goleadores)
@@ -782,13 +860,44 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     }
     fetchAll()
     return () => { cancelado = true }
-  }, [id])
+  }, [id, intento])
+
+  // Si quedó mostrando datos de antes (o no cargó), se vuelve a intentar solo: cuando vuelve la señal
+  // y cada 20 segundos (hasta 6 veces). También al reabrir la app después de un rato, por si quedó vieja.
+  const reintentos = useRef(0)
+  useEffect(() => { reintentos.current = 0 }, [id])
+  useEffect(() => {
+    const pendiente = errorCarga || frescura.estado === 'viejo' || frescura.estado === 'incompleto'
+    const otraVez = () => setIntento(n => n + 1)
+    let reloj = null
+    if (pendiente) {
+      window.addEventListener('online', otraVez)
+      if (reintentos.current < 6) reloj = setTimeout(() => { reintentos.current++; otraVez() }, 20000)
+    }
+    let ocultoDesde = null
+    const alVolver = () => {
+      if (document.visibilityState === 'hidden') { ocultoDesde = Date.now(); return }
+      if (pendiente || (ocultoDesde && Date.now() - ocultoDesde > 60000)) { reintentos.current = 0; otraVez() }
+      ocultoDesde = null
+    }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { window.removeEventListener('online', otraVez); clearTimeout(reloj); document.removeEventListener('visibilitychange', alVolver) }
+  }, [frescura.estado, errorCarga])
 
   if (loading) return <PantallaCargaTorneo key={id} id={id} listo={datosListos} onTerminar={() => setLoading(false)}/>
 
   if (!torneo) return (
-    <div style={{ minHeight: '100vh', background: '#07070e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9aa0a6', fontFamily: 'system-ui' }}>
-      Torneo no encontrado
+    <div style={{ minHeight: '100vh', background: '#07070e', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '24px', textAlign: 'center', color: '#c9c9c9', fontFamily: 'system-ui' }}>
+      {errorCarga ? (
+        <>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>No se pudo cargar el torneo</div>
+          <div style={{ fontSize: '1rem', lineHeight: 1.5, maxWidth: '320px' }}>Parece que no hay señal o está muy lenta. Revisa tu internet y vuelve a intentar.</div>
+          <button type="button" onClick={() => setIntento(n => n + 1)}
+            style={{ minHeight: '52px', padding: '0 28px', border: 'none', borderRadius: '14px', background: '#6fcf3d', color: '#0a1a05', fontWeight: 900, fontSize: '1.05rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Reintentar
+          </button>
+        </>
+      ) : 'Torneo no encontrado'}
     </div>
   )
 
@@ -898,7 +1007,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: 'rgba(255,255,255,.18)', border: '2px solid rgba(255,255,255,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
               {torneo.logo_url
-                ? <img src={torneo.logo_url} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+                ? <img src={urlMini(torneo.logo_url, 112)} onError={alFallarMini} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
                 : <Trophy size={36} color="#fff"/>}
             </div>
             <div>
@@ -935,7 +1044,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', background: 'rgba(255,255,255,.14)', border: '1px solid rgba(255,255,255,.25)', borderRadius: '12px', padding: '9px 14px', width: 'fit-content' }}>
               <span style={{ fontSize: '1.3rem' }}>🏆</span>
               <div style={{ width: '30px', height: '30px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {campeonVigente.team.logo_url ? <img src={campeonVigente.team.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={14} color="#9aa0a6"/>}
+                {campeonVigente.team.logo_url ? <img src={urlMini(campeonVigente.team.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={14} color="#9aa0a6"/>}
               </div>
               <div>
                 <div style={{ fontSize: '.6rem', fontWeight: '800', color: '#ffd54f', letterSpacing: '1.5px' }}>
@@ -965,6 +1074,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
       {/* BODY */}
       <div style={s.body}>
+        <AvisoFrescura frescura={frescura} onReintentar={() => { reintentos.current = 0; setIntento(n => n + 1) }}/>
         {/* EN VIVO — partido(s) de este torneo que se están jugando ahora mismo */}
         {partidosVivo.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px', marginBottom: '18px' }}>
@@ -1067,7 +1177,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '1.8rem' }}>🏆</span>
                     <div style={{ width: '40px', height: '40px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#fff', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {campeon.logo_url ? <img src={campeon.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={18} color="#9aa0a6"/>}
+                      {campeon.logo_url ? <img src={urlMini(campeon.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={18} color="#9aa0a6"/>}
                     </div>
                     <div>
                       <div style={{ fontSize: '.65rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>CAMPEÓN DEL TORNEO</div>
@@ -1106,7 +1216,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                             return (
                               <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 10px', background: esGanador ? '#e6f4ea' : ti === 1 ? '#f8f9fa' : '#fff', opacity: esPerdedor ? .45 : 1, borderBottom: ti === 0 ? '2px solid #dadce0' : 'none' }}>
                                 <div style={{ width: '20px', height: '20px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0, background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {team.logo_url ? <img src={team.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
+                                  {team.logo_url ? <img src={urlMini(team.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
                                 </div>
                                 <span style={{ flex: 1, fontWeight: esGanador ? '800' : '500', color: '#202124', fontSize: '.76rem', textDecoration: esPerdedor ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team.name}</span>
                                 <span style={{ fontWeight: '900', fontSize: '.9rem', color: esGanador ? '#1e8e3e' : '#9aa0a6', flexShrink: 0 }}>
@@ -1137,7 +1247,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                                   {t ? (
                                     <>
                                       <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, background: '#fff' }}>
-                                        {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
+                                        {t.logo_url ? <img src={urlMini(t.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
                                       </div>
                                       <span style={{ fontSize: '.74rem', fontWeight: '800', color: '#1e8e3e' }}>{t.name} ✓</span>
                                     </>
@@ -1163,7 +1273,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                     {campeon ? (
                       <div style={{ width: '100%', background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
                         <div style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden', margin: '0 auto 6px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {campeon.logo_url ? <img src={campeon.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={16} color="#9aa0a6"/>}
+                          {campeon.logo_url ? <img src={urlMini(campeon.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={16} color="#9aa0a6"/>}
                         </div>
                         <div style={{ fontWeight: '900', color: '#202124', fontSize: '.78rem' }}>{campeon.name}</div>
                       </div>

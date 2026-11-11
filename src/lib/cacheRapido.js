@@ -16,6 +16,15 @@ export function leerCacheRapido(clave, maxEdadMs = 6 * 60 * 60 * 1000) {
   } catch (e) { return null }
 }
 
+// Cuándo se guardó la copia (en milisegundos), o null si no hay copia. Sirve para decirle a la persona
+// "estás viendo datos de hace 2 horas" mientras llegan los frescos.
+export function fechaCacheRapido(clave) {
+  try {
+    const o = JSON.parse(localStorage.getItem(PREFIJO + clave) || 'null')
+    return o && typeof o.t === 'number' ? o.t : null
+  } catch (e) { return null }
+}
+
 export function guardarCacheRapido(clave, valor) {
   const guardar = () => localStorage.setItem(PREFIJO + clave, JSON.stringify({ v: valor, t: Date.now() }))
   try { guardar(); return } catch (e) {}

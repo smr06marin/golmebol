@@ -13,6 +13,7 @@ import { useIntervaloVisible } from '../lib/useIntervaloVisible'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 // El reproductor de la transmisión pesa bastante y solo hace falta cuando HAY
 // una transmisión en vivo: se descarga aparte, sin frenar la portada.
+const SIN_STREAMS = [] // referencia fija: así el hook de canales no se reinicia en cada render
 const LiveEmbed = lazy(() => import('../components/LiveEmbed'))
 import BotonAvisos from '../components/BotonAvisos'
 import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
@@ -31,6 +32,7 @@ import { useTablasBase } from '../lib/useTablasBase'
 import { useLogosTorneos } from '../lib/useLogosTorneos'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
+import { urlMini, alFallarMini } from '../lib/imagenMini'
 import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '../lib/ubicaciones'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
@@ -98,7 +100,7 @@ function precargarEscudos(urls) {
     escudosPrecargados.add(u)
     const img = new Image()
     img.decoding = 'async'
-    img.src = u
+    img.src = urlMini(u, 64) // el mismo tamaño que después pide el escudo: queda en caché
   }
 }
 
@@ -107,7 +109,7 @@ function Escudo({ logo_url, name, size = 40, radius = 10, urgente = false }) {
   return (
     <div style={{ width: size, height: size, borderRadius: radius, background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {logo_url
-        ? <img src={logo_url} alt={name || ''} loading={urgente ? 'eager' : 'lazy'} fetchPriority={urgente ? 'high' : undefined} decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 30 ? '4px' : '2px' }}/>
+        ? <img src={urlMini(logo_url, Math.max(size, 64))} onError={alFallarMini} alt={name || ''} loading={urgente ? 'eager' : 'lazy'} fetchPriority={urgente ? 'high' : undefined} decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 30 ? '4px' : '2px' }}/>
         : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
     </div>
   )
@@ -417,7 +419,7 @@ export default function LandingPage({ modo = 'inicio' }) {
       fetchTorneosActivos(); fetchPartidosVivo(); fetchVisitasHoy(); fetchSiteConfig()
       return
     }
-    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); if (MOSTRAR_ESCUELAS) fetchEscuelas(); fetchVisitasHoy(); fetchSiteConfig(); fetchPatrocinadores(); fetchPortada()
+    fetchStats(); fetchTorneosActivos(); fetchPartidosVivo(); fetchEscenarios(); if (MOSTRAR_ESCUELAS) fetchEscuelas(); fetchVisitasHoy(); fetchConfigInicial(); fetchPatrocinadores()
     registrarVisita('inicio')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -473,7 +475,15 @@ export default function LandingPage({ modo = 'inicio' }) {
   const streamsConfig = useMemo(() => (
     Array.isArray(siteConfig?.en_vivo_streams) ? siteConfig.en_vivo_streams : []
   ).filter(s => s.activo && (s.url || '').trim()), [siteConfig])
-  const canalesEnVivo = useCanalesEnVivo(streamsConfig)
+  // Los reproductores (YouTube/Facebook pesan ~2 MB cada uno) y la consulta de "¿está en vivo el canal?" esperan a que
+  // la portada ya tenga lo suyo: se montan ~2 s después de abrir. Así los torneos y los partidos no compiten con ellos
+  // por la señal (en 4G flojo era lo que más demoraba). Cuando hay una transmisión, igual aparece a los pocos segundos.
+  const [streamsMontar, setStreamsMontar] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setStreamsMontar(true), 2000)
+    return () => clearTimeout(t)
+  }, [])
+  const canalesEnVivo = useCanalesEnVivo(streamsMontar ? streamsConfig : SIN_STREAMS)
   // Videos que YouTube dice que ya no existen / son privados: la transmisión se esconde en vez de mostrar "Video no disponible"
   const [streamsCaidos, setStreamsCaidos] = useState({}) // { [idTransmisión]: url }
   const streamsVivos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo).filter(s => streamsCaidos[s.id] !== s.url), [streamsConfig, canalesEnVivo, streamsCaidos])
@@ -778,9 +788,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   // simplemente no se muestra nada, sin romper el resto de la página.
   // Portada del inicio: consulta aparte (y tolerante) para que, si la columna todavía no existe
   // (falta correr migracion_site_config_portada_inicio.sql), no se caiga nada más de la página.
-  async function fetchPortada() {
-    const { data, error } = await supabase.from('site_config').select('portada_inicio').eq('id', true).maybeSingle()
-    if (error) return
+  function aplicarPortada(data) {
     // { url: computador, url_movil: celular } — si solo hay una, se usa en las dos
     const crudo = data?.portada_inicio || {}
     const pc = crudo.url || crudo.url_movil || null
@@ -811,6 +819,21 @@ export default function LandingPage({ modo = 'inicio' }) {
     const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo').eq('id', true).maybeSingle()
     if (error) return
     setSiteConfig(data || null)
+  }
+
+  // Al abrir la portada: la configuración del sitio y la portada salen en UNA sola consulta (antes eran dos a la misma
+  // tabla). Si falta alguna columna (migración sin correr) se vuelve a las dos consultas separadas, cada una tolerante.
+  async function fetchConfigInicial() {
+    const { data, error } = await supabase.from('site_config')
+      .select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo, portada_inicio').eq('id', true).maybeSingle()
+    if (error) {
+      fetchSiteConfig()
+      const r = await supabase.from('site_config').select('portada_inicio').eq('id', true).maybeSingle()
+      if (!r.error) aplicarPortada(r.data)
+      return
+    }
+    setSiteConfig(data || null)
+    aplicarPortada(data)
   }
 
   // Torneos en juego primero (los más visitados hoy, de primero), y los ya
@@ -1064,7 +1087,7 @@ export default function LandingPage({ modo = 'inicio' }) {
           </div>
         </div>
       )}
-      {streamsVivos.length > 0 && (
+      {streamsMontar && streamsVivos.length > 0 && (
         <div style={{ maxWidth: '860px', margin: streamsVisibles.length > 0 ? '44px auto 0' : '0 auto', padding: streamsVisibles.length > 0 ? '0 16px' : 0 }}>
           <h2 style={{ display: streamsVisibles.length > 0 ? undefined : 'none', fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', alignItems: 'center', gap: '8px', ...(streamsVisibles.length > 0 ? { display: 'flex' } : {}) }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: S.red }}>

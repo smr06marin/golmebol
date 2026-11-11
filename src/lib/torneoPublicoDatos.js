@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { consultaPartidosTorneo, resolverPartidosTorneo } from './partidosPublicos'
+import { consultaPartidosTorneo, resolverPartidosConEstado } from './partidosPublicos'
 import { guardarCacheRapido } from './cacheRapido'
 import { cargarAliasTorneo, aplicarAlias } from './nombresTorneo'
 
@@ -36,7 +36,9 @@ export function cargarTorneoPublico(id) {
     let [rT, rTe, rP, rGr, alias] = await Promise.all([qT, qTe, qP, qGr, qAl])
     if (faltaVista(rT.error))  rT  = await supabase.from('tournaments').select('*').eq('id', id).single()
     if (faltaVista(rTe.error)) rTe = await supabase.from('tournament_teams').select('*, teams(*)').eq('tournament_id', id)
-    const partidos = await resolverPartidosTorneo(rP, id, alias)
+    const { partidos, error: errorPartidos } = await resolverPartidosConEstado(rP, id, alias)
+    // Algo no llegó (sin señal o señal muy mala): la página lo avisa y NO se guarda como copia buena
+    const incompleto = !!(rT.error || rTe.error || errorPartidos)
     const grupos = rGr.data || []
     let grupoEquipos = []
     if (grupos.length) {
@@ -50,13 +52,14 @@ export function cargarTorneoPublico(id) {
     }
     const extras = Promise.all([qG, qSp]).then(([rG, rSp]) => ({ goleadores: alias.size ? (rG.data || []).map(g => (g.team_id && alias.has(g.team_id)) ? { ...g, team_name: alias.get(g.team_id) } : g) : (rG.data || []), sponsors: rSp.data || [] }))
     // Copia para la próxima visita (se completa cuando llegan los extras).
-    if (base.t) extras.then(ex => guardarCacheRapido(`torneo_${id}`, { ...base, ...ex })).catch(() => {})
-    return { base, extras, errorTorneo: rT.error || null }
+    if (base.t && !incompleto) extras.then(ex => guardarCacheRapido(`torneo_${id}`, { ...base, ...ex })).catch(() => {})
+    return { base, extras, errorTorneo: rT.error || null, incompleto }
   })()
   enVuelo.set(id, p)
   // Un pedido terminado se reutiliza unos segundos (por si se toca dos veces);
   // pasado eso se vuelve a pedir fresco.
-  p.then(() => setTimeout(() => enVuelo.delete(id), 8000), () => enVuelo.delete(id))
+  // (una carga que falló NO se reutiliza: el reintento tiene que volver a pedir)
+  p.then(r => { if (r.incompleto) enVuelo.delete(id); else setTimeout(() => enVuelo.delete(id), 8000) }, () => enVuelo.delete(id))
   return p
 }
 

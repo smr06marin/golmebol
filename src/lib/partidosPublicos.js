@@ -25,14 +25,21 @@ export function consultaPartidosTorneo(torneoId) {
 
 // `alias`: nombres de los equipos SOLO en este torneo (Map team_id → nombre). Si no se pasa, se piden.
 export async function resolverPartidosTorneo(resultado, torneoId, alias) {
-  let partidos
+  return (await resolverPartidosConEstado(resultado, torneoId, alias)).partidos
+}
+
+// Igual, pero además avisa si la consulta FALLÓ (sin señal): así no se confunde
+// "no se pudieron leer los partidos" con "el torneo no tiene partidos".
+export async function resolverPartidosConEstado(resultado, torneoId, alias) {
+  let partidos, error = null
   if (resultado && !resultado.error) partidos = resultado.data || []
   else {
-    const { data } = await supabase.from('matches').select(`*, ${EMBED_EQUIPOS}`)
+    const r2 = await supabase.from('matches').select(`*, ${EMBED_EQUIPOS}`)
       .eq('tournament_id', torneoId).order('played_at', { ascending: true })
-    partidos = data || []
+    partidos = r2.data || []
+    error = r2.error || null
   }
-  return aplicarAlias(partidos, alias || await cargarAliasTorneo(torneoId, { publico: true }))
+  return { partidos: aplicarAlias(partidos, alias || await cargarAliasTorneo(torneoId, { publico: true })), error }
 }
 
 export async function traerPartidosTorneo(torneoId) {
