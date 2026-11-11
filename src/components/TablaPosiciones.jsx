@@ -71,7 +71,7 @@ function PuntoVivo({ size = 7 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: ROJO, display: 'inline-block', flexShrink: 0, animation: 'gmVivoPulso 1.2s ease-in-out infinite' }}/>
 }
 
-export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0, eliminados, rivales, onDescontar, renderInicioEquipo, renderAccionesEquipo }) {
+export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0, eliminados, rivales, mejoresPerdedores, onDescontar, renderInicioEquipo, renderAccionesEquipo }) {
   const { esFavorito, alternar } = useFavoritos()
   if (!rows || rows.length === 0) return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#8fa5cf', fontSize: '.85rem' }}>
@@ -103,6 +103,11 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           </span>
         </div>
       )}
+      {mejoresPerdedores && rows.some(r => mejoresPerdedores[r.equipo.id]) && (
+        <div style={{ background: 'rgba(245,166,35,.12)', border: '1px solid rgba(245,166,35,.45)', borderRadius: '9px', padding: '7px 10px', margin: '0 2px 10px', color: '#ffd78a', fontSize: '.66rem', lineHeight: 1.4 }}>
+          <b>Mejores perdedores:</b> el que perdió con menos diferencia de gol. Si empatan, el que más goles hizo. Si siguen empatados, el que esté más arriba en la tabla general.
+        </div>
+      )}
       {/* Encabezados */}
       <div className="gm-tp-grid" style={{ padding: '0 4px 7px' }}>
         <div/><div className="gm-tp-eqh"/>
@@ -119,27 +124,36 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           const enZona = nZona > 0 && i < nZona
           const sinJugar = hayJuego && row.pj === 0
           const elim = !row.enVivo && !!eliminados && eliminados.has(row.equipo.id)
+          const mejor = elim && mejoresPerdedores ? mejoresPerdedores[row.equipo.id] : null
           const rival = !elim && rivales ? rivales[row.equipo.id] : null
           return (
             <div key={row.equipo.id} onClick={onClickEquipo ? () => onClickEquipo(row) : undefined}
               className="gm-tp-grid gm-tp-fila"
               style={{ padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default', opacity: sinJugar ? .6 : 1,
-                background: row.enVivo ? 'rgba(255,90,82,.10)' : elim ? 'rgba(255,90,82,.16)' : esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
-                border: row.enVivo ? '1px solid rgba(255,90,82,.6)' : elim ? '1px solid rgba(255,90,82,.7)' : esMio ? '1px solid #2e90fa' : '1px solid rgba(127,179,255,.16)' }}>
+                background: row.enVivo ? 'rgba(255,90,82,.10)' : mejor ? 'rgba(245,166,35,.16)' : elim ? 'rgba(255,90,82,.16)' : esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
+                border: row.enVivo ? '1px solid rgba(255,90,82,.6)' : mejor ? '1px solid rgba(245,166,35,.75)' : elim ? '1px solid rgba(255,90,82,.7)' : esMio ? '1px solid #2e90fa' : '1px solid rgba(127,179,255,.16)' }}>
               {/* Posición */}
-              <div className="gm-tp-pos" style={{ background: elim ? '#c9362f' : enZona ? '#22b86a' : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
+              <div className="gm-tp-pos" style={{ background: mejor ? '#d98a00' : elim ? '#c9362f' : enZona ? '#22b86a' : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
               {/* Equipo */}
               <div className="gm-tp-eq" style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, paddingLeft: '2px' }}>
                 {renderInicioEquipo && renderInicioEquipo(row)}
                 <LogoCircular logo={row.equipo.logo_url} name={row.equipo.name}/>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <span className="gm-tp-name" title={row.equipo.name} style={{ color: elim ? '#ffb4ae' : '#fff', fontWeight: esMio ? 800 : 700, fontSize: '.78rem' }}>{row.equipo.name}</span>
+                  <span className="gm-tp-name" title={row.equipo.name} style={{ color: mejor ? '#ffd78a' : elim ? '#ffb4ae' : '#fff', fontWeight: esMio ? 800 : 700, fontSize: '.78rem' }}>{row.equipo.name}</span>
                   {row.enVivo && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '1px', color: ROJO, fontWeight: 800, fontSize: '.58rem', letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <PuntoVivo size={6}/> EN VIVO · {row.enVivo.gf}-{row.enVivo.gc}{row.enVivo.rival ? ` vs ${row.enVivo.rival}` : ''}
                     </span>
                   )}
-                  {elim && (
+                  {mejor && (
+                    <>
+                      <span style={{ alignSelf: 'flex-start', marginTop: '2px', background: '#d98a00', color: '#fff', fontWeight: 900, fontSize: '.58rem', letterSpacing: '.06em', borderRadius: 4, padding: '1px 6px' }}>MEJOR PERDEDOR {mejor.puesto}</span>
+                      <span style={{ marginTop: '2px', color: '#ffd78a', fontWeight: 700, fontSize: '.6rem', lineHeight: 1.3 }}>
+                        {mejor.dif === 0 ? 'Perdió sin diferencia (por penales)' : `Perdió por ${mejor.dif} gol${mejor.dif === 1 ? '' : 'es'}`} · hizo {mejor.gf} gol{mejor.gf === 1 ? '' : 'es'}
+                      </span>
+                    </>
+                  )}
+                  {elim && !mejor && (
                     <span style={{ alignSelf: 'flex-start', marginTop: '2px', background: '#c9362f', color: '#fff', fontWeight: 900, fontSize: '.58rem', letterSpacing: '.06em', borderRadius: 4, padding: '1px 6px' }}>ELIMINADO</span>
                   )}
                   {rival && (

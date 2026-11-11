@@ -161,7 +161,7 @@ const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
 // Misma tabla azul de siempre, pero colapsable con un encabezado — para
 // mostrar un grupo a la vez sin saturar la pantalla cuando el torneo tiene
 // varios grupos.
-function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, clasifican, eliminados, rivales }) {
+function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, clasifican, eliminados, rivales, mejoresPerdedores }) {
   const [abierto, setAbierto] = useState(defaultOpen)
   return (
     <div>
@@ -176,7 +176,7 @@ function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, cla
       </button>
       {abierto && (
         <div style={{ marginTop: '8px' }}>
-          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo} clasifican={clasifican} eliminados={eliminados} rivales={rivales}/>
+          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo} clasifican={clasifican} eliminados={eliminados} rivales={rivales} mejoresPerdedores={mejoresPerdedores}/>
         </div>
       )}
     </div>
@@ -950,9 +950,10 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // ahora. NO se muestra árbol: solo los partidos creados (Resultados / Próximos).
   // Eliminado = perdió su llave ya terminada, o no entró al primer cruce de eliminatorias
   // (solo si ese cruce ya está completo). Los que juegan final o tercer puesto no se marcan.
-  const { eliminadosIds, rivalDe } = (() => {
-    const elim = new Set(), rival = {}
-    if (bracket.length === 0) return { eliminadosIds: elim, rivalDe: rival }
+  const MEJORES_PERDEDORES = 2 // cuántos "mejores perdedores" se marcan cuando termina una fase
+  const { eliminadosIds, rivalDe, mejoresPerdedores } = (() => {
+    const elim = new Set(), rival = {}, mejores = {}
+    if (bracket.length === 0) return { eliminadosIds: elim, rivalDe: rival, mejoresPerdedores: mejores }
     const porFase = getLlavesPorFaseElim()
     const esTercer = ll => (ll.matches[0].ronda || '').toLowerCase().includes('tercer')
     const enTercer = new Set(), enBracket = new Set()
@@ -960,10 +961,16 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       enBracket.add(ll.teamA.id); enBracket.add(ll.teamB.id)
       if (esTercer(ll)) { enTercer.add(ll.teamA.id); enTercer.add(ll.teamB.id) }
     }))
+    const perdedoresPorFase = {}
     FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
       if (f === 'final' || esTercer(ll) || !ll.terminada || !ll.ganador) return
-      const perdedor = ll.ganador.id === ll.teamA.id ? ll.teamB : ll.teamA
-      if (!enTercer.has(perdedor.id)) elim.add(perdedor.id)
+      const gano = ll.ganador.id === ll.teamA.id
+      const perdedor = gano ? ll.teamB : ll.teamA
+      if (enTercer.has(perdedor.id)) return
+      elim.add(perdedor.id)
+      const gfP = gano ? ll.golesB : ll.golesA
+      const gfG = gano ? ll.golesA : ll.golesB
+      ;(perdedoresPorFase[f] = perdedoresPorFase[f] || []).push({ id: perdedor.id, dif: Math.max(0, gfG - gfP), gf: gfP })
     }))
     const primera = FASE_ORDEN_ELIM.find(f => porFase[f])
     const esperadas = { octavos: 8, cuartos: 4, semifinal: 2, final: 1 }
@@ -976,7 +983,20 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       if (!rival[m.home_team_id]) rival[m.home_team_id] = m.away?.name || null
       if (!rival[m.away_team_id]) rival[m.away_team_id] = m.home?.name || null
     })
-    return { eliminadosIds: elim, rivalDe: rival }
+    // Mejores perdedores de la última fase ya terminada (todas sus llaves jugadas):
+    // 1) perdió con menos diferencia de gol, 2) hizo más goles, 3) está más arriba en la tabla general.
+    const faseTerminada = f => (porFase[f] || []).filter(ll => !esTercer(ll)).every(ll => ll.terminada && ll.ganador)
+    const ultimaFase = ['octavos', 'cuartos', 'semifinal'].filter(f => porFase[f] && faseTerminada(f)).pop()
+    if (ultimaFase && perdedoresPorFase[ultimaFase]) {
+      const puestoGeneral = {}
+      tablaOrdenada.forEach((r, i) => { puestoGeneral[r.equipo.id] = i })
+      perdedoresPorFase[ultimaFase]
+        .filter(x => elim.has(x.id))
+        .sort((a, b) => a.dif - b.dif || b.gf - a.gf || (puestoGeneral[a.id] ?? 999) - (puestoGeneral[b.id] ?? 999))
+        .slice(0, MEJORES_PERDEDORES)
+        .forEach((x, i) => { mejores[x.id] = { puesto: i + 1, dif: x.dif, gf: x.gf } })
+    }
+    return { eliminadosIds: elim, rivalDe: rival, mejoresPerdedores: mejores }
   })()
 
   // Pestañas: ya no hay árbol de eliminatorias, solo los partidos creados.
@@ -1141,12 +1161,12 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           grupos.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {grupos.map(g => (
-                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo} clasifican={Number(torneo.equipos_clasifican) || 0} eliminados={eliminadosIds} rivales={rivalDe}/>
+                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo} clasifican={Number(torneo.equipos_clasifican) || 0} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores}/>
               ))}
-              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe}/>
+              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores}/>
             </div>
           ) : (
-            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe}/>
+            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores}/>
           )
         )}
 
