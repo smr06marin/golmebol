@@ -280,6 +280,12 @@ body.gm-planilla-abierta .gm-admin-nav,
 body.gm-planilla-abierta .gm-admin-top,
 body.gm-planilla-abierta .gm-ayuda-fab { display: none !important; }
 
+/* Barra de abajo del panel (celular): al deslizarla de lado solo se mueve la barra. Antes el dedo "se pegaba" porque el
+   gesto también lo intentaba tomar la página (rebote del iPhone / desplazamiento vertical). */
+.gm-admin-nav { touch-action: pan-x; overscroll-behavior: contain; scrollbar-width: none; -ms-overflow-style: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.gm-admin-nav::-webkit-scrollbar { display: none; }
+.gm-admin-nav > div { -webkit-tap-highlight-color: transparent; }
+
 /* Fichas de puesto bajo la tarjeta: respuesta al toque */
 .gm-ficha { transition: transform .12s ease, border-color .2s ease; -webkit-tap-highlight-color: transparent; }
 .gm-ficha:active { transform: scale(.96); }

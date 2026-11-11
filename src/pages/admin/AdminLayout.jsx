@@ -44,6 +44,15 @@ export default function AdminLayout() {
     document.addEventListener('focusout', acomodar)
     return () => document.removeEventListener('focusout', acomodar)
   }, [isMobile])
+  // Al cambiar de sección, la barra de abajo deja a la vista el botón activo (si no, quedaba escondido al costado)
+  useEffect(() => {
+    if (!isMobile) return
+    const nav = document.querySelector('.gm-admin-nav')
+    const el = nav?.querySelector('[data-activo="1"]')
+    if (!nav || !el) return
+    const izq = el.getBoundingClientRect().left - nav.getBoundingClientRect().left + nav.scrollLeft
+    nav.scrollLeft = Math.max(0, izq - (nav.clientWidth - el.offsetWidth) / 2)
+  }, [isMobile, location.pathname])
   // Sin sistema de roles cargado (tabla no creada), todo usuario del admin es admin
   const esAdmin = rol?.rol ? rol.rol === 'admin' : true
   const esOrganizador = rol?.rol === 'organizador'
@@ -158,11 +167,11 @@ export default function AdminLayout() {
 
       {/* Barra inferior (solo celular) */}
       {isMobile && (
-        <div className="gm-admin-nav" style={{ order: 2, flexShrink: 0, zIndex: 100, background: '#fff', borderTop: '1px solid #e8eaed', boxShadow: '0 -2px 12px rgba(0,0,0,.08)', display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 4px calc(4px + env(safe-area-inset-bottom))' }}>
+        <div className="gm-admin-nav" style={{ order: 2, flexShrink: 0, zIndex: 100, background: '#fff', borderTop: '1px solid #e8eaed', boxShadow: '0 -2px 12px rgba(0,0,0,.08)', display: 'flex', overflowX: 'auto', overflowY: 'hidden', padding: '4px 4px calc(4px + env(safe-area-inset-bottom))' }}>
           {MENU.map(item => {
             const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
             return (
-              <div key={item.ruta} onClick={() => navigate(item.ruta)}
+              <div key={item.ruta} data-activo={active ? '1' : undefined} onClick={() => navigate(item.ruta)}
                 style={{ minWidth: '64px', flex: '1 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', padding: '7px 4px', borderRadius: '10px', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent' }}>
                 {item.icon}
                 <span style={{ fontSize: '.55rem', fontWeight: active ? '700' : '500', letterSpacing: '.02em' }}>{item.label}</span>
