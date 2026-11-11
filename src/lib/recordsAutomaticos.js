@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { hydratePlayersPublico } from './playersPublico'
 import { MARCAS_GOLES, marcaDeGoles } from './marcasGoles'
+import { guardarCacheRapido, leerCacheRapido } from './cacheRapido'
 
 // Calcula los récords que se generan solos con los datos de la liga
 // (máximo goleador, hat-tricks, rachas, etc.). Se usa tanto en la página
@@ -10,27 +11,80 @@ import { MARCAS_GOLES, marcaDeGoles } from './marcasGoles'
 // Los nombres/posiciones salen de players_publico (no del embed a players),
 // para que la página pública siga funcionando cuando anon pierda SELECT
 // sobre la tabla base.
+//
+// Rendimiento: las tres tablas se piden A LA VEZ (antes una por una), con solo las columnas que hacen falta,
+// completas (cada página de 1000 filas en paralelo: antes se cortaba en 1000 y los récords podían salir mal)
+// y los nombres se piden SOLO de quienes ganan un récord (antes se pedían los ~2.500 jugadores en un solo
+// pedido, con una dirección enorme que la base podía rechazar). La última copia buena queda guardada para
+// pintar al instante al volver a entrar.
+const PAG = 1000
+
+async function traerTodas(armar) {
+  const primera = await armar(0, PAG - 1)
+  if (primera.error) throw primera.error
+  const filas = [...(primera.data || [])]
+  const total = primera.count ?? filas.length
+  if (filas.length < PAG || total <= PAG) return filas
+  const paginas = Math.ceil(total / PAG)
+  const resto = await Promise.all(Array.from({ length: paginas - 1 }, (_, i) => armar((i + 1) * PAG, (i + 2) * PAG - 1)))
+  resto.forEach(r => { if (r.error) throw r.error; filas.push(...(r.data || [])) })
+  return filas
+}
+
+// Última copia buena de los récords automáticos (null si no hay o ya es muy vieja)
+export function recordsAutomaticosGuardados() {
+  return leerCacheRapido('records_auto', 24 * 60 * 60 * 1000)
+}
+
 export async function calcularRecordsAutomaticos() {
-  const { data: cacheRaw } = await supabase
-    .from('player_stats_cache')
-    .select('*')
-
-  const { data: statsRaw } = await supabase
-    .from('player_match_stats')
-    .select('*, matches(home_score, away_score, played_at, home:home_team_id(name), away:away_team_id(name))')
-    .gt('goals_scored', 0)
-    .order('goals_scored', { ascending: false })
-
-  const { data: matches } = await supabase
-    .from('matches')
-    .select('*, home:home_team_id(name), away:away_team_id(name)')
-    .eq('status', 'finished')
-
-  const cols = 'id, name, posicion_futbol5, posicion_futbol7, posicion_futbol11'
-  const [cache, statsPorPartido] = await Promise.all([
-    hydratePlayersPublico(cacheRaw || [], { columns: cols }),
-    hydratePlayersPublico(statsRaw || [], { columns: 'id, name' }),
+  // Si una tabla no responde, se calcula con lo que sí llegó (esos récords simplemente no salen) en vez de romper todo.
+  const seguro = p => p.catch(() => [])
+  const [cacheRaw, statsRaw, matches] = await Promise.all([
+    seguro(traerTodas((d, h) => supabase.from('player_stats_cache')
+      .select('*', { count: 'exact' }) // todas las columnas: así no falla si alguna (p. ej. la racha máxima) todavía no existe
+      .order('player_id').range(d, h))),
+    seguro(traerTodas((d, h) => supabase.from('player_match_stats')
+      .select('player_id, match_id, goals_scored', { count: 'exact' })
+      .gt('goals_scored', 0).order('goals_scored', { ascending: false }).order('match_id').order('player_id').range(d, h))),
+    seguro(traerTodas((d, h) => supabase.from('matches')
+      .select('id, home_team_id, away_team_id, home_score, away_score, played_at, home:home_team_id(name), away:away_team_id(name)', { count: 'exact' })
+      .eq('status', 'finished').order('id').range(d, h))),
   ])
+
+  const porId = new Map((matches || []).map(m => [m.id, m]))
+
+  // Quiénes pueden ganar algo: solo de ellos se piden nombre y posición.
+  const maxPor = (lista, clave) => [...lista].sort((a, b) => clave(b) - clave(a))[0]
+  const racha = x => x.racha_victorias_max || x.racha_victorias_actual || 0
+  const elegidos = new Set()
+  const candidatos = []
+  const sumar = x => { if (x && !elegidos.has(x)) { elegidos.add(x); candidatos.push(x) } }
+  ;[x => x.goles, x => x.victorias, x => x.pj, racha, x => x.racha_goles_actual || 0].forEach(clave => sumar(maxPor(cacheRaw, clave)))
+  sumar(maxPor((cacheRaw || []).filter(x => x.partidos_sin_tarjetas > 0), x => x.partidos_sin_tarjetas))
+  ;[...cacheRaw].sort((a, b) => (b.arcos_cero || 0) - (a.arcos_cero || 0)).filter(x => x.arcos_cero > 0).slice(0, 60).forEach(sumar)
+  // se conserva el orden original: así, ante un empate, gana el mismo que ganaba antes
+  const candidatosEnOrden = cacheRaw.filter(x => elegidos.has(x))
+
+  // Marcas de goles (doblete, triplete…): se cuenta por jugador sin nombres, y se piden solo los de quienes lideran
+  const porMarca = new Map()
+  MARCAS_GOLES.filter(m => m.n >= 2).forEach(m => {
+    const porJugador = new Map()
+    statsRaw.forEach(s => {
+      if (!s.player_id || marcaDeGoles(s.goals_scored)?.n !== m.n) return
+      porJugador.set(s.player_id, (porJugador.get(s.player_id) || 0) + 1)
+    })
+    const top = [...porJugador.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (top) porMarca.set(m.n, { id: top[0], veces: top[1] })
+  })
+  const topGolPar = statsRaw[0]
+
+  const idsNombres = [...new Set([...porMarca.values()].map(x => x.id).concat(topGolPar?.player_id ? [topGolPar.player_id] : []))]
+  const cols = 'id, name, posicion_futbol5, posicion_futbol7, posicion_futbol11'
+  const [cache, nombres] = await Promise.all([
+    hydratePlayersPublico(candidatosEnOrden, { columns: cols }).catch(() => candidatosEnOrden.map(r => ({ ...r, players: null }))),
+    hydratePlayersPublico(idsNombres.map(id => ({ player_id: id })), { columns: 'id, name' }).catch(() => []),
+  ])
+  const nombreDe = Object.fromEntries(nombres.map(r => [r.player_id, r.players?.name]))
 
   const recs = []
   const GOLD = '#f9a825', CYAN = '#00ddd0'
@@ -47,30 +101,23 @@ export async function calcularRecordsAutomaticos() {
   })
 
   // 2. Más goles en un partido
-  const topGolPar = statsPorPartido[0]
+  const partidoTop = topGolPar ? porId.get(topGolPar.match_id) : null
   if (topGolPar?.goals_scored >= 2) recs.push({
     id: 'goles_partido',
     titulo: `${topGolPar.goals_scored} goles en un partido (${marcaDeGoles(topGolPar.goals_scored)?.nombre || ''})`,
-    nombre: topGolPar.players?.name || '?',
-    subtitulo: `${topGolPar.matches?.home?.name} vs ${topGolPar.matches?.away?.name}`,
-    descripcion: topGolPar.matches?.played_at ? new Date(topGolPar.matches.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+    nombre: nombreDe[topGolPar.player_id] || '?',
+    subtitulo: `${partidoTop?.home?.name} vs ${partidoTop?.away?.name}`,
+    descripcion: partidoTop?.played_at ? new Date(partidoTop.played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
     color: '#e8710a',
   })
 
   // 3. Marcas de goles por tipo (doblete, triplete, póker… gesta histórica): quién tiene más de cada una
   MARCAS_GOLES.filter(m => m.n >= 2).forEach(m => {
-    const porJugador = new Map()
-    statsPorPartido.forEach(s => {
-      if (!s.player_id || marcaDeGoles(s.goals_scored)?.n !== m.n) return
-      const act = porJugador.get(s.player_id) || { nombre: s.players?.name || '?', veces: 0 }
-      act.veces++
-      porJugador.set(s.player_id, act)
-    })
-    const top = [...porJugador.values()].sort((a, b) => b.veces - a.veces)[0]
+    const top = porMarca.get(m.n)
     if (top) recs.push({
       id: `marca_${m.n}`,
       titulo: `${top.veces} ${top.veces === 1 ? m.nombre : m.plural}`,
-      nombre: top.nombre,
+      nombre: nombreDe[top.id] || '?',
       subtitulo: `más ${m.plural.toLowerCase()} en la historia`,
       descripcion: `${m.n >= 10 ? '10 o más' : m.n} goles en un solo partido`,
       color: GOLD,
@@ -207,5 +254,6 @@ export async function calcularRecordsAutomaticos() {
     color: '#9955ff',
   })
 
+  guardarCacheRapido('records_auto', recs)
   return recs
 }

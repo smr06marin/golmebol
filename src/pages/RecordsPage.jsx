@@ -779,10 +779,13 @@ export default function RecordsPage() {
 
   async function fetchTodo() {
     setLoading(true)
-    const [recsAuto, recsHist, ocultos] = await Promise.all([fetchAutomaticos(), fetchHistoricos(), fetchOcultos()])
-    const visibles = (recsAuto || []).filter(r => !ocultos.has(r.id))
-    setRecords([...visibles, ...(recsHist || [])])
-    setLoading(false)
+    try {
+      const [recsAuto, recsHist, ocultos] = await Promise.all([fetchAutomaticos().catch(() => []), fetchHistoricos(), fetchOcultos()])
+      const visibles = (recsAuto || []).filter(r => !ocultos.has(r.id))
+      setRecords([...visibles, ...(recsHist || [])])
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Récords automáticos que el admin apagó manualmente (aunque haya datos, no se muestran)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { errorAmigable } from '../../lib/mensajesError'
-import { calcularRecordsAutomaticos } from '../../lib/recordsAutomaticos'
+import { calcularRecordsAutomaticos, recordsAutomaticosGuardados } from '../../lib/recordsAutomaticos'
 import { confirmar } from '../../lib/confirmar'
 import { MARCAS_GOLES } from '../../lib/marcasGoles'
 
@@ -39,8 +39,9 @@ export default function AdminRecordsPage() {
   const [editando,  setEditando]  = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [autoOcultos, setAutoOcultos] = useState(new Set()) // ids de récords automáticos apagados
-  const [autoDatos,   setAutoDatos]   = useState({})        // id -> { titulo, nombre, subtitulo, descripcion } (lo que realmente se mostraría)
-  const [loadingAuto, setLoadingAuto] = useState(true)
+  // Con una copia de la última vez, los datos salen AL INSTANTE y los frescos los reemplazan cuando llegan
+  const [autoDatos,   setAutoDatos]   = useState(() => Object.fromEntries((recordsAutomaticosGuardados() || []).map(r => [r.id, r]))) // id -> { titulo, nombre, subtitulo, descripcion } (lo que realmente se mostraría)
+  const [loadingAuto, setLoadingAuto] = useState(() => !recordsAutomaticosGuardados())
 
   const formVacio = { titulo: '', nombre: '', subtitulo: '', descripcion: '', icono: '⭐', color: '#f9a825', orden: 0 }
   const [form, setForm] = useState(formVacio)
@@ -56,12 +57,16 @@ export default function AdminRecordsPage() {
   // con qué cifra), para que el admin vea exactamente qué va a salir antes de
   // decidir si lo oculta.
   async function fetchAutoDatos() {
-    setLoadingAuto(true)
-    const recs = await calcularRecordsAutomaticos()
-    const map = {}
-    recs.forEach(r => { map[r.id] = r })
-    setAutoDatos(map)
-    setLoadingAuto(false)
+    try {
+      const recs = await calcularRecordsAutomaticos()
+      const map = {}
+      recs.forEach(r => { map[r.id] = r })
+      setAutoDatos(map)
+    } catch (e) {
+      console.error('No se pudieron calcular los récords automáticos:', e)
+    } finally {
+      setLoadingAuto(false) // pase lo que pase, deja de decir "Cargando dato..."
+    }
   }
 
   async function handleToggleAuto(id) {
