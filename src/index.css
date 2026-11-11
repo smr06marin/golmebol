@@ -284,6 +284,8 @@ body.gm-planilla-abierta .gm-ayuda-fab { display: none !important; }
    gesto también lo intentaba tomar la página (rebote del iPhone / desplazamiento vertical). */
 .gm-admin-nav { touch-action: pan-x; overscroll-behavior: contain; scrollbar-width: none; -ms-overflow-style: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .gm-admin-nav::-webkit-scrollbar { display: none; }
+/* iPhone como app: los botones suben para no quedar en la zona de la rayita de inicio (ahí el sistema se queda con el gesto) */
+.gm-ios-app .gm-admin-nav { padding-bottom: max(env(safe-area-inset-bottom), 28px) !important; }
 .gm-admin-nav > div { -webkit-tap-highlight-color: transparent; }
 
 /* Fichas de puesto bajo la tarjeta: respuesta al toque */

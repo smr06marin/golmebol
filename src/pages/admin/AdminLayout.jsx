@@ -44,6 +44,16 @@ export default function AdminLayout() {
     document.addEventListener('focusout', acomodar)
     return () => document.removeEventListener('focusout', acomodar)
   }, [isMobile])
+  // iPhone instalado como app (o en la app nativa): la barra de abajo queda pegada a la rayita negra de inicio de iOS.
+  // Deslizar de lado ahí lo toma el sistema ("cambiar de app") y la barra parece pegarse. Se sube la barra para que
+  // los botones queden FUERA de esa zona (ver .gm-ios-app en index.css).
+  useEffect(() => {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    const comoApp = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches || !!window.Capacitor?.isNativePlatform?.()
+    if (!ios || !comoApp) return undefined
+    document.documentElement.classList.add('gm-ios-app')
+    return () => document.documentElement.classList.remove('gm-ios-app')
+  }, [])
   // Al cambiar de sección, la barra de abajo deja a la vista el botón activo (si no, quedaba escondido al costado)
   useEffect(() => {
     if (!isMobile) return
