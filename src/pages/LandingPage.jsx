@@ -13,7 +13,7 @@ import { useIntervaloVisible } from '../lib/useIntervaloVisible'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
 const SIN_STREAMS = [] // referencia fija: así el hook de canales no se reinicia en cada render
 import BotonAvisos from '../components/BotonAvisos'
-import { useCanalesEnVivo, resolverStreams, useVideosYoutubeVivos, esCanalYoutube } from '../lib/enVivoCanal'
+import { useCanalesEnVivo, resolverStreams, useVideosYoutubeVivos } from '../lib/enVivoCanal'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
 import { urlMini, alFallarMini } from '../lib/imagenMini'
@@ -508,19 +508,19 @@ export default function LandingPage({ modo = 'inicio' }) {
   const streamsResueltos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo), [streamsConfig, canalesEnVivo])
   // Solo sale lo que está EN VIVO de verdad. La portada NO incrusta el video (pesaba mucho): muestra una tarjeta
   // "EN VIVO" y quien la toca va directo a YouTube / Facebook a ver el partido.
-  //  · Canal de YouTube: ya viene filtrado arriba (solo aparece mientras el canal transmite).
-  //  · Video de YouTube: se pregunta a /api/yt-video-estado si transmite ahora (un directo terminado no sale).
+  //  · YouTube (video o canal): se pregunta a /api/yt-video-estado si ese video transmite AHORA; un directo terminado o
+  //    programado (sala de espera) no sale.
   //  · Facebook/Instagram: no hay forma de saber si siguen transmitiendo, así que salen únicamente mientras el partido ligado
   //    a esa transmisión (o el torneo en "torneo_auto") se está jugando.
   const esYouTube = u => /(^|\/\/|\.)(youtube\.com|youtu\.be)/i.test(String(u || ''))
-  const idsCanalYT = useMemo(() => new Set(streamsConfig.filter(s => esCanalYoutube(s.url)).map(s => s.id)), [streamsConfig])
-  const videosYT = useMemo(() => (streamsMontar ? streamsResueltos.filter(s => esYouTube(s.url) && !idsCanalYT.has(s.id)) : SIN_STREAMS), [streamsMontar, streamsResueltos, idsCanalYT])
+  // También los que vienen de un canal: se confirma con YouTube que ese video transmite AHORA (no una sala de espera)
+  const videosYT = useMemo(() => (streamsMontar ? streamsResueltos.filter(s => esYouTube(s.url)) : SIN_STREAMS), [streamsMontar, streamsResueltos])
   const videosYTVivos = useVideosYoutubeVivos(videosYT)
   const clavePartidoStream = streamsResueltos.filter(s => !esYouTube(s.url) && partidoActivoDeStream(s, partidosVivo)).map(s => s.id).join('|')
   const streamsVivos = useMemo(() => {
     const conPartido = clavePartidoStream ? clavePartidoStream.split('|') : []
-    return streamsResueltos.filter(s => esYouTube(s.url) ? (idsCanalYT.has(s.id) || videosYTVivos[s.id] === true) : conPartido.includes(s.id))
-  }, [streamsResueltos, clavePartidoStream, idsCanalYT, videosYTVivos])
+    return streamsResueltos.filter(s => esYouTube(s.url) ? videosYTVivos[s.id] === true : conPartido.includes(s.id))
+  }, [streamsResueltos, clavePartidoStream, videosYTVivos])
   const streamsVisibles = streamsVivos
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
   usePresenciaSitio(streamsVisibles.length > 0) // cuenta de personas en el sitio (semáforo del admin)

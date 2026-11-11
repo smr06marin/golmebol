@@ -86,6 +86,11 @@ function extraerCanalId(html) {
 export function analizarPaginaLive(html, url = '') {
   const bloqueo = esPaginaBloqueada(html, url)
   if (bloqueo) return { error: bloqueo }
+  // Si la propia ficha del video dice "isLiveNow":false NO está transmitiendo: es un directo programado que no ha
+  // empezado (la "sala de espera", que también trae contador de "esperando") o uno ya terminado. Antes se tomaba como
+  // en vivo por el contador de espectadores y la portada mostraba EN VIVO con nada en juego.
+  const primeraFicha = html.match(/"liveBroadcastDetails":\{[^}]*?"isLiveNow":(true|false)/)
+  if (primeraFicha && primeraFicha[1] === 'false') return { live: false }
   const enVivo = RE_LIVE_BROADCAST.test(html) || RE_VIDEO_DETAILS_LIVE.test(html) || RE_VISTAS_LIVE.test(html)
   return enVivo ? { live: true, videoId: extraerVideoId(html) } : { live: false }
 }
