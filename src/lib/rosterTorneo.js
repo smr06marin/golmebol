@@ -7,15 +7,21 @@ import { supabase } from './supabase'
 // Si la vista no tiene las etiquetas (Élite/Profesional/Mayor de 35), se
 // reintenta sin ellas: la plantilla SIEMPRE se muestra, aunque sea sin etiquetas.
 const COLS_CON_ETIQUETAS = 'id, name, photo_url, photo_face_url, es_elite, es_profesional, es_mayor_35, etiqueta_personalizada'
+// + la etiqueta Exprofesional (migracion_exprofesional.sql). Si la vista todavía no la tiene, se usan las de antes.
+const COLS_CON_EXPRO = 'id, name, photo_url, photo_face_url, es_elite, es_profesional, es_exprofesional, es_mayor_35, etiqueta_personalizada'
 const COLS_BASE = 'id, name, photo_url, photo_face_url'
 
 async function jugadoresPorIds(ids) {
   const mapa = {}
   const trozos = []
   for (let i = 0; i < ids.length; i += 80) trozos.push(ids.slice(i, i + 80))
-  let cols = COLS_CON_ETIQUETAS
+  let cols = COLS_CON_EXPRO
   await Promise.all(trozos.map(async trozo => {
     let r = await supabase.from('players_publico').select(cols).in('id', trozo)
+    if (r.error && cols === COLS_CON_EXPRO) {
+      cols = COLS_CON_ETIQUETAS
+      r = await supabase.from('players_publico').select(cols).in('id', trozo)
+    }
     if (r.error && cols === COLS_CON_ETIQUETAS) {
       cols = COLS_BASE
       r = await supabase.from('players_publico').select(cols).in('id', trozo)

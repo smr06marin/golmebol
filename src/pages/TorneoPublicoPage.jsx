@@ -264,7 +264,7 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: '16px' }}>
             {listaJug.map(j => {
-              const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
+              const tieneTag = !!(j.es_elite || j.es_profesional || j.es_exprofesional || j.es_mayor_35 || j.etiqueta_personalizada)
               return (
               <div key={j.id} role={onVerJugador ? 'link' : undefined} tabIndex={onVerJugador ? 0 : undefined} onClick={onVerJugador ? () => onVerJugador(j.id) : undefined}
                 style={{ textAlign: 'center', cursor: onVerJugador ? 'pointer' : 'default' }}>
@@ -286,6 +286,7 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '5px', alignItems: 'center' }}>
                     {j.es_elite && <span style={{ fontSize: '.62rem', color: '#1a1305', background: '#f5c542', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>💎 Élite</span>}
                     {j.es_profesional && <span style={{ fontSize: '.62rem', color: '#fff', background: '#7b3ff2', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>🎓 Profesional</span>}
+                    {j.es_exprofesional && <span style={{ fontSize: '.62rem', color: '#fff', background: '#d97706', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>⚽ Exprofesional</span>}
                     {j.es_mayor_35 && <span style={{ fontSize: '.62rem', color: '#202124', background: '#f1f3f4', borderRadius: '8px', padding: '1px 7px', fontWeight: '700' }}>🕒 Mayor de 35</span>}
                     {j.etiqueta_personalizada && <span style={{ fontSize: '.62rem', color: '#fff', background: '#5b9dff', borderRadius: '8px', padding: '1px 7px', fontWeight: '800' }}>⭐ {j.etiqueta_personalizada}</span>}
                   </div>

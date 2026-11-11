@@ -1063,7 +1063,7 @@ export default function EquipoHistorialPage() {
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
                   {jugadoresFiltrados.map(j => {
-                    const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
+                    const tieneTag = !!(j.es_elite || j.es_profesional || j.es_exprofesional || j.es_mayor_35 || j.etiqueta_personalizada)
                     const editandoTel = editandoTelId === j.id
                     const regJugadorTorneo = torneoSel ? regEnTorneo(j.id) : null
                     return (
@@ -1082,6 +1082,7 @@ export default function EquipoHistorialPage() {
                           <div style={{ display:'flex', gap:'6px', marginTop:'5px', flexWrap:'wrap' }}>
                             {j.es_elite       && <span style={{ fontSize:'.66rem', color:'#1a1305', background:'#f5c542', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>💎 Élite</span>}
                             {j.es_profesional && <span style={{ fontSize:'.66rem', color:'#fff', background:'#7b3ff2', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>🎓 Profesional</span>}
+                            {j.es_exprofesional && <span style={{ fontSize: '.66rem', color: '#fff', background: '#d97706', borderRadius: '10px', padding: '2px 8px', fontWeight: '800' }}>⚽ Exprofesional</span>}
                             {j.es_mayor_35    && <span style={{ fontSize:'.66rem', color:S.text, background:S.card2, borderRadius:'10px', padding:'2px 8px', fontWeight:'700' }}>🕒 Mayor de 35</span>}
                             {j.etiqueta_personalizada && <span style={{ fontSize:'.66rem', color:'#0a1a3f', background:'#5b9dff', borderRadius:'10px', padding:'2px 8px', fontWeight:'800' }}>⭐ {j.etiqueta_personalizada}</span>}
                             {j.posicion_futbol5  && <span style={{ fontSize:'.66rem', color:S.cyan, background:S.cyanDim, borderRadius:'10px', padding:'2px 8px', fontWeight:'600' }}>F5: {j.posicion_futbol5}</span>}

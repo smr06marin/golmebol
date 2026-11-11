@@ -195,7 +195,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
   const [autorizoMenorNuevo,     setAutorizoMenorNuevo]     = useState(false)
 
   const [editandoTagsId, setEditandoTagsId] = useState(null) // id del jugador cuyas etiquetas se están editando
-  const [tagsForm,       setTagsForm]       = useState({ es_mayor_35: false, es_elite: false, es_profesional: false, etiqueta_personalizada: '' })
+  const [tagsForm,       setTagsForm]       = useState({ es_mayor_35: false, es_elite: false, etiqueta_personalizada: '' })
   const [guardandoTags,  setGuardandoTags]  = useState(false)
   const guardandoTagsRef = useRef(false) // bloqueo inmediato para "Guardar" etiquetas
   const [mostrarInscribir, setMostrarInscribir] = useState(null) // tournament_id del torneo con el picker abierto
@@ -805,7 +805,28 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
 
   function abrirEditarTags(j) {
     setEditandoTagsId(j.id)
-    setTagsForm({ es_mayor_35: !!j.es_mayor_35, es_elite: !!j.es_elite, es_profesional: !!j.es_profesional, etiqueta_personalizada: j.etiqueta_personalizada || '' })
+    setTagsForm({ es_mayor_35: !!j.es_mayor_35, es_elite: !!j.es_elite, etiqueta_personalizada: j.etiqueta_personalizada || '' })
+  }
+
+  // Profesional / Exprofesional: un toque y queda guardado (sin abrir formularios). Un jugador es una cosa o la otra.
+  // Se actualiza en pantalla de una vez y, si la base no lo guarda, se devuelve a como estaba.
+  const [nivelGuardando, setNivelGuardando] = useState(null)
+  async function marcarNivel(j, nivel) {
+    if (nivelGuardando) return
+    const payload = { es_profesional: nivel === 'profesional', es_exprofesional: nivel === 'exprofesional' }
+    const antes = { es_profesional: !!j.es_profesional, es_exprofesional: !!j.es_exprofesional }
+    if (antes.es_profesional === payload.es_profesional && antes.es_exprofesional === payload.es_exprofesional) return
+    setNivelGuardando(j.id)
+    setJugadoresEquipoGlobal(prev => prev.map(x => x.id === j.id ? { ...x, ...payload } : x))
+    const { error } = await supabase.from('players').update(payload).eq('id', j.id)
+    setNivelGuardando(null)
+    if (error) {
+      setJugadoresEquipoGlobal(prev => prev.map(x => x.id === j.id ? { ...x, ...antes } : x))
+      const falta = error.message?.includes('es_exprofesional') || error.code === '42703'
+      showMsg(falta ? avisoMigracion('migracion_exprofesional.sql') : errorAmigable(error, 'No se pudo guardar'), 'error')
+      return
+    }
+    showMsg(nivel === 'profesional' ? `${j.name}: marcado como profesional ✓` : nivel === 'exprofesional' ? `${j.name}: marcado como exprofesional ✓` : `${j.name}: sin marca ✓`)
   }
 
   async function guardarTags(playerId) {
@@ -1573,7 +1594,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {jugadoresFiltrados.map((j, i) => {
-                const tieneTag = !!(j.es_elite || j.es_profesional || j.es_mayor_35 || j.etiqueta_personalizada)
+                const tieneTag = !!(j.es_elite || j.es_profesional || j.es_exprofesional || j.es_mayor_35 || j.etiqueta_personalizada)
                 return (
                 <div key={j.id} style={{ ...GLASS_SM, borderRadius: '18px', padding: '14px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1592,6 +1613,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                         {j.es_elite       && <span style={{ fontSize: '.7rem', color: '#1a1305', background: '#f5c542', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>💎 Élite</span>}
                         {j.es_profesional && <span style={{ fontSize: '.7rem', color: '#fff', background: '#7b3ff2', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>🎓 Profesional</span>}
+                        {j.es_exprofesional && <span style={{ fontSize: '.7rem', color: '#fff', background: '#d97706', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>⚽ Exprofesional</span>}
                         {j.es_mayor_35    && <span style={{ fontSize: '.7rem', color: '#dfe8ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>🕒 Mayor de 35</span>}
                         {j.etiqueta_personalizada && <span style={{ fontSize: '.7rem', color: '#0a1a3f', background: '#5b9dff', borderRadius: '10px', padding: '2px 9px', fontWeight: '800' }}>⭐ {j.etiqueta_personalizada}</span>}
                         {j.posicion_futbol5  && <span style={{ fontSize: '.7rem', color: '#8ec3ff', ...GLASS_INSET, borderRadius: '10px', padding: '2px 9px', fontWeight: '600' }}>F5: {j.posicion_futbol5}</span>}
@@ -1601,8 +1623,26 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     {jugadoresActivos.includes(j.id) ? '● Activo' : '○ Inactivo'}
   </span>
                       </div>
+                      {/* Marca rápida: ¿es profesional o exprofesional? Un toque y queda guardado */}
+                      <div style={{ marginTop: '10px' }}>
+                        <div style={{ fontSize: '.72rem', color: TXT_MUTED, fontWeight: '700', marginBottom: '6px' }}>¿ES PROFESIONAL O EXPROFESIONAL?</div>
+                        <div role="group" aria-label={`Nivel de ${j.name}`} style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {[
+                            { id: 'ninguno',       label: 'Ninguno',          activo: !j.es_profesional && !j.es_exprofesional, bg: 'rgba(255,255,255,.22)', fg: '#fff' },
+                            { id: 'profesional',   label: '🎓 Profesional',   activo: !!j.es_profesional,   bg: '#7b3ff2', fg: '#fff' },
+                            { id: 'exprofesional', label: '⚽ Exprofesional', activo: !!j.es_exprofesional, bg: '#d97706', fg: '#fff' },
+                          ].map(o => (
+                            <button key={o.id} type="button" onClick={() => marcarNivel(j, o.id)} disabled={nivelGuardando === j.id} aria-pressed={o.activo}
+                              style={{ minHeight: '40px', padding: '0 14px', borderRadius: '12px', fontSize: '.84rem', fontWeight: '800', cursor: 'pointer', fontFamily: 'inherit',
+                                border: o.activo ? `2px solid ${o.bg}` : '1.5px solid rgba(255,255,255,.25)', background: o.activo ? o.bg : 'transparent', color: o.activo ? o.fg : TXT_MUTED,
+                                opacity: nivelGuardando === j.id ? .6 : 1 }}>
+                              {o.activo ? '✓ ' : ''}{o.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    <button onClick={() => editandoTagsId === j.id ? setEditandoTagsId(null) : abrirEditarTags(j)} title="Marcar jugador referente (élite, profesional, +35)"
+                    <button onClick={() => editandoTagsId === j.id ? setEditandoTagsId(null) : abrirEditarTags(j)} title="Más etiquetas (élite, +35 u otra propia)"
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.5)', padding: '6px', flexShrink: 0 }}>
                       <Pencil size={15}/>
                     </button>
@@ -1614,7 +1654,6 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                       <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '12px' }}>
                         {[
                           { key: 'es_elite',       label: '💎 Élite' },
-                          { key: 'es_profesional', label: '🎓 Profesional' },
                           { key: 'es_mayor_35',    label: '🕒 Mayor de 35' },
                         ].map(op => (
                           <label key={op.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '.8rem', color: TXT, cursor: 'pointer' }}>
