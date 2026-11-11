@@ -488,12 +488,16 @@ function ModalLinkReloj({ modal, generando, onCambiar, onConfirmar, onClose }) {
   )
 }
 
-// Ventana del botón "Link árbitro": pregunta si se quieren agregar más
-// partidos al link y lista SOLO los pendientes del mismo torneo, por día.
+// Ventana del botón "Link árbitro". Es un paso a paso simple:
+//   1. Arriba queda FIJO el partido desde donde se tocó el botón (ya va en el link).
+//   2. Abajo se marcan, si se quiere, MÁS partidos pendientes del mismo torneo, por día.
+//   3. Una barra fija abajo dice cuántos van marcados y tiene el botón grande para copiar el link.
+// El árbitro recibe UN solo link con todos los partidos marcados.
 function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onToggleDia, onConfirmar, onClose }) {
   const { partido, sel, candidatos } = modal
   const grupoDeP = linkGrupoVigente(partido)
-  const total = sel.length
+  const total = sel.length // incluye el partido de origen
+  const extras = total - 1
   const dias = []
   candidatos.forEach(m => {
     const dia = etiquetaDia(m.played_at)
@@ -501,10 +505,12 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
     if (!g) { g = { dia, items: [] }; dias.push(g) }
     g.items.push(m)
   })
+  const todosIds = candidatos.map(m => m.id)
+  const todosMarcados = todosIds.length > 0 && todosIds.every(id => sel.includes(id))
   const nombre = m => `${m.home?.name || 'Por definir'} vs ${m.away?.name || 'Por definir'}`
+  const cuando = m => `${m.played_at ? fmtHoraDate(m.played_at) : 'Por confirmar'}${m.location ? ` · ${m.location}` : ''}${m.matchday ? ` · Jornada ${m.matchday}` : ''}`
 
-  // Escenarios (cancha/sede): dentro de cada día se pueden marcar todos los
-  // partidos de un mismo escenario (solo de ESE día, no de todos los días).
+  // Escenarios (cancha/sede): dentro de cada día se pueden marcar todos los partidos de un mismo escenario.
   const escenarioDe = m => (m.location && m.location.trim()) || 'Sin escenario'
   const porEscenario = lista => {
     const mapa = new Map()
@@ -515,69 +521,97 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
     })
     return [...mapa.entries()].map(([nombreEsc, ids]) => ({ nombre: nombreEsc, ids }))
   }
-  // Botón-chip: marcado (azul), a medias (borde azul) o vacío
   const chip = (ids, etiqueta, clave) => {
     const n = ids.filter(id => sel.includes(id)).length
     const todos = n === ids.length
     const parcial = n > 0 && !todos
     return (
       <button key={clave} type="button" onClick={() => onToggleDia(ids, !todos)}
-        style={{ border: `1.5px solid ${todos || parcial ? '#1a73e8' : '#dadce0'}`, background: todos ? '#1a73e8' : parcial ? '#f3f8ff' : '#fff', color: todos ? '#fff' : parcial ? '#1a73e8' : '#3c4043', borderRadius: '999px', padding: '5px 11px', fontSize: '.74rem', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px', maxWidth: '100%' }}>
+        style={{ border: `1.5px solid ${todos || parcial ? '#1a73e8' : '#dadce0'}`, background: todos ? '#1a73e8' : parcial ? '#f3f8ff' : '#fff', color: todos ? '#fff' : parcial ? '#1a73e8' : '#3c4043', borderRadius: '999px', padding: '8px 14px', minHeight: '40px', fontSize: '.85rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: '100%', fontFamily: 'inherit' }}>
         {todos && <span>✓</span>}
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{etiqueta}</span>
-        <span style={{ opacity: .75, fontWeight: '500' }}>{parcial ? `${n}/${ids.length}` : ids.length}</span>
+        <span style={{ opacity: .8, fontWeight: 600 }}>{parcial ? `${n}/${ids.length}` : ids.length}</span>
       </button>
     )
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(32,33,36,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '480px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid #e8eaed' }}>
-          <div style={{ fontSize: '1rem', fontWeight: '700', color: '#202124' }}>¿Quieres agregar más partidos a este link?</div>
-          <div style={{ fontSize: '.78rem', color: '#5f6368', marginTop: '4px', lineHeight: 1.4 }}>
-            Aquí salen solo los partidos pendientes de <b>{partido.tournaments?.name}</b>. El árbitro recibirá un único link con todos los que marques.
-          </div>
-          <div style={{ marginTop: '10px', background: '#e6f7f6', border: '1px solid #b6e6e2', borderRadius: '8px', padding: '8px 10px', fontSize: '.8rem', color: '#00695f', fontWeight: '600' }}>
-            ✓ {nombre(partido)}
-            <span style={{ fontWeight: '500', color: '#4a8a84' }}> · {partido.played_at ? `${etiquetaDia(partido.played_at)} ${fmtHoraDate(partido.played_at)}` : 'Por confirmar'}</span>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(32,33,36,.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Link para el árbitro"
+        style={{ background: '#fff', borderRadius: '18px 18px 0 0', width: '100%', maxWidth: '520px', height: '92vh', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,sans-serif' }}>
+
+        {/* Encabezado fijo, con botón para volver */}
+        <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #e8eaed', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+          <button type="button" onClick={onClose} aria-label="Volver" disabled={generando}
+            style={{ flexShrink: 0, minHeight: '44px', padding: '0 14px', borderRadius: '12px', border: '1.5px solid #dadce0', background: '#fff', color: '#3c4043', fontWeight: 700, fontSize: '.92rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            ← Volver
+          </button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#202124', lineHeight: 1.25 }}>Link para el árbitro</div>
+            <div style={{ fontSize: '.88rem', color: '#5f6368', marginTop: '3px', lineHeight: 1.4 }}>El árbitro recibe <b>un solo link</b> con todos los partidos que marques aquí.</div>
           </div>
         </div>
 
-        <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '4px 16px 8px', flex: 1 }}>
+        <div style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '14px 16px 12px', flex: 1 }}>
+
+          {/* Paso 1: el partido desde donde se entró, ya incluido */}
+          <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#5f6368', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: '8px' }}>Paso 1 · Ya va en el link</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#e8f5e9', border: '2px solid #34a853', borderRadius: '14px', padding: '12px 14px' }}>
+            <span aria-hidden="true" style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#34a853', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '1rem', flexShrink: 0 }}>✓</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: '1rem', fontWeight: 800, color: '#202124', lineHeight: 1.25 }}>{nombre(partido)}</div>
+              <div style={{ fontSize: '.84rem', color: '#3c6e47', marginTop: '2px' }}>{partido.played_at ? `${cap(etiquetaDia(partido.played_at))} · ` : ''}{cuando(partido)}</div>
+            </div>
+          </div>
+
+          {/* Paso 2: marcar más partidos (opcional) */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', margin: '22px 0 4px' }}>
+            <div style={{ fontSize: '.8rem', fontWeight: 800, color: '#5f6368', letterSpacing: '.04em', textTransform: 'uppercase' }}>Paso 2 · ¿Dirige más partidos? (opcional)</div>
+          </div>
+          <div style={{ fontSize: '.88rem', color: '#5f6368', lineHeight: 1.4, marginBottom: '10px' }}>
+            Toca un partido para <b>marcarlo</b>: si tiene el cuadro azul con ✓, va en el link. Salen solo los pendientes de <b>{partido.tournaments?.name}</b>.
+          </div>
+          <button type="button" onClick={() => onToggleDia(todosIds, !todosMarcados)}
+            style={{ width: '100%', minHeight: '46px', borderRadius: '12px', border: '1.5px solid #1a73e8', background: '#fff', color: '#1a73e8', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            {todosMarcados ? 'Quitar todos los marcados' : `Marcar los ${todosIds.length} partidos de abajo`}
+          </button>
+
           {dias.map(g => {
             const ids = g.items.map(m => m.id)
             const todos = ids.every(id => sel.includes(id))
             const escDelDia = porEscenario(g.items)
             return (
-              <div key={g.dia} style={{ marginTop: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368' }}>{cap(g.dia)}</span>
+              <div key={g.dia} style={{ marginTop: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid #e8eaed' }}>
+                  <span style={{ fontSize: '1rem', fontWeight: 800, color: '#202124' }}>{cap(g.dia)}</span>
                   <button type="button" onClick={() => onToggleDia(ids, !todos)}
-                    style={{ border: 'none', background: 'none', color: '#1a73e8', fontSize: '.72rem', fontWeight: '600', cursor: 'pointer', padding: '2px 0' }}>
-                    {todos ? 'Quitar el día' : 'Marcar el día'}
+                    style={{ border: 'none', background: 'none', color: '#1a73e8', fontSize: '.9rem', fontWeight: 700, cursor: 'pointer', padding: '8px 0 8px 8px', minHeight: '40px', fontFamily: 'inherit' }}>
+                    {todos ? 'Quitar este día' : 'Marcar este día'}
                   </button>
                 </div>
                 {escDelDia.length > 1 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-                    {escDelDia.map(e => chip(e.ids, e.nombre, `${g.dia}_${e.nombre}`))}
+                  <div style={{ marginBottom: '10px' }}>
+                    <div style={{ fontSize: '.8rem', color: '#80868b', marginBottom: '6px' }}>O marca por cancha:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {escDelDia.map(e => chip(e.ids, e.nombre, `${g.dia}_${e.nombre}`))}
+                    </div>
                   </div>
                 )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {g.items.map(m => {
                     const marcado = sel.includes(m.id)
                     const otroGrupo = linkGrupoVigente(m) && linkGrupoVigente(m) !== grupoDeP
                     return (
-                      <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', border: `1.5px solid ${marcado ? '#1a73e8' : '#e8eaed'}`, background: marcado ? '#f3f8ff' : '#fff', borderRadius: '10px', padding: '9px 10px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={marcado} onChange={() => onToggle(m.id)} style={{ width: '18px', height: '18px', accentColor: '#1a73e8', flexShrink: 0 }}/>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: '.82rem', fontWeight: '600', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre(m)}</div>
-                          <div style={{ fontSize: '.7rem', color: '#80868b', marginTop: '1px' }}>
-                            {m.played_at ? fmtHoraDate(m.played_at) : 'Por confirmar'}{m.location ? ` · ${m.location}` : ''}{m.matchday ? ` · Jornada ${m.matchday}` : ''}
-                          </div>
-                          {otroGrupo && marcado && <div style={{ fontSize: '.66rem', color: '#e8710a', marginTop: '2px' }}>Ya está en otro link — pasará a este</div>}
-                        </div>
-                      </label>
+                      <button key={m.id} type="button" onClick={() => onToggle(m.id)} aria-pressed={marcado}
+                        style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', textAlign: 'left', border: `2px solid ${marcado ? '#1a73e8' : '#dadce0'}`, background: marcado ? '#eef4ff' : '#fff', borderRadius: '14px', padding: '12px 14px', minHeight: '64px', cursor: 'pointer', fontFamily: 'inherit', color: '#202124' }}>
+                        <span aria-hidden="true" style={{ width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '1rem', border: `2px solid ${marcado ? '#1a73e8' : '#9aa0a6'}`, background: marcado ? '#1a73e8' : '#fff', color: '#fff' }}>{marcado ? '✓' : ''}</span>
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: 'block', fontSize: '1rem', fontWeight: 700, lineHeight: 1.25 }}>{nombre(m)}</span>
+                          <span style={{ display: 'block', fontSize: '.84rem', color: '#5f6368', marginTop: '2px' }}>{cuando(m)}</span>
+                          {otroGrupo && marcado && <span style={{ display: 'block', fontSize: '.8rem', color: '#c25e00', fontWeight: 600, marginTop: '3px' }}>Estaba en otro link: pasará a este.</span>}
+                        </span>
+                        <span style={{ flexShrink: 0, fontSize: '.8rem', fontWeight: 800, color: marcado ? '#1a73e8' : '#80868b' }}>{marcado ? 'Marcado' : 'Tocar'}</span>
+                      </button>
                     )
                   })}
                 </div>
@@ -586,15 +620,22 @@ function ModalLinkArbitro({ modal, linkGrupoVigente, generando, onToggle, onTogg
           })}
         </div>
 
-        <div style={{ padding: '12px 16px', borderTop: '1px solid #e8eaed', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {/* Barra fija: cuántos van en el link + botón principal */}
+        <div style={{ padding: '12px 16px calc(14px + env(safe-area-inset-bottom))', borderTop: '1px solid #e8eaed', background: '#fff', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ textAlign: 'center', fontSize: '.95rem', color: '#202124', fontWeight: 700 }}>
+            {extras === 0 ? 'Va 1 partido en el link' : `Van ${total} partidos en el link`}
+            {extras > 0 && <span style={{ color: '#5f6368', fontWeight: 500 }}> (el de arriba + {extras} marcado{extras === 1 ? '' : 's'})</span>}
+          </div>
           <button type="button" onClick={() => onConfirmar(false)} disabled={generando}
-            style={{ border: 'none', borderRadius: '10px', padding: '12px', fontSize: '.9rem', fontWeight: '700', cursor: generando ? 'default' : 'pointer', background: '#1a73e8', color: '#fff', opacity: generando ? 0.7 : 1 }}>
-            {generando ? 'Generando…' : total > 1 ? `Copiar link con ${total} partidos` : 'Copiar link de este partido'}
+            style={{ border: 'none', borderRadius: '14px', minHeight: '54px', fontSize: '1.05rem', fontWeight: 800, cursor: generando ? 'default' : 'pointer', background: '#1a73e8', color: '#fff', opacity: generando ? 0.7 : 1, fontFamily: 'inherit' }}>
+            {generando ? 'Generando…' : total > 1 ? `Copiar link de los ${total} partidos` : 'Copiar link de este partido'}
           </button>
-          <button type="button" onClick={() => onConfirmar(true)} disabled={generando}
-            style={{ border: '1px solid #dadce0', borderRadius: '10px', padding: '10px', fontSize: '.82rem', fontWeight: '600', cursor: 'pointer', background: '#fff', color: '#5f6368' }}>
-            No, solo este partido
-          </button>
+          {extras > 0 && (
+            <button type="button" onClick={() => onConfirmar(true)} disabled={generando}
+              style={{ border: 'none', background: 'none', minHeight: '44px', fontSize: '.92rem', fontWeight: 700, cursor: 'pointer', color: '#5f6368', textDecoration: 'underline', fontFamily: 'inherit' }}>
+              Mejor solo el partido de arriba
+            </button>
+          )}
         </div>
       </div>
     </div>
