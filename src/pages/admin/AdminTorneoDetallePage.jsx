@@ -1684,6 +1684,31 @@ export default function AdminTorneoDetallePage() {
     setSubiendoFotoId(null)
   }
 
+  // Marca del jugador: Profesional / Exprofesional / Ninguno. Un toque y queda guardado; se ve en la plantilla pública.
+  // Se actualiza en pantalla de una vez y, si la base no lo guarda (sin permiso o falta la migración), vuelve a como estaba.
+  const [nivelGuardandoId, setNivelGuardandoId] = useState(null)
+  async function marcarNivelJugador(playerId, nombre, nivel) {
+    if (!playerId || nivelGuardandoId) return
+    const actual = jugadores.find(r => r.player_id === playerId)?.players || {}
+    const antes = { es_profesional: !!actual.es_profesional, es_exprofesional: !!actual.es_exprofesional }
+    const payload = { es_profesional: nivel === 'profesional', es_exprofesional: nivel === 'exprofesional' }
+    if (antes.es_profesional === payload.es_profesional && antes.es_exprofesional === payload.es_exprofesional) return
+    const poner = v => setJugadores(prev => prev.map(r => r.player_id === playerId ? { ...r, players: { ...(r.players || {}), ...v } } : r))
+    setNivelGuardandoId(playerId)
+    poner(payload)
+    try {
+      const { data: upd, error } = await supabase.from('players').update(payload).eq('id', playerId).select('id')
+      if (error) throw error
+      if (!upd || !upd.length) throw new Error('sin permiso')
+      showMsg(nivel === 'profesional' ? `${nombre}: marcado como profesional ✓` : nivel === 'exprofesional' ? `${nombre}: marcado como exprofesional ✓` : `${nombre}: sin marca ✓`)
+    } catch (e) {
+      poner(antes)
+      const falta = /es_exprofesional/i.test(e?.message || '') || e?.code === '42703'
+      showMsg(falta ? avisoMigracion('migracion_exprofesional.sql') : 'No se pudo guardar la marca del jugador. Intenta de nuevo.', 'error')
+    }
+    setNivelGuardandoId(null)
+  }
+
   async function fetchJugadores() {
     const { data } = await supabase.from('tournament_player_registrations').select('*, players(*), teams(name)').eq('tournament_id', id)
     setJugadores(aplicarAlias(data || [], await getAlias()))
@@ -7090,6 +7115,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                     <div style={{ flex:1, minWidth:0 }}>
                                       <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#202124' }}>{p.name||'—'}</div>
                                       <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{p.posicion_futbol5||p.posicion_futbol7||p.posicion_futbol11||'Sin posición'}</div>
+                                      {(p.es_profesional || p.es_exprofesional) && (
+                                        <span style={{ display:'inline-block', marginTop:'3px', fontSize:'.66rem', fontWeight:'800', color:'#fff', background: p.es_profesional ? '#7b3ff2' : '#d97706', borderRadius:'8px', padding:'1px 8px' }}>
+                                          {p.es_profesional ? '🎓 Profesional' : '⚽ Exprofesional'}
+                                        </span>
+                                      )}
                                       {sancion && (
                                         <div style={{ fontSize:'.65rem', color:'#d93025', fontWeight:'600', marginTop:'2px' }}>
                                           🚫 Sancionado{sancion.fecha_fin ? ` hasta ${new Date(sancion.fecha_fin).toLocaleDateString('es-CO')}` : ' (indefinido)'} — {sancion.motivo}
@@ -7110,7 +7140,21 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                     const explica = { flex:'1 1 180px', fontSize:'.74rem', color:'#5f6368', lineHeight:1.4, paddingTop:'2px' }
                                     return (
                                       <div>
-                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', marginBottom:'2px' }}>CAMBIOS NORMALES</div>
+                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', marginBottom:'2px' }}>MARCA DEL JUGADOR</div>
+                                        <div style={filaAccion}>
+                                          {[
+                                            { id:'ninguno',       label:'Ninguno',          activo: !p.es_profesional && !p.es_exprofesional, color:'#5f6368' },
+                                            { id:'profesional',   label:'🎓 Profesional',   activo: !!p.es_profesional,   color:'#7b3ff2' },
+                                            { id:'exprofesional', label:'⚽ Exprofesional', activo: !!p.es_exprofesional, color:'#d97706' },
+                                          ].map(o => (
+                                            <button key={o.id} type="button" onClick={() => marcarNivelJugador(j.player_id, p.name || 'Jugador', o.id)} disabled={nivelGuardandoId === j.player_id} aria-pressed={o.activo}
+                                              style={{ ...botonBase, minWidth:'112px', background: o.activo ? o.color : '#fff', border: `1.5px solid ${o.activo ? o.color : '#dadce0'}`, color: o.activo ? '#fff' : '#3c4043', opacity: nivelGuardandoId === j.player_id ? .6 : 1 }}>
+                                              {o.activo ? '✓ ' : ''}{o.label}
+                                            </button>
+                                          ))}
+                                          <div style={explica}>¿Es o fue jugador profesional? Se ve en la plantilla pública del equipo.</div>
+                                        </div>
+                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', margin:'10px 0 2px' }}>CAMBIOS NORMALES</div>
                                         {equipos.length > 1 && (
                                           <div style={filaAccion}>
                                             <button onClick={() => setMoviendoJugadorId(moviendoJugadorId === j.id ? null : j.id)}

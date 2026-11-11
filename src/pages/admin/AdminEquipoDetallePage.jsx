@@ -818,7 +818,8 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
     if (antes.es_profesional === payload.es_profesional && antes.es_exprofesional === payload.es_exprofesional) return
     setNivelGuardando(j.id)
     setJugadoresEquipoGlobal(prev => prev.map(x => x.id === j.id ? { ...x, ...payload } : x))
-    const { error } = await supabase.from('players').update(payload).eq('id', j.id)
+    const { data: upd, error: errNivel } = await supabase.from('players').update(payload).eq('id', j.id).select('id')
+    const error = errNivel || (!upd || !upd.length ? { message: 'sin permiso' } : null)
     setNivelGuardando(null)
     if (error) {
       setJugadoresEquipoGlobal(prev => prev.map(x => x.id === j.id ? { ...x, ...antes } : x))
