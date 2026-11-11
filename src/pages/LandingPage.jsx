@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Trophy, Users, Target, Radio, Building2, GraduationCap, ArrowRight, X, MapPin, Megaphone, ChevronLeft, ChevronRight, Search, SlidersHorizontal } from 'lucide-react'
 import { GiSoccerBall } from 'react-icons/gi'
@@ -6,30 +6,14 @@ import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp, FaYoutube } from 'react-
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
 import { digitosWhatsapp } from '../lib/telefonoCo'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream, marcadorTransmision } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import { usePresenciaSitio } from '../lib/presenciaSitio'
 import { useIntervaloVisible } from '../lib/useIntervaloVisible'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
-// El reproductor de la transmisión pesa bastante y solo hace falta cuando HAY
-// una transmisión en vivo: se descarga aparte, sin frenar la portada.
 const SIN_STREAMS = [] // referencia fija: así el hook de canales no se reinicia en cada render
-const LiveEmbed = lazy(() => import('../components/LiveEmbed'))
 import BotonAvisos from '../components/BotonAvisos'
-import MarcadorEnVivoOverlay from '../components/MarcadorEnVivoOverlay'
-import GolesEnVivoOverlay from '../components/GolesEnVivoOverlay'
-import GolAvisoEnVivoOverlay from '../components/GolAvisoEnVivoOverlay'
-import TarjetaAvisoEnVivoOverlay from '../components/TarjetaAvisoEnVivoOverlay'
-import { useCanalesEnVivo, resolverStreams } from '../lib/enVivoCanal'
-import TablaEnVivoOverlay from '../components/TablaEnVivoOverlay'
-import { overlayTapaMarcador, propsAvisoGol } from '../components/enVivoUI'
-import JugadoresEnVivoOverlay from '../components/JugadoresEnVivoOverlay'
-import PatrocinadorEnVivoOverlay from '../components/PatrocinadorEnVivoOverlay'
-import { disparoDeControl, disparoEsExclusivo, patrocinadorDeDisparo, patrocinadoresDeControl } from '../lib/patrocinadorDisparo'
-import PatrocinadoresTorneoOverlay from '../components/PatrocinadoresTorneoOverlay'
-import { tablasConVivo } from '../lib/torneoTablas'
-import { useTablasBase } from '../lib/useTablasBase'
-import { useLogosTorneos } from '../lib/useLogosTorneos'
+import { useCanalesEnVivo, resolverStreams, useVideosYoutubeVivos, esCanalYoutube } from '../lib/enVivoCanal'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
 import { urlMini, alFallarMini } from '../lib/imagenMini'
@@ -112,6 +96,44 @@ function Escudo({ logo_url, name, size = 40, radius = 10, urgente = false }) {
         ? <img src={urlMini(logo_url, Math.max(size, 64))} onError={alFallarMini} alt={name || ''} loading={urgente ? 'eager' : 'lazy'} fetchPriority={urgente ? 'high' : undefined} decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: size > 30 ? '4px' : '2px' }}/>
         : <span style={{ fontSize: size * .34, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
     </div>
+  )
+}
+
+// Tarjeta de una transmisión en vivo: liviana (no descarga el video). Al tocarla se abre YouTube / Facebook / Instagram.
+function TarjetaEnVivo({ stream, partido }) {
+  const plataforma = /facebook\.com|fb\.watch/i.test(stream.url) ? 'Facebook' : /instagram\.com/i.test(stream.url) ? 'Instagram' : 'YouTube'
+  const v = partido?.vivo
+  const sigla = n => (n || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  return (
+    <a href={stream.url} target="_blank" rel="noopener noreferrer"
+      aria-label={`Ver la transmisión en vivo en ${plataforma}${stream.titulo ? ': ' + stream.titulo : ''}`}
+      style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px', borderRadius: '18px', textDecoration: 'none', color: S.text, background: 'linear-gradient(160deg,#17261a 0%,#0e1610 55%,#0a0a0a 100%)', border: '1px solid #2c3d2d' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start', background: S.red, color: '#fff', fontWeight: 900, fontSize: '.74rem', letterSpacing: '.06em', padding: '5px 10px', borderRadius: '999px' }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff', display: 'block' }}/> EN VIVO AHORA
+      </span>
+      {partido && v ? (
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px' }}>
+          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '96px', textAlign: 'center', fontSize: '.84rem', fontWeight: 700, color: S.text2 }}>
+            <Escudo logo_url={partido.home?.logo_url} name={partido.home?.name} size={44} radius={12} urgente/>
+            {partido.home?.name || sigla('Local')}
+          </span>
+          <span style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '.04em', textAlign: 'center' }}>
+            {v.golesLocal ?? 0} - {v.golesVis ?? 0}
+            <span style={{ display: 'block', fontSize: '.74rem', color: v.descanso ? S.gold : S.green, letterSpacing: '.04em' }}>{labelTiempoVivo(v)}</span>
+          </span>
+          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '96px', textAlign: 'center', fontSize: '.84rem', fontWeight: 700, color: S.text2 }}>
+            <Escudo logo_url={partido.away?.logo_url} name={partido.away?.name} size={44} radius={12} urgente/>
+            {partido.away?.name || sigla('Visitante')}
+          </span>
+        </span>
+      ) : (
+        <span style={{ fontSize: '1.15rem', fontWeight: 900, lineHeight: 1.25 }}>{stream.titulo || 'Transmisión en vivo'}</span>
+      )}
+      {partido && v && stream.titulo && <span style={{ textAlign: 'center', fontSize: '.86rem', color: S.muted }}>{stream.titulo}</span>}
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: S.green, color: '#0a1a05', fontWeight: 900, fontSize: '1.05rem', borderRadius: '14px', minHeight: '54px', padding: '0 18px' }}>
+        ▶&nbsp; Ver la transmisión en {plataforma}
+      </span>
+    </a>
   )
 }
 
@@ -357,7 +379,6 @@ export default function LandingPage({ modo = 'inicio' }) {
   const [torneosCargados, setTorneosCargados] = useState(() => !!leerCacheRapido('landing_torneos'))
   const [visitasHoy, setVisitasHoy] = useState({}) // { [torneo_id]: cantidad de visitas hoy }
   const [matchesVivoRaw, setMatchesVivoRaw] = useState([])
-  const [streamsOk, setStreamsOk] = useState({}) // { [idTransmisión]: url } transmisiones ya verificadas como directo (no una vieja)
   const [avisoSinVivo, setAvisoSinVivo] = useState(false) // aviso grande "no hay partidos en vivo" (se quita solo a los 5 s)
   const [senalVivo, setSenalVivo] = useState(0) // sube cada vez que tocan "VER EN VIVO": la lista de partidos salta al filtro En vivo
   const [detalleVivoId,  setDetalleVivoId]  = useState(null) // id del partido en vivo que se está viendo en detalle (goles/tarjetas)
@@ -484,21 +505,23 @@ export default function LandingPage({ modo = 'inicio' }) {
     return () => clearTimeout(t)
   }, [])
   const canalesEnVivo = useCanalesEnVivo(streamsMontar ? streamsConfig : SIN_STREAMS)
-  // Videos que YouTube dice que ya no existen / son privados: la transmisión se esconde en vez de mostrar "Video no disponible"
-  const [streamsCaidos, setStreamsCaidos] = useState({}) // { [idTransmisión]: url }
-  const streamsResueltos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo).filter(s => streamsCaidos[s.id] !== s.url), [streamsConfig, canalesEnVivo, streamsCaidos])
-  // Solo sale lo que está EN VIVO de verdad:
-  //  · YouTube: el propio reproductor consulta si el video transmite ahora (LiveEmbed con soloSiEnVivo); canales: ya se filtran arriba.
+  const streamsResueltos = useMemo(() => resolverStreams(streamsConfig, canalesEnVivo), [streamsConfig, canalesEnVivo])
+  // Solo sale lo que está EN VIVO de verdad. La portada NO incrusta el video (pesaba mucho): muestra una tarjeta
+  // "EN VIVO" y quien la toca va directo a YouTube / Facebook a ver el partido.
+  //  · Canal de YouTube: ya viene filtrado arriba (solo aparece mientras el canal transmite).
+  //  · Video de YouTube: se pregunta a /api/yt-video-estado si transmite ahora (un directo terminado no sale).
   //  · Facebook/Instagram: no hay forma de saber si siguen transmitiendo, así que salen únicamente mientras el partido ligado
-  //    a esa transmisión (o el torneo en "torneo_auto") se está jugando. Antes salían siempre, aunque la transmisión hubiera terminado.
+  //    a esa transmisión (o el torneo en "torneo_auto") se está jugando.
   const esYouTube = u => /(^|\/\/|\.)(youtube\.com|youtu\.be)/i.test(String(u || ''))
+  const idsCanalYT = useMemo(() => new Set(streamsConfig.filter(s => esCanalYoutube(s.url)).map(s => s.id)), [streamsConfig])
+  const videosYT = useMemo(() => (streamsMontar ? streamsResueltos.filter(s => esYouTube(s.url) && !idsCanalYT.has(s.id)) : SIN_STREAMS), [streamsMontar, streamsResueltos, idsCanalYT])
+  const videosYTVivos = useVideosYoutubeVivos(videosYT)
   const clavePartidoStream = streamsResueltos.filter(s => !esYouTube(s.url) && partidoActivoDeStream(s, partidosVivo)).map(s => s.id).join('|')
   const streamsVivos = useMemo(() => {
     const conPartido = clavePartidoStream ? clavePartidoStream.split('|') : []
-    return streamsResueltos.filter(s => esYouTube(s.url) || conPartido.includes(s.id))
-  }, [streamsResueltos, clavePartidoStream])
-  const idsTorneoAuto = useMemo(() => streamsVivos.map(s => s.torneo_auto).filter(Boolean), [streamsVivos])
-  const streamsVisibles = streamsVivos.filter(s => streamsOk[s.id] === s.url)
+    return streamsResueltos.filter(s => esYouTube(s.url) ? (idsCanalYT.has(s.id) || videosYTVivos[s.id] === true) : conPartido.includes(s.id))
+  }, [streamsResueltos, clavePartidoStream, idsCanalYT, videosYTVivos])
+  const streamsVisibles = streamsVivos
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
   usePresenciaSitio(streamsVisibles.length > 0) // cuenta de personas en el sitio (semáforo del admin)
   // Con algo en vivo: partidos cada 20 s; sin nada en vivo basta cada minuto. El panel de control (repetición/tabla/goles)
@@ -511,7 +534,6 @@ export default function LandingPage({ modo = 'inicio' }) {
     const t = setTimeout(() => setAvisoSinVivo(false), 5000)
     return () => clearTimeout(t)
   }, [avisoSinVivo])
-  const logoDeTorneoAuto = useLogosTorneos(idsTorneoAuto)
 
   // Mientras haya alguna transmisión con marcador activa, escucha los
   // cambios de la tabla matches casi al instante (en vez de esperar hasta
@@ -530,106 +552,6 @@ export default function LandingPage({ modo = 'inicio' }) {
       .subscribe()
     return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
   }, [streamsVivos])
-
-  // Mientras haya alguna transmisión activa, escucha los cambios en
-  // site_config casi al instante — es ahí donde vive el panel de control de
-  // /admin/config-sitio (ver en_vivo_control), así que apenas quien
-  // transmite aprieta un botón (repetición, mostrar tabla, mostrar goles),
-  // se ve acá sin que nadie tenga que recargar la página.
-  useEffect(() => {
-    if (!streamsVivos.length) return
-    const timer = { current: null }
-    const channel = supabase
-      .channel('landing-en-vivo-control')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'site_config' }, () => {
-        clearTimeout(timer.current)
-        timer.current = setTimeout(fetchSiteConfig, 300)
-      })
-      .subscribe()
-    return () => { clearTimeout(timer.current); supabase.removeChannel(channel) }
-  }, [streamsVivos.length])
-
-  // Imágenes para la repetición del gol — se cargan desde /admin/config-sitio
-  // (junto con el link de la transmisión en vivo), se puede subir varias y
-  // van rotando en orden.
-  const imagenesRepeticion = useMemo(() => (
-    Array.isArray(siteConfig?.en_vivo_repeticion_imagenes) ? siteConfig.en_vivo_repeticion_imagenes : []
-  ), [siteConfig])
-
-  // Las repeticiones SOLO se disparan a mano desde el panel de control
-  // (botones "Repetición" / "Cámara lenta"). Ya no hay repetición automática
-  // al marcar un gol: dependía de calcular el momento a ojo y fallaba; lo que
-  // marca el árbitro solo actualiza el marcador.
-  const repeticionContadorRef = useRef(0)
-  const [repeticiones, setRepeticiones] = useState({}) // { [streamId]: { key, segundos, imagenUrl } }
-
-  // Repetición MANUAL, disparada a propósito desde el panel de control de
-  // /admin/config-sitio (botón "Repetición" o "Cámara lenta") — a diferencia
-  // de la automática de arriba (que espera el retraso de la transmisión
-  // porque reacciona sola a un gol que nadie vio venir), acá quien transmite
-  // ya está viendo el video en el momento justo, así que se dispara de una,
-  // sin esperar nada. `repeticion_ts` cambia cada vez que se aprieta el
-  // botón (ver en_vivo_control); se compara contra la última marca ya
-  // procesada para no repetir la misma repetición dos veces si llega otro
-  // cambio de site_config por cualquier otro motivo.
-  const controlRepeticionRef = useRef({}) // { [streamId]: último repeticion_ts ya mostrado }
-  useEffect(() => {
-    const control = siteConfig?.en_vivo_control || {}
-    streamsVivos.forEach(s => {
-      const c = control[s.id]
-      if (!c?.repeticion_ts || controlRepeticionRef.current[s.id] === c.repeticion_ts) return
-      controlRepeticionRef.current[s.id] = c.repeticion_ts
-      if (s.repeticion_transmision) return // la repetición sale dentro de la transmisión (overlay de Prism/OBS): acá no se repite
-      const imagenUrl = imagenesRepeticion.length
-        ? imagenesRepeticion[repeticionContadorRef.current % imagenesRepeticion.length].url
-        : null
-      repeticionContadorRef.current += 1
-      // repeticion_objetivo_segundos: el segundo exacto de la transmisión al
-      // que se devolvió quien transmite con la barra de YouTube en su propio
-      // panel — se salta directo ahí, en vez de calcular "tantos segundos
-      // para atrás" (eso solo lo usa la repetición automática del gol, arriba,
-      // que no tiene un punto elegido a mano). Si no vino (transmisión que no
-      // es de YouTube, o el reproductor de quien transmite no respondió a
-      // tiempo), LiveEmbed cae de vuelta al valor configurado para esta
-      // transmisión.
-      setRepeticiones(r => ({ ...r, [s.id]: { key: Date.now(), objetivoSegundos: c.repeticion_objetivo_segundos, duracionVisible: 12, imagenUrl, camaraLenta: !!c.repeticion_camara_lenta } }))
-    })
-  }, [siteConfig, streamsVivos, imagenesRepeticion])
-
-  // Gráfica de tabla de posiciones encima del video (también prendida desde
-  // el panel de control): se trae y calcula una sola vez por torneo (caché),
-  // reutilizando computeTablaGeneral — la misma función que usa la tabla de
-  // posiciones real del torneo — para que la gráfica en vivo muestre
-  // exactamente lo mismo que esa tabla.
-  const idsTablaEnVivo = useMemo(() => [...new Set(
-    Object.values(siteConfig?.en_vivo_control || {})
-      .filter(c => c?.overlay === 'tabla' && c.overlay_tournament_id)
-      .map(c => c.overlay_tournament_id)
-  )], [siteConfig])
-  const basesTablaEnVivo = useTablasBase(idsTablaEnVivo)
-  // + lo que se está jugando AHORA (matchesVivoRaw), para que la tabla muestre "así va"
-  const tablasEnVivo = useMemo(() => { void tick; return tablasConVivo(basesTablaEnVivo, matchesVivoRaw) }, [basesTablaEnVivo, matchesVivoRaw, tick])
-
-  // Publicidad de un patrocinador (botón del panel de control, aparte de los
-  // patrocinadores oficiales que ya rotan solos en el banner de abajo): a
-  // diferencia de tabla/goles/jugadores, esto no se queda prendido — aparece
-  // unos segundos encima del video y se apaga solo.
-  const patrocinadorVistoRef = useRef({}) // { [streamId]: último patrocinador_ts ya mostrado }
-  const patrocinadorTimersRef = useRef({}) // { [streamId]: seguro para apagar la publicidad }
-  const [patrocinadoresMostrando, setPatrocinadoresMostrando] = useState({}) // { [streamId]: { id, tipo, tamano, clave } }
-  const [vozPatrocinador, setVozPatrocinador] = useState({}) // { [streamId]: true } mientras suena un video de patrocinador (se baja el volumen del en vivo)
-  useEffect(() => {
-    const control = siteConfig?.en_vivo_control || {}
-    streamsVivos.forEach(s => {
-      const c = control[s.id]
-      if (!c?.patrocinador_ts || patrocinadorVistoRef.current[s.id] === c.patrocinador_ts) return
-      patrocinadorVistoRef.current[s.id] = c.patrocinador_ts
-      setPatrocinadoresMostrando(m => ({ ...m, [s.id]: disparoDeControl(c) }))
-      clearTimeout(patrocinadorTimersRef.current[s.id])
-      // Seguro: la propia publicidad avisa cuando termina (logo 8 s, banners 10 s cada uno, video al acabar)
-      patrocinadorTimersRef.current[s.id] = setTimeout(() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null })), 240000)
-    })
-  }, [siteConfig, streamsVivos])
 
   // Los 4 números de arriba se calculan EN la base (función stats_inicio, ver
   // migracion_rendimiento_publico.sql) — antes se descargaban todos los
@@ -826,7 +748,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   // migracion_site_config.sql) simplemente no se muestra nada, sin romper
   // el resto de la página.
   async function fetchSiteConfig() {
-    const { data, error } = await supabase.from('site_config').select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo').eq('id', true).maybeSingle()
+    const { data, error } = await supabase.from('site_config').select('en_vivo_streams').eq('id', true).maybeSingle()
     if (error) return
     setSiteConfig(data || null)
   }
@@ -835,7 +757,7 @@ export default function LandingPage({ modo = 'inicio' }) {
   // tabla). Si falta alguna columna (migración sin correr) se vuelve a las dos consultas separadas, cada una tolerante.
   async function fetchConfigInicial() {
     const { data, error } = await supabase.from('site_config')
-      .select('en_vivo_streams, en_vivo_repeticion_imagenes, en_vivo_control, patrocinador_logos_torneo, portada_inicio').eq('id', true).maybeSingle()
+      .select('en_vivo_streams, portada_inicio').eq('id', true).maybeSingle()
     if (error) {
       fetchSiteConfig()
       const r = await supabase.from('site_config').select('portada_inicio').eq('id', true).maybeSingle()
@@ -1098,55 +1020,14 @@ export default function LandingPage({ modo = 'inicio' }) {
         </div>
       )}
       {streamsMontar && streamsVivos.length > 0 && (
-        <div style={{ maxWidth: '860px', margin: streamsVisibles.length > 0 ? '44px auto 0' : '0 auto', padding: streamsVisibles.length > 0 ? '0 16px' : 0 }}>
-          <h2 style={{ display: streamsVisibles.length > 0 ? undefined : 'none', fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px', alignItems: 'center', gap: '8px', ...(streamsVisibles.length > 0 ? { display: 'flex' } : {}) }}>
+        <div style={{ maxWidth: '860px', margin: '44px auto 0', padding: '0 16px' }}>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: S.red }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
             </span>
           </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-            {streamsVivos.map(s => {
-              const partidoDeStream = partidoActivoDeStream(s, partidosVivo)
-              const controlStream = siteConfig?.en_vivo_control?.[s.id]
-              const marcadorStream = marcadorTransmision(partidoDeStream, controlStream) // planilla del árbitro (automático) + goles sumados desde el control, solo en el video
-              const patrocinadorIdMostrando = patrocinadoresMostrando[s.id]
-              const sponsorMostrando = patrocinadorDeDisparo(patrocinadoresDeControl(controlStream), patrocinadorIdMostrando)
-              const descansoStream = !!partidoDeStream?.vivo?.descanso
-              // Con el tablero de goles abajo se esconde el marcador de arriba (la mirada se queda en el minuto a minuto)
-              const tapaMarcador = overlayTapaMarcador(controlStream?.overlay) && !!partidoDeStream && !(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream))
-              return (
-                <div key={s.id} style={streamsOk[s.id] === s.url ? undefined : { position: 'fixed', left: '-200vw', top: 0, width: 'min(860px, 100vw)', pointerEvents: 'none' }}>
-                  {s.titulo && <div style={{ color: S.text2, fontWeight: 700, fontSize: '.85rem', marginBottom: '8px' }}>{s.titulo}</div>}
-                  <Suspense fallback={<div style={{ aspectRatio: '16 / 9', background: S.card, borderRadius: '14px', border: `1px solid ${S.border}` }}/>}>
-                  <LiveEmbed url={s.url} titulo={s.titulo} S={S} soloSiEnVivo onVerificado={() => setStreamsOk(o => (o[s.id] === s.url ? o : { ...o, [s.id]: s.url }))} onNoDisponible={() => setStreamsCaidos(c => (c[s.id] === s.url ? c : { ...c, [s.id]: s.url }))} bajarVolumen={!!vozPatrocinador[s.id]} logoTorneo={partidoDeStream?.tournaments?.logo_url || logoDeTorneoAuto(s.torneo_auto)}
-                    overlay={(
-                      <>
-                        {marcadorStream && !tapaMarcador && <MarcadorEnVivoOverlay partido={marcadorStream}/>}
-                        {partidoDeStream && <GolAvisoEnVivoOverlay partido={partidoDeStream} {...propsAvisoGol(controlStream?.overlay, tapaMarcador)}/>}
-                        {partidoDeStream && <TarjetaAvisoEnVivoOverlay partido={partidoDeStream} {...propsAvisoGol(controlStream?.overlay, tapaMarcador)}/>}
-                        {sponsorMostrando && <PatrocinadorEnVivoOverlay key={patrocinadorIdMostrando.clave} patrocinador={sponsorMostrando} tipo={patrocinadorIdMostrando.tipo} tamano={patrocinadorIdMostrando.tamano} descanso={descansoStream} onSonido={v => setVozPatrocinador(m => (!!m[s.id] === v ? m : { ...m, [s.id]: v }))} onTerminar={() => setPatrocinadoresMostrando(m => ({ ...m, [s.id]: null }))}/>}
-                        {!(sponsorMostrando && disparoEsExclusivo(patrocinadorIdMostrando, descansoStream)) && (
-                          <>
-                            {controlStream?.overlay === 'goles' && partidoDeStream && <GolesEnVivoOverlay partido={partidoDeStream}/>}
-                            {controlStream?.overlay === 'tabla' && <TablaEnVivoOverlay filas={tablasEnVivo[controlStream.overlay_tournament_id]} pagina={controlStream.tabla_pagina}/>}
-                            {controlStream?.overlay === 'jugadores' && partidoDeStream && <JugadoresEnVivoOverlay partido={partidoDeStream}/>}
-                          </>
-                        )}
-                        {/* Logos de patrocinador del torneo, ubicados y
-                            publicados a mano desde /admin/config-sitio — ver
-                            PatrocinadoresTorneoOverlay. Independiente de la
-                            publicidad rápida de arriba: pueden estar los dos
-                            a la vez. */}
-                        {partidoDeStream?.tournament_id && (
-                          <PatrocinadoresTorneoOverlay logos={siteConfig?.patrocinador_logos_torneo?.[partidoDeStream.tournament_id]} activos={controlStream?.logos_activos}/>
-                        )}
-                      </>
-                    )}
-                    repeticion={repeticiones[s.id]}/>
-                  </Suspense>
-                </div>
-              )
-            })}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {streamsVivos.map(s => <TarjetaEnVivo key={s.id} stream={s} partido={partidoActivoDeStream(s, partidosVivo)}/>)}
           </div>
         </div>
       )}

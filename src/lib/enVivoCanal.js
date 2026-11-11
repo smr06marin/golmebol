@@ -84,3 +84,52 @@ export function resolverStreams(streams, estados) {
     return url ? [{ ...s, url }] : []
   })
 }
+
+
+// Id (11 caracteres) de un link de VIDEO de YouTube: watch?v=, youtu.be/, /live/, /embed/, /shorts/. null si no es de video.
+export function idVideoYoutube(url) {
+  try {
+    const txt = String(url || '').trim()
+    const u = new URL(/^https?:\/\//i.test(txt) ? txt : 'https://' + txt)
+    const host = u.hostname.toLowerCase().replace(/^(www\.|m\.)/, '')
+    let id = null
+    if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0]
+    else if (host === 'youtube.com') {
+      id = u.searchParams.get('v')
+      if (!id) { const m = /^\/(?:live|embed|shorts)\/([\w-]{11})/.exec(u.pathname); id = m ? m[1] : null }
+    }
+    return id && /^[\w-]{11}$/.test(id) ? id : null
+  } catch { return null }
+}
+
+// Para las transmisiones con link de VIDEO de YouTube (no de canal): pregunta cada 45 s a /api/yt-video-estado si ese video
+// está transmitiendo AHORA. Devuelve { [idTransmision]: true | false }. Un directo terminado, una sala de espera o un video
+// normal dan false; si una consulta falla se conserva el último resultado (una falla pasajera no apaga una transmisión).
+export function useVideosYoutubeVivos(streams) {
+  const videos = useMemo(
+    () => (streams || []).map(s => ({ id: s.id, v: idVideoYoutube(s.url) })).filter(x => x.v),
+    [streams],
+  )
+  const clave = videos.map(x => `${x.id}|${x.v}`).join('\n')
+  const [vivos, setVivos] = useState({})
+  useEffect(() => {
+    if (!videos.length) return undefined
+    let activo = true
+    async function consultar() {
+      if (document.hidden) return
+      await Promise.all(videos.map(async x => {
+        try {
+          const r = await fetch(apiUrl('/api/yt-video-estado?v=' + encodeURIComponent(x.v)))
+          if (!r.ok) return
+          const e = (await r.json()).estado
+          if (activo) setVivos(prev => (prev[x.id] === (e === 'vivo') ? prev : { ...prev, [x.id]: e === 'vivo' }))
+        } catch { /* sin respuesta: se queda con lo último que se supo */ }
+      }))
+    }
+    consultar()
+    const t = setInterval(consultar, CADA_MS)
+    return () => { activo = false; clearInterval(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `videos` sale de `streams`; lo que importa es su contenido (`clave`)
+  }, [clave])
+  return vivos
+}
