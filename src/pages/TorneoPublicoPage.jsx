@@ -25,7 +25,6 @@ import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, mar
 // Árbol de eliminatorias, público y de solo lectura — mismo orden de fases
 // que usa el admin para armar el bracket real.
 const FASE_ORDEN_ELIM = ['octavos', 'cuartos', 'semifinal', 'final']
-const FASE_LABEL_ELIM = { octavos: '⚔️ Octavos', cuartos: '🔥 Cuartos', semifinal: '⚡ Semifinal', final: '🏆 Final' }
 
 // Nombre/fase de cada ronda de la VISTA PREVIA (antes de que existan
 // partidos reales de eliminatorias) — misma lógica que usa el admin en
@@ -162,7 +161,7 @@ const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
 // Misma tabla azul de siempre, pero colapsable con un encabezado — para
 // mostrar un grupo a la vez sin saturar la pantalla cuando el torneo tiene
 // varios grupos.
-function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, clasifican }) {
+function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, clasifican, eliminados, rivales }) {
   const [abierto, setAbierto] = useState(defaultOpen)
   return (
     <div>
@@ -177,7 +176,7 @@ function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, cla
       </button>
       {abierto && (
         <div style={{ marginTop: '8px' }}>
-          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo} clasifican={clasifican}/>
+          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo} clasifican={clasifican} eliminados={eliminados} rivales={rivales}/>
         </div>
       )}
     </div>
@@ -564,12 +563,6 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     })
   }, [partidos, tick])
 
-  // Apenas hay árbol de eliminatorias, lo mostramos de una — sin que el
-  // visitante tenga que buscar la pestaña.
-  useEffect(() => {
-    if (bracket.length > 0 && tab === 'posiciones') setTab('llaves')
-  }, [bracket.length]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // En vivo: apenas el árbitro/admin carga un resultado o se crea un partido
   // nuevo (ej. al avanzar de ronda), esta página pública se actualiza sola,
   // sin que el visitante tenga que recargar.
@@ -953,16 +946,42 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     arqueros: row.arqueros.map(p => ({ name: p.name, foto: p.photo_face_url || p.photo_url })),
   }))
 
-  // "Fase eliminatoria" (el árbol de llaves) aparece como una pestaña MÁS,
-  // sin tapar Posiciones — así la gente puede seguir viendo la tabla de
-  // grupos. Solo se muestra una vez que el organizador ya creó el árbol
-  // real (bracket.length > 0); ya no se proyecta una versión especulativa
-  // antes de eso. Una vez creado, la pestaña queda disponible para siempre
-  // (incluido cuando el torneo ya terminó), mostrando cómo fueron las
-  // eliminaciones.
+  // Equipos eliminados (para marcarlos en rojo en las tablas) y contra quién juegan
+  // ahora. NO se muestra árbol: solo los partidos creados (Resultados / Próximos).
+  // Eliminado = perdió su llave ya terminada, o no entró al primer cruce de eliminatorias
+  // (solo si ese cruce ya está completo). Los que juegan final o tercer puesto no se marcan.
+  const { eliminadosIds, rivalDe } = (() => {
+    const elim = new Set(), rival = {}
+    if (bracket.length === 0) return { eliminadosIds: elim, rivalDe: rival }
+    const porFase = getLlavesPorFaseElim()
+    const esTercer = ll => (ll.matches[0].ronda || '').toLowerCase().includes('tercer')
+    const enTercer = new Set(), enBracket = new Set()
+    FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
+      enBracket.add(ll.teamA.id); enBracket.add(ll.teamB.id)
+      if (esTercer(ll)) { enTercer.add(ll.teamA.id); enTercer.add(ll.teamB.id) }
+    }))
+    FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
+      if (f === 'final' || esTercer(ll) || !ll.terminada || !ll.ganador) return
+      const perdedor = ll.ganador.id === ll.teamA.id ? ll.teamB : ll.teamA
+      if (!enTercer.has(perdedor.id)) elim.add(perdedor.id)
+    }))
+    const primera = FASE_ORDEN_ELIM.find(f => porFase[f])
+    const esperadas = { octavos: 8, cuartos: 4, semifinal: 2, final: 1 }
+    if (primera && porFase[primera].filter(ll => !esTercer(ll)).length >= esperadas[primera]) {
+      equipos.forEach(eq => { if (!enBracket.has(eq.id)) elim.add(eq.id) })
+    }
+    bracket.forEach(m => {
+      if (m.status === 'finished' || !m.home_team_id || !m.away_team_id) return
+      elim.delete(m.home_team_id); elim.delete(m.away_team_id)
+      if (!rival[m.home_team_id]) rival[m.home_team_id] = m.away?.name || null
+      if (!rival[m.away_team_id]) rival[m.away_team_id] = m.home?.name || null
+    })
+    return { eliminadosIds: elim, rivalDe: rival }
+  })()
+
+  // Pestañas: ya no hay árbol de eliminatorias, solo los partidos creados.
   const tabs = [
     { id: 'posiciones', label: 'Posiciones' },
-    ...(bracket.length > 0 ? [{ id: 'llaves', label: '🏆 Fase eliminatoria' }] : []),
     { id: 'resultados', label: 'Resultados' },
     { id: 'proximos',   label: 'Próximos' },
     { id: 'goleadores', label: 'Goleadores' },
@@ -1122,173 +1141,14 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           grupos.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {grupos.map(g => (
-                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo} clasifican={Number(torneo.equipos_clasifican) || 0}/>
+                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo} clasifican={Number(torneo.equipos_clasifican) || 0} eliminados={eliminadosIds} rivales={rivalDe}/>
               ))}
-              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo}/>
+              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe}/>
             </div>
           ) : (
-            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo}/>
+            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe}/>
           )
         )}
-
-        {/* LLAVES (árbol de eliminatorias, público y de solo lectura) */}
-        {tab === 'llaves' && bracket.length > 0 && (() => {
-          const porFase = getLlavesPorFaseElim()
-          const fasesExist = FASE_ORDEN_ELIM.filter(f => porFase[f])
-          if (fasesExist.length === 0) return null
-
-          const llaveFinal = porFase['final']?.find(l => !(l.matches[0].ronda || '').toLowerCase().includes('tercer'))
-          const campeon = llaveFinal?.ganador || null
-          const subcampeon = campeon ? (llaveFinal.ganador.id === llaveFinal.teamA.id ? llaveFinal.teamB : llaveFinal.teamA) : null
-          const llaveTercer = porFase['final']?.find(l => (l.matches[0].ronda || '').toLowerCase().includes('tercer'))
-          const tercerPuestoEq = llaveTercer?.ganador || null
-
-          // Columnas del árbol: fases jugadas + placeholders "por definir" hasta la final
-          const columnas = []
-          let n = porFase[fasesExist[0]].length
-          let ultimaLlavesReales = null
-          for (let idx = FASE_ORDEN_ELIM.indexOf(fasesExist[0]); idx < FASE_ORDEN_ELIM.length; idx++) {
-            const f = FASE_ORDEN_ELIM[idx]
-            if (porFase[f]) {
-              columnas.push({ fase: f, llaves: porFase[f] })
-              n = porFase[f].length
-              ultimaLlavesReales = porFase[f]
-            } else {
-              n = Math.max(Math.floor(n / 2), 1)
-              columnas.push({ fase: f, llaves: Array.from({ length: n }, () => null), feeder: ultimaLlavesReales })
-              ultimaLlavesReales = null
-            }
-          }
-
-          return (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '.66rem', fontWeight: '800', color: '#d93025', background: '#fce8e6', borderRadius: '20px', padding: '3px 10px', letterSpacing: '.04em' }}>
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#d93025', display: 'inline-block' }}/>
-                  EN VIVO
-                </span>
-                <span style={{ fontSize: '.75rem', color: '#5f6368' }}>
-                  Así va el árbol — se actualiza solo apenas se registra un resultado.
-                </span>
-              </div>
-
-              {/* Campeón */}
-              {campeon && (
-                <div style={{ background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '14px', padding: '16px 20px', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '1.8rem' }}>🏆</span>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#fff', border: '1px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {campeon.logo_url ? <img src={urlMini(campeon.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={18} color="#9aa0a6"/>}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '.65rem', fontWeight: '800', color: '#e8710a', letterSpacing: '2px' }}>CAMPEÓN DEL TORNEO</div>
-                      <div style={{ fontWeight: '900', color: '#202124', fontSize: '1.05rem' }}>{campeon.name}</div>
-                    </div>
-                  </div>
-                  {(subcampeon || tercerPuestoEq) && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'center', marginTop: '10px', flexWrap: 'wrap' }}>
-                      {subcampeon && <span style={{ fontSize: '.76rem', color: '#5f6368', fontWeight: '600' }}>🥈 Subcampeón: {subcampeon.name}</span>}
-                      {tercerPuestoEq && <span style={{ fontSize: '.76rem', color: '#5f6368', fontWeight: '600' }}>🥉 Tercer puesto: {tercerPuestoEq.name}</span>}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Árbol */}
-              <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '10px', alignItems: 'stretch' }}>
-                {columnas.map(col => (
-                  <div key={col.fase} style={{ minWidth: '210px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#e8710a', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff4e5', borderRadius: '8px', padding: '6px' }}>
-                      {FASE_LABEL_ELIM[col.fase].toUpperCase()}
-                    </div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: '10px' }}>
-                      {col.llaves.map((ll, i) => ll ? (
-                        <div key={i}
-                          style={{ background: '#fff', border: '1.5px solid #c4c9d0', borderLeft: '4px solid #e8710a', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}>
-                          {(ll.matches[0].ronda || '').toLowerCase().includes('repechaje') && (
-                            <div style={{ padding: '3px 12px', background: '#f3e8fd', fontSize: '.6rem', fontWeight: '800', color: '#9955ff', letterSpacing: '1px' }}>🔁 REPECHAJE</div>
-                          )}
-                          {(ll.matches[0].ronda || '').toLowerCase().includes('tercer') && (
-                            <div style={{ padding: '3px 12px', background: '#fff4e5', fontSize: '.6rem', fontWeight: '800', color: '#cd7f32', letterSpacing: '1px' }}>🥉 TERCER PUESTO</div>
-                          )}
-                          {[{ team: ll.teamA, goles: ll.golesA }, { team: ll.teamB, goles: ll.golesB }].map(({ team, goles }, ti) => {
-                            const esGanador  = ll.ganador?.id === team.id
-                            const esPerdedor = ll.terminada && ll.ganador && !esGanador
-                            return (
-                              <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '7px 10px', background: esGanador ? '#e6f4ea' : ti === 1 ? '#f8f9fa' : '#fff', opacity: esPerdedor ? .45 : 1, borderBottom: ti === 0 ? '2px solid #dadce0' : 'none' }}>
-                                <div style={{ width: '20px', height: '20px', borderRadius: '5px', overflow: 'hidden', flexShrink: 0, background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  {team.logo_url ? <img src={urlMini(team.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
-                                </div>
-                                <span style={{ flex: 1, fontWeight: esGanador ? '800' : '500', color: '#202124', fontSize: '.76rem', textDecoration: esPerdedor ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{team.name}</span>
-                                <span style={{ fontWeight: '900', fontSize: '.9rem', color: esGanador ? '#1e8e3e' : '#9aa0a6', flexShrink: 0 }}>
-                                  {ll.matches.some(m => m.status === 'finished') ? goles : '—'}
-                                </span>
-                                {esGanador && <span style={{ fontSize: '.7rem', flexShrink: 0 }}>✓</span>}
-                              </div>
-                            )
-                          })}
-                          <div style={{ padding: '5px 10px', background: '#f8f9fa', fontSize: '.62rem', color: ll.terminada && !ll.ganador ? '#d93025' : '#9aa0a6', fontWeight: ll.terminada && !ll.ganador ? '700' : '400' }}>
-                            {!ll.terminada
-                              ? `${ll.matches.length > 1 ? 'Ida y vuelta · ' : ''}${ll.matches[0].played_at ? new Date(ll.matches[0].played_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }) + ' · ' + fmtHoraDate(ll.matches[0].played_at) : '📅 Por definir'}`
-                              : !ll.ganador
-                                ? '⚠️ Empate — pendiente de penales'
-                                : `${ll.matches.length > 1 ? `Global ${ll.golesA}-${ll.golesB}` : 'Jugado'}${ll.porPenales ? ' · Penales' : ''}`}
-                          </div>
-                        </div>
-                      ) : (() => {
-                        const feederA = col.feeder?.[i * 2], feederB = col.feeder?.[i * 2 + 1]
-                        const conocidoA = feederA?.terminada && feederA?.ganador ? feederA.ganador : null
-                        const conocidoB = feederB?.terminada && feederB?.ganador ? feederB.ganador : null
-                        const hayConocido = conocidoA || conocidoB
-                        return (
-                          <div key={i} style={{ border: '2px dashed #b0b6bd', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#9aa0a6', fontSize: '.7rem', fontWeight: '600', background: '#f1f3f4' }}>
-                            {hayConocido ? (
-                              [conocidoA, conocidoB].map((t, ti) => (
-                                <div key={ti} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 2px', justifyContent: 'center' }}>
-                                  {t ? (
-                                    <>
-                                      <div style={{ width: '18px', height: '18px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, background: '#fff' }}>
-                                        {t.logo_url ? <img src={urlMini(t.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Shield size={10} color="#9aa0a6"/>}
-                                      </div>
-                                      <span style={{ fontSize: '.74rem', fontWeight: '800', color: '#1e8e3e' }}>{t.name} ✓</span>
-                                    </>
-                                  ) : (
-                                    <span style={{ fontSize: '.66rem', color: '#9aa0a6', fontStyle: 'italic' }}>rival por definir</span>
-                                  )}
-                                </div>
-                              ))
-                            ) : 'Por definir'}
-                          </div>
-                        )
-                      })())}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Columna campeón */}
-                <div style={{ minWidth: '150px', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ textAlign: 'center', fontSize: '.68rem', fontWeight: '800', color: '#f9a825', letterSpacing: '1.2px', marginBottom: '10px', background: '#fff8e1', borderRadius: '8px', padding: '6px' }}>
-                    🏆 CAMPEÓN
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                    {campeon ? (
-                      <div style={{ width: '100%', background: 'linear-gradient(135deg, #fff8e1, #ffecb3)', border: '2px solid #f9a825', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
-                        <div style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden', margin: '0 auto 6px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {campeon.logo_url ? <img src={urlMini(campeon.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/> : <Shield size={16} color="#9aa0a6"/>}
-                        </div>
-                        <div style={{ fontWeight: '900', color: '#202124', fontSize: '.78rem' }}>{campeon.name}</div>
-                      </div>
-                    ) : (
-                      <div style={{ width: '100%', border: '1px dashed #f9a825', borderRadius: '10px', padding: '16px', textAlign: 'center', color: '#f9a825', fontSize: '.68rem', background: '#fffdf5' }}>
-                        Por definir
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
 
         {/* RESULTADOS — cada partido en su propia tarjeta con degradado de
             colores del torneo (los mismos del encabezado), para que se vea
