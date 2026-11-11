@@ -1709,6 +1709,32 @@ export default function AdminTorneoDetallePage() {
     setNivelGuardandoId(null)
   }
 
+  // Tarjeta de jugador: solo uno abierto a la vez (el resto queda compacto, solo el nombre).
+  const [jugadorAbiertoId, setJugadorAbiertoId] = useState(null)
+  // Otras marcas (Élite, Mayor de 35 y etiqueta propia): se guardan al instante, con la misma
+  // revisión de siempre (si la base no guarda, se devuelve a como estaba y se avisa).
+  const [marcaGuardandoId, setMarcaGuardandoId] = useState(null)
+  const [etiquetaBorrador, setEtiquetaBorrador] = useState({})
+  async function guardarMarcaJugador(playerId, cambio, mensaje) {
+    if (!playerId || marcaGuardandoId) return
+    const actual = jugadores.find(r => r.player_id === playerId)?.players || {}
+    const antes = {}
+    Object.keys(cambio).forEach(k => { antes[k] = actual[k] === undefined ? null : actual[k] })
+    const poner = v => setJugadores(prev => prev.map(r => r.player_id === playerId ? { ...r, players: { ...(r.players || {}), ...v } } : r))
+    setMarcaGuardandoId(playerId)
+    poner(cambio)
+    try {
+      const { data: upd, error } = await supabase.from('players').update(cambio).eq('id', playerId).select('id')
+      if (error) throw error
+      if (!upd || !upd.length) throw new Error('sin permiso')
+      showMsg(mensaje)
+    } catch {
+      poner(antes)
+      showMsg('No se pudo guardar la marca del jugador. Intenta de nuevo.', 'error')
+    }
+    setMarcaGuardandoId(null)
+  }
+
   async function fetchJugadores() {
     const { data } = await supabase.from('tournament_player_registrations').select('*, players(*), teams(name)').eq('tournament_id', id)
     setJugadores(aplicarAlias(data || [], await getAlias()))
@@ -7095,43 +7121,42 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             {jugsActivos.map(j => {
                               const p = j.players || {}
                               const sancion = sancionDeJugador(j.player_id)
+                              const abierto = jugadorAbiertoId === j.id
                               return (
-                                <div key={j.id} style={{ display:'flex', flexDirection:'column', gap:'8px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border: sancion ? '1px solid #fad2cf' : '1px solid #e8eaed' }}>
-                                  {/* Fila 1: foto + nombre — en su propia fila para que los botones de
-                                      abajo (que pueden ser varios) nunca la aplasten ni la tapen. */}
-                                  <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                                    <label title="Cambiar foto de perfil" style={{ position:'relative', width:'40px', height:'40px', flexShrink:0, cursor:'pointer', display:'block' }}>
-                                      <span style={{ width:'40px', height:'40px', borderRadius:'50%', overflow:'hidden', background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center', opacity: subiendoFotoId === j.player_id ? .4 : 1 }}>
-                                        {p.photo_face_url || p.photo_url
-                                          ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                                          : <span style={{ fontSize:'1rem' }}>👤</span>}
-                                      </span>
-                                      <span style={{ position:'absolute', right:'-3px', bottom:'-3px', width:'18px', height:'18px', borderRadius:'50%', background:'#1a73e8', color:'#fff', border:'2px solid #fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'.55rem' }}>
-                                        {subiendoFotoId === j.player_id ? '…' : <Camera size={10}/>}
-                                      </span>
-                                      <input type="file" accept="image/*" disabled={subiendoFotoId === j.player_id} style={{ display:'none' }}
-                                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cambiarFotoPerfil(j.player_id, f) }}/>
-                                    </label>
+                                <div key={j.id} style={{ display:'flex', flexDirection:'column', gap:'0', background:'#fff', borderRadius:'10px', padding:'0', border: sancion ? '1px solid #fad2cf' : (abierto ? '1px solid #aecbfa' : '1px solid #e8eaed'), overflow:'hidden' }}>
+                                  {/* Fila compacta: solo foto pequeña + nombre + marcas. Al tocarla se abren
+                                      los botones (uno solo abierto a la vez). */}
+                                  <div role="button" tabIndex={0} aria-expanded={abierto}
+                                    onClick={() => setJugadorAbiertoId(abierto ? null : j.id)}
+                                    onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setJugadorAbiertoId(abierto ? null : j.id) } }}
+                                    style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', minHeight:'48px', cursor:'pointer', background: abierto ? '#f4f8ff' : '#fff', WebkitTapHighlightColor:'transparent', touchAction:'manipulation' }}>
+                                    <span style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                      {p.photo_face_url || p.photo_url
+                                        ? <img src={p.photo_face_url||p.photo_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                        : <span style={{ fontSize:'.9rem' }}>👤</span>}
+                                    </span>
                                     <div style={{ flex:1, minWidth:0 }}>
-                                      <div style={{ fontSize:'.82rem', fontWeight:'600', color:'#202124' }}>{p.name||'—'}</div>
-                                      <div style={{ fontSize:'.65rem', color:'#9aa0a6' }}>{p.posicion_futbol5||p.posicion_futbol7||p.posicion_futbol11||'Sin posición'}</div>
-                                      {(p.es_profesional || p.es_exprofesional) && (
-                                        <span style={{ display:'inline-block', marginTop:'3px', fontSize:'.66rem', fontWeight:'800', color:'#fff', background: p.es_profesional ? '#7b3ff2' : '#d97706', borderRadius:'8px', padding:'1px 8px' }}>
-                                          {p.es_profesional ? '🎓 Profesional' : '⚽ Exprofesional'}
-                                        </span>
-                                      )}
-                                      {sancion && (
-                                        <div style={{ fontSize:'.65rem', color:'#d93025', fontWeight:'600', marginTop:'2px' }}>
-                                          🚫 Sancionado{sancion.fecha_fin ? ` hasta ${new Date(sancion.fecha_fin).toLocaleDateString('es-CO')}` : ' (indefinido)'} — {sancion.motivo}
+                                      <div style={{ fontSize:'.9rem', fontWeight:'700', color:'#202124', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name||'—'}</div>
+                                      {(p.es_profesional || p.es_exprofesional || p.es_elite || p.es_mayor_35 || p.etiqueta_personalizada || sancion) && (
+                                        <div style={{ display:'flex', gap:'4px', flexWrap:'wrap', marginTop:'3px' }}>
+                                          {p.es_profesional && <span style={{ fontSize:'.62rem', fontWeight:'800', color:'#fff', background:'#7b3ff2', borderRadius:'8px', padding:'1px 7px' }}>🎓 Profesional</span>}
+                                          {p.es_exprofesional && <span style={{ fontSize:'.62rem', fontWeight:'800', color:'#fff', background:'#d97706', borderRadius:'8px', padding:'1px 7px' }}>⚽ Exprofesional</span>}
+                                          {p.es_elite && <span style={{ fontSize:'.62rem', fontWeight:'800', color:'#fff', background:'#e6a100', borderRadius:'8px', padding:'1px 7px' }}>⭐ Élite</span>}
+                                          {p.es_mayor_35 && <span style={{ fontSize:'.62rem', fontWeight:'800', color:'#fff', background:'#1a73e8', borderRadius:'8px', padding:'1px 7px' }}>+35</span>}
+                                          {p.etiqueta_personalizada && <span style={{ fontSize:'.62rem', fontWeight:'800', color:'#3c4043', background:'#e8eaed', borderRadius:'8px', padding:'1px 7px' }}>🏷️ {p.etiqueta_personalizada}</span>}
+                                          {sancion && <span style={{ fontSize:'.62rem', fontWeight:'800', color:'#fff', background:'#d93025', borderRadius:'8px', padding:'1px 7px' }}>🚫 Sancionado</span>}
                                         </div>
                                       )}
                                     </div>
-                                    <label style={{ background:'#e8f0fe', border:'1px solid #aecbfa', borderRadius:'8px', padding:'8px 12px', cursor: subiendoFotoId === j.player_id ? 'wait' : 'pointer', color:'#1a73e8', fontSize:'.74rem', flexShrink:0, fontWeight:'700', minHeight:'36px', display:'flex', alignItems:'center' }}>
-                                      {subiendoFotoId === j.player_id ? 'Subiendo…' : '📷 Cambiar foto'}
-                                      <input type="file" accept="image/*" disabled={subiendoFotoId === j.player_id} style={{ display:'none' }}
-                                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; cambiarFotoPerfil(j.player_id, f) }}/>
-                                    </label>
+                                    <span aria-hidden="true" style={{ color:'#5f6368', fontSize:'.8rem', flexShrink:0, transform: abierto ? 'rotate(180deg)' : 'none', transition:'transform .15s' }}>▼</span>
                                   </div>
+                                  {abierto && (
+                                  <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'4px 12px 12px', borderTop:'1px solid #eef1f6' }}>
+                                  {sancion && (
+                                    <div style={{ fontSize:'.72rem', color:'#d93025', fontWeight:'600', marginTop:'6px' }}>
+                                      🚫 Sancionado{sancion.fecha_fin ? ` hasta ${new Date(sancion.fecha_fin).toLocaleDateString('es-CO')}` : ' (indefinido)'} — {sancion.motivo}
+                                    </div>
+                                  )}
                                   {/* Acciones del jugador, agrupadas y con una frase que explica qué hace cada una
                                       (mismas acciones y mismas reglas de siempre). */}
                                   {(() => {
@@ -7140,7 +7165,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                     const explica = { flex:'1 1 180px', fontSize:'.74rem', color:'#5f6368', lineHeight:1.4, paddingTop:'2px' }
                                     return (
                                       <div>
-                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', marginBottom:'2px' }}>MARCA DEL JUGADOR</div>
+                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', marginBottom:'2px' }}>FOTO</div>
+                                        <div style={{ ...filaAccion, borderTop:'none', paddingTop:'2px' }}>
+                                          <label style={{ ...botonBase, background:'#e8f0fe', border:'1px solid #aecbfa', color:'#1a73e8', display:'flex', alignItems:'center', justifyContent:'center', cursor: subiendoFotoId === j.player_id ? 'wait' : 'pointer' }}>
+                                            {subiendoFotoId === j.player_id ? 'Subiendo…' : '📷 Cambiar foto'}
+                                            <input type="file" accept="image/*" disabled={subiendoFotoId === j.player_id} style={{ display:'none' }}
+                                              onChange={ev => { const f = ev.target.files?.[0]; ev.target.value = ''; cambiarFotoPerfil(j.player_id, f) }}/>
+                                          </label>
+                                          <div style={explica}>Sube una foto nueva de perfil del jugador.</div>
+                                        </div>
+                                        <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', margin:'8px 0 2px' }}>MARCA DEL JUGADOR</div>
                                         <div style={filaAccion}>
                                           {[
                                             { id:'ninguno',       label:'Ninguno',          activo: !p.es_profesional && !p.es_exprofesional, color:'#5f6368' },
@@ -7153,6 +7187,48 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                             </button>
                                           ))}
                                           <div style={explica}>¿Es o fue jugador profesional? Se ve en la plantilla pública del equipo.</div>
+                                        </div>
+                                        <div style={filaAccion}>
+                                          {[
+                                            { k:'es_elite',    label:'⭐ Élite',     color:'#e6a100', ok:'Élite' },
+                                            { k:'es_mayor_35', label:'+35 Mayor de 35', color:'#1a73e8', ok:'Mayor de 35' },
+                                          ].map(o => {
+                                            const on = !!p[o.k]
+                                            return (
+                                              <button key={o.k} type="button" aria-pressed={on} disabled={marcaGuardandoId === j.player_id}
+                                                onClick={() => guardarMarcaJugador(j.player_id, { [o.k]: !on }, on ? `${p.name || 'Jugador'}: quitado ${o.ok} ✓` : `${p.name || 'Jugador'}: marcado ${o.ok} ✓`)}
+                                                style={{ ...botonBase, minWidth:'112px', background: on ? o.color : '#fff', border: `1.5px solid ${on ? o.color : '#dadce0'}`, color: on ? '#fff' : '#3c4043', opacity: marcaGuardandoId === j.player_id ? .6 : 1 }}>
+                                                {on ? '✓ ' : ''}{o.label}
+                                              </button>
+                                            )
+                                          })}
+                                          <div style={explica}>Toca para poner o quitar. Se ve en la plantilla del equipo.</div>
+                                        </div>
+                                        <div style={filaAccion}>
+                                          <input type="text" maxLength={30} placeholder="Otra etiqueta (ej: Capitán, Invitado)"
+                                            value={etiquetaBorrador[j.player_id] ?? (p.etiqueta_personalizada || '')}
+                                            onChange={ev => setEtiquetaBorrador(prev => ({ ...prev, [j.player_id]: ev.target.value }))}
+                                            style={{ flex:'1 1 200px', minHeight:'38px', border:'1.5px solid #dadce0', borderRadius:'8px', padding:'0 10px', fontSize:'16px', color:'#202124', background:'#fff', boxSizing:'border-box', minWidth:0 }}/>
+                                          <button type="button" disabled={marcaGuardandoId === j.player_id}
+                                            onClick={async () => {
+                                              const txt = (etiquetaBorrador[j.player_id] ?? (p.etiqueta_personalizada || '')).trim().slice(0, 30)
+                                              await guardarMarcaJugador(j.player_id, { etiqueta_personalizada: txt || null }, txt ? `${p.name || 'Jugador'}: etiqueta "${txt}" guardada ✓` : `${p.name || 'Jugador'}: etiqueta quitada ✓`)
+                                              setEtiquetaBorrador(prev => { const n = { ...prev }; delete n[j.player_id]; return n })
+                                            }}
+                                            style={{ ...botonBase, minWidth:'96px', background:'#1e8e3e', border:'1px solid #1e8e3e', color:'#fff' }}>
+                                            Guardar
+                                          </button>
+                                          {p.etiqueta_personalizada && (
+                                            <button type="button" disabled={marcaGuardandoId === j.player_id}
+                                              onClick={async () => {
+                                                await guardarMarcaJugador(j.player_id, { etiqueta_personalizada: null }, `${p.name || 'Jugador'}: etiqueta quitada ✓`)
+                                                setEtiquetaBorrador(prev => { const n = { ...prev }; delete n[j.player_id]; return n })
+                                              }}
+                                              style={{ ...botonBase, minWidth:'96px', background:'#fff', border:'1px solid #dadce0', color:'#5f6368' }}>
+                                              Quitar
+                                            </button>
+                                          )}
+                                          <div style={{ ...explica, flexBasis:'100%' }}>Escribe una etiqueta propia (máx. 30 letras) y toca Guardar.</div>
                                         </div>
                                         <div style={{ fontSize:'.62rem', fontWeight:'800', letterSpacing:'.07em', color:'#5f6368', margin:'10px 0 2px' }}>CAMBIOS NORMALES</div>
                                         {equipos.length > 1 && (
@@ -7231,6 +7307,8 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                         </button>
                                       </div>
                                     </div>
+                                  )}
+                                  </div>
                                   )}
                                 </div>
                               )
