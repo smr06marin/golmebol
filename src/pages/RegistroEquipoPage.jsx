@@ -78,6 +78,50 @@ function FotoUpload({ label, hint, preview, onChange, opcional = false }) {
   )
 }
 
+// Tarjeta para pasar el link de inscripción a las demás del equipo: así cada una se inscribe
+// ella misma desde su celular (solo necesita su cédula y una foto). Compartir abre el menú del
+// teléfono (WhatsApp, etc.); si el aparato no lo tiene, se abre WhatsApp con el mensaje listo.
+function CompartirLinkEquipo({ equipoNombre, torneoNombre, token, tournamentId, vence }) {
+  const [copiado, setCopiado] = useState(false)
+  const url = `${window.location.origin}/registro/equipo/${token}/${tournamentId}`
+  const texto = `Hola! Inscríbete en el equipo ${equipoNombre} para el torneo ${torneoNombre}. Entra a este link, pon tu cédula y sigue los pasos (necesitas tu foto):`
+  async function compartir() {
+    try {
+      if (navigator.share) { await navigator.share({ title: `Inscripción ${equipoNombre}`, text: texto, url }); return }
+    } catch (e) { if (e?.name === 'AbortError') return }
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto + ' ' + url)}`, '_blank', 'noopener')
+  }
+  async function copiar() {
+    let ok = false
+    try { await navigator.clipboard.writeText(url); ok = true } catch (e) { /* se prueba el método de respaldo */ }
+    if (!ok) {
+      try {
+        const t = document.createElement('textarea'); t.value = url; t.style.position = 'fixed'; t.style.opacity = '0'
+        document.body.appendChild(t); t.focus(); t.select(); ok = document.execCommand('copy'); document.body.removeChild(t)
+      } catch (e) { ok = false }
+    }
+    if (ok) { setCopiado(true); setTimeout(() => setCopiado(false), 2500) }
+    else window.prompt('Copia este link:', url)
+  }
+  return (
+    <div style={{ background: '#fff', border: '1.5px solid #c6dafc', borderRadius: '16px', padding: '18px', marginTop: '20px', textAlign: 'left' }}>
+      <div style={{ fontWeight: '800', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>👥 ¿Falta alguien del equipo?</div>
+      <div style={{ fontSize: '.86rem', color: '#5f6368', lineHeight: 1.5, marginBottom: '14px' }}>
+        Pásales este link y <b>cada una se inscribe ella misma</b> desde su celular. Solo necesita su cédula y una foto.
+        {vence ? <> El link sirve hasta <b>{vence}</b>.</> : null}
+      </div>
+      <button type="button" onClick={compartir}
+        style={{ width: '100%', minHeight: '50px', padding: '12px', background: '#25D366', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#fff', fontSize: '.95rem', fontWeight: '800', fontFamily: 'inherit' }}>
+        📲 Enviar por WhatsApp
+      </button>
+      <button type="button" onClick={copiar}
+        style={{ width: '100%', minHeight: '50px', marginTop: '10px', padding: '12px', background: copiado ? '#e6f4ea' : '#e8f0fe', border: `1px solid ${copiado ? '#ceead6' : '#c6dafc'}`, borderRadius: '12px', cursor: 'pointer', color: copiado ? '#1e8e3e' : '#1a73e8', fontSize: '.95rem', fontWeight: '800', fontFamily: 'inherit' }}>
+        {copiado ? '✓ Link copiado' : '📋 Copiar link'}
+      </button>
+    </div>
+  )
+}
+
 export default function RegistroEquipoPage() {
   const { token, tournamentId } = useParams()
 
@@ -536,6 +580,10 @@ export default function RegistroEquipoPage() {
   const vencido = equipo.registro_token_generado_en &&
     (Date.now() - new Date(equipo.registro_token_generado_en).getTime()) > horasValidez * 60 * 60 * 1000
 
+  const venceTexto = equipo.registro_token_generado_en
+    ? new Date(new Date(equipo.registro_token_generado_en).getTime() + horasValidez * 3600 * 1000).toLocaleString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' })
+    : ''
+
   if (vencido) return (
     <div style={{ minHeight: '100vh', background: '#f8f9fa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div style={{ background: '#fff', borderRadius: '16px', padding: '32px 24px', textAlign: 'center', maxWidth: '380px', width: '100%', boxShadow: '0 4px 20px rgba(0,0,0,.08)' }}>
@@ -605,6 +653,7 @@ export default function RegistroEquipoPage() {
           ¿Falta alguien del equipo? Regístralo desde este mismo teléfono
         </div>
       </div>
+        <CompartirLinkEquipo equipoNombre={equipo.name} torneoNombre={torneo.name} token={token} tournamentId={tournamentId} vence={venceTexto}/>
       </div>
     </div>
   )
@@ -883,6 +932,8 @@ export default function RegistroEquipoPage() {
             </div>
           </div>
         )}
+
+        <CompartirLinkEquipo equipoNombre={equipo.name} torneoNombre={torneo.name} token={token} tournamentId={tournamentId} vence={venceTexto}/>
 
         {/* Planilla del equipo en PDF (solo el dueño) */}
         <div style={{ textAlign: 'center', marginTop: '28px' }}>
