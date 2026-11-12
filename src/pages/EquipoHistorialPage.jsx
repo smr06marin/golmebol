@@ -388,6 +388,52 @@ export default function EquipoHistorialPage() {
     await Promise.all([fetchTorneos(), fetchJugadoresGlobal()])
   }
 
+  // ── Link para que cada persona del equipo se inscriba SOLA desde su celular (el mismo link de registro
+  // que comparte el organizador). Se pide al tocar "Preparar link": el servidor revisa que quien lo pide sea
+  // el dueño, devuelve el token y reinicia el tiempo de validez del link desde ahora. ──
+  const [linkSolas,      setLinkSolas]      = useState(null) // { torneoId, url, vence }
+  const [preparandoLink, setPreparandoLink] = useState(false)
+  const [linkCopiado,    setLinkCopiado]    = useState(false)
+  async function prepararLinkSolas(torneoId) {
+    if (!esDueno || !torneoId || preparandoLink) return
+    setPreparandoLink(true)
+    const { data, error } = await supabase.rpc('dueno_link_registro', { p_team_id: id })
+    setPreparandoLink(false)
+    if (error || !data?.token) {
+      const falta = error && (error.code === 'PGRST202' || /could not find the function/i.test(error.message || ''))
+      return showMsg(falta ? 'Esta opción aún no está activa (falta migracion_link_dueno_equipo.sql)' : (mensajeInscripcion(error, 'No se pudo preparar el link. Intenta de nuevo.')), 'error')
+    }
+    const horas = Number(data.horas) || 24
+    const vence = new Date(new Date(data.generado_en || Date.now()).getTime() + horas * 3600 * 1000)
+      .toLocaleString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' })
+    setLinkSolas({ torneoId, url: `${window.location.origin}/registro/equipo/${data.token}/${torneoId}`, vence })
+    setLinkCopiado(false)
+  }
+  function textoLinkSolas(nombreTorneo) {
+    return `Hola! Inscríbete en el equipo ${equipo?.name || ''} para el torneo ${nombreTorneo || ''}. Entra a este link, pon tu cédula y sigue los pasos (necesitas tu foto):`
+  }
+  async function enviarLinkSolas(nombreTorneo) {
+    if (!linkSolas) return
+    const texto = textoLinkSolas(nombreTorneo)
+    try {
+      if (navigator.share) { await navigator.share({ title: `Inscripción ${equipo?.name || ''}`, text: texto, url: linkSolas.url }); return }
+    } catch (e) { if (e?.name === 'AbortError') return }
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto + ' ' + linkSolas.url)}`, '_blank', 'noopener')
+  }
+  async function copiarLinkSolas() {
+    if (!linkSolas) return
+    let ok = false
+    try { await navigator.clipboard.writeText(linkSolas.url); ok = true } catch { /* se prueba el respaldo */ }
+    if (!ok) {
+      try {
+        const t = document.createElement('textarea'); t.value = linkSolas.url; t.style.position = 'fixed'; t.style.opacity = '0'
+        document.body.appendChild(t); t.focus(); t.select(); ok = document.execCommand('copy'); document.body.removeChild(t)
+      } catch { ok = false }
+    }
+    if (ok) { setLinkCopiado(true); setTimeout(() => setLinkCopiado(false), 2500) }
+    else window.prompt('Copia este link:', linkSolas.url)
+  }
+
   async function handleGuardarTelefono(jugador) {
     if (!esDueno) return
     setGuardandoTel(true)
@@ -924,6 +970,38 @@ export default function EquipoHistorialPage() {
                   {!inscCerrada && <div style={{ fontSize:'.72rem', color:S.muted, marginTop:'8px', lineHeight:1.5 }}>
                     ℹ️ <b>+ Agregar jugador</b> suma a alguien que ya es de tu equipo. <b>+ Jugador nuevo</b> inscribe a una persona nueva con su cédula. Con <b>Quitar del torneo</b> liberas un cupo.
                   </div>}
+
+                  {/* Que cada persona se inscriba SOLA: el dueño les manda el link de registro por WhatsApp */}
+                  {!cupoLleno && !inscCerrada && (() => {
+                    const listo = linkSolas && linkSolas.torneoId === torneoSel
+                    const btn = { width:'100%', minHeight:'46px', borderRadius:'10px', fontSize:'.86rem', fontWeight:'800', cursor:'pointer', fontFamily:'inherit' }
+                    return (
+                      <div style={{ marginTop:'12px', background:S.card2, border:`1px solid ${S.border}`, borderRadius:'12px', padding:'12px' }}>
+                        <div style={{ fontWeight:'800', fontSize:'.86rem', color:S.text }}>📲 ¿Prefieres que cada uno se inscriba solo?</div>
+                        <div style={{ fontSize:'.76rem', color:S.text2, lineHeight:1.5, margin:'4px 0 10px' }}>
+                          Mándales el link por WhatsApp. Cada persona pone su cédula y su foto desde su celular y queda inscrita en este torneo con tu equipo.
+                          {listo && linkSolas.vence ? <> El link sirve hasta el <b>{linkSolas.vence}</b></> : null}
+                        </div>
+                        {!listo ? (
+                          <button type="button" onClick={() => prepararLinkSolas(torneoSel)} disabled={preparandoLink}
+                            style={{ ...btn, background:S.cyan, border:'none', color:'#000', opacity: preparandoLink ? .7 : 1 }}>
+                            {preparandoLink ? 'Preparando…' : '🔗 Preparar link para enviar'}
+                          </button>
+                        ) : (
+                          <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                            <button type="button" onClick={() => enviarLinkSolas(tInfo?.tournaments?.name)}
+                              style={{ ...btn, background:'#25D366', border:'none', color:'#fff' }}>
+                              📲 Enviar por WhatsApp
+                            </button>
+                            <button type="button" onClick={copiarLinkSolas}
+                              style={{ ...btn, background: linkCopiado ? S.winDim : 'none', border:`1px solid ${linkCopiado ? S.win : S.border}`, color: linkCopiado ? S.win : S.text }}>
+                              {linkCopiado ? '✓ Link copiado' : '📋 Copiar link'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {!cupoLleno && !inscCerrada && mostrarNuevo && (
                     <div style={{ marginTop:'10px', background:S.card2, borderRadius:'10px', padding:'12px', display:'flex', flexDirection:'column', gap:'8px' }}>

@@ -108,7 +108,7 @@ function CompartirLinkEquipo({ equipoNombre, torneoNombre, token, tournamentId, 
       <div style={{ fontWeight: '800', color: '#202124', fontSize: '1rem', marginBottom: '4px' }}>👥 ¿Falta alguien del equipo?</div>
       <div style={{ fontSize: '.86rem', color: '#5f6368', lineHeight: 1.5, marginBottom: '14px' }}>
         Pásales este link y <b>cada una se inscribe ella misma</b> desde su celular. Solo necesita su cédula y una foto.
-        {vence ? <> El link sirve hasta <b>{vence}</b>.</> : null}
+        {vence ? <> El link sirve hasta <b>{vence}</b></> : null}
       </div>
       <button type="button" onClick={compartir}
         style={{ width: '100%', minHeight: '50px', padding: '12px', background: '#25D366', border: 'none', borderRadius: '12px', cursor: 'pointer', color: '#fff', fontSize: '.95rem', fontWeight: '800', fontFamily: 'inherit' }}>
