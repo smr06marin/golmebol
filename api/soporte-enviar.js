@@ -4,7 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { enviarTexto, enviarPlantilla, waConfigurado } from './_whatsapp.js'
-import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado, enviarEnTema, pieResponder } from './_telegram.js'
+import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado, enviarEnTema, pieResponder, cabeceraCorta } from './_telegram.js'
 import { aOggOpus } from './_audio.js'
 import { responderAuto } from './_asistente.js'
 import { lineaPrioridad, usuariosConPartidosHoy } from './_prioridadSoporte.js'
@@ -120,6 +120,7 @@ export default async function handler(req, res) {
         const prioridad = auto ? '' : lineaPrioridad(chat, { pidioPersona, conPartidosHoy: (await usuariosConPartidosHoy(admin, [user.id])).has(user.id) })
         const cab = `${prioridad}💬 Soporte #${chat.codigo}${auto ? ' · 🤖 respondió el asistente' : ''}\n${datosQuien}\n📍 ${donde}`
         const pie = pieResponder()
+        const corta = cabeceraCorta({ nombre: chat.nombre || quien, prioridad, donde, dondeCambio: (chat.ultimo_contexto || '') !== (contexto || '') })
         if (adj) {
           const { data: archivo, error: ed } = await admin.storage.from(BUCKET).download(adj.path)
           if (ed || !archivo) throw new Error('No se pudo leer el archivo guardado')
@@ -128,15 +129,16 @@ export default async function handler(req, res) {
             const ogg = await aOggOpus(Buffer.from(await archivo.arrayBuffer()), adj.ext === 'weba' ? 'webm' : adj.ext)
             if (ogg) { envio = new Blob([ogg], { type: 'audio/ogg' }); nombreEnvio = 'voz.ogg' }
           }
-          const cabe = !texto || (cab.length + texto.length + pie.length + 2) <= 1024 // la leyenda de Telegram admite 1024 letras
-          waId = await enviarEnTema(admin, chat, chat.nombre || quien, async tema => {
-            const id = await enviarTelegramArchivo({ tipo: adj.tipo, archivo: envio, nombre: nombreEnvio, leyenda: cab + (texto && cabe ? `\n\n${texto}` : '') + pie, temaId: tema })
+          waId = await enviarEnTema(admin, chat, chat.nombre || quien, async (tema, completo) => {
+            const c1 = completo ? cab : corta, p1 = completo ? pie : ''
+            const cabe = !texto || (c1.length + texto.length + p1.length + 2) <= 1024 // la leyenda de Telegram admite 1024 letras
+            const id = await enviarTelegramArchivo({ tipo: adj.tipo, archivo: envio, nombre: nombreEnvio, leyenda: c1 + (texto && cabe ? `\n\n${texto}` : '') + p1, temaId: tema })
             if (texto && !cabe) await enviarTelegram(texto, undefined, Number(id.slice(3)), false, tema).catch(() => {})
             return id
           })
         } else {
           const extra = (auto ? `\n\n🤖 Respuesta automática:\n${auto.texto}` : '') + (pidioPersona ? `\n\n🙋 Pidió hablar con una persona${previo ? `\nSu pregunta anterior: ${previo}` : ''}` : '')
-          waId = await enviarEnTema(admin, chat, chat.nombre || quien, tema => enviarTelegram(`${cab}\n\n${texto}${extra}${pie}`, undefined, undefined, !!auto, tema))
+          waId = await enviarEnTema(admin, chat, chat.nombre || quien, (tema, completo) => enviarTelegram(completo ? `${cab}\n\n${texto}${extra}${pie}` : `${corta}\n${texto}${extra}`, undefined, undefined, !!auto, tema))
         }
       }
       catch (e) { estado = 'error'; console.error('soporte-enviar telegram:', e.message) }

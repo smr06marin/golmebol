@@ -8,7 +8,7 @@
 // accion "leer":    { token }  → { chat, nombre, mensajes }  (las fotos y audios llegan con un link temporal: adjunto_url)
 import { createClient } from '@supabase/supabase-js'
 import { createHash, randomUUID } from 'node:crypto'
-import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado, enviarEnTema, pieResponder } from './_telegram.js'
+import { enviarTelegram, enviarTelegramArchivo, telegramConfigurado, enviarEnTema, pieResponder, cabeceraCorta } from './_telegram.js'
 import { aOggOpus } from './_audio.js'
 import { responderAuto } from './_asistente.js'
 import { lineaPrioridad } from './_prioridadSoporte.js'
@@ -178,8 +178,10 @@ export default async function handler(req, res) {
     }
     let waId = null, estado = 'enviado'
     const dondeTxt = (await describirRuta(admin, ruta)) || 'página pública'
-    const cab = `${auto ? '' : lineaPrioridad(c, { pidioPersona })}💬 Soporte #${c.codigo} · 🌐 Público${auto ? ' · 🤖 respondió el asistente' : ''}\n🙋 ${c.nombre}${c.contacto ? `\n📱 ${c.contacto}` : ''}\n🎯 ${TEMAS[c.tema] || TEMAS.otro}${torneoTxt}\n📍 ${dondeTxt}`
+    const prioridad = auto ? '' : lineaPrioridad(c, { pidioPersona })
+    const cab = `${prioridad}💬 Soporte #${c.codigo} · 🌐 Público${auto ? ' · 🤖 respondió el asistente' : ''}\n🙋 ${c.nombre}${c.contacto ? `\n📱 ${c.contacto}` : ''}\n🎯 ${TEMAS[c.tema] || TEMAS.otro}${torneoTxt}\n📍 ${dondeTxt}`
     const pie = pieResponder()
+    const corta = cabeceraCorta({ nombre: c.nombre, prioridad, donde: dondeTxt, dondeCambio: (c.ultimo_contexto || '') !== (ruta || '') })
     try {
       if (adj) {
         const { data: archivo, error: ed } = await admin.storage.from(BUCKET).download(adj.path)
@@ -191,14 +193,16 @@ export default async function handler(req, res) {
             if (ogg) { envio = new Blob([ogg], { type: 'audio/ogg' }); nombreEnvio = 'voz.ogg' }
           } catch (e) { console.error('publico-chat audio:', e?.message) } // si no se puede convertir, va como archivo
         }
-        const cabe = !texto || (cab.length + texto.length + pie.length + 2) <= 1024 // la leyenda de Telegram admite 1024 letras
-        waId = await enviarEnTema(admin, c, c.nombre, async tema => {
-          const id = await enviarTelegramArchivo({ tipo: adj.tipo, archivo: envio, nombre: nombreEnvio, leyenda: cab + (texto && cabe ? `\n\n${texto}` : '') + pie, temaId: tema })
+        waId = await enviarEnTema(admin, c, c.nombre, async (tema, completo) => {
+          const c1 = completo ? cab : corta, p1 = completo ? pie : ''
+          const cabe = !texto || (c1.length + texto.length + p1.length + 2) <= 1024 // la leyenda de Telegram admite 1024 letras
+          const id = await enviarTelegramArchivo({ tipo: adj.tipo, archivo: envio, nombre: nombreEnvio, leyenda: c1 + (texto && cabe ? `\n\n${texto}` : '') + p1, temaId: tema })
           if (texto && !cabe) await enviarTelegram(texto, undefined, Number(id.slice(3)), false, tema).catch(() => {})
           return id
         })
       } else {
-        waId = await enviarEnTema(admin, c, c.nombre, tema => enviarTelegram(`${cab}\n\n${texto}${auto ? `\n\n🤖 Respuesta automática:\n${auto.texto}` : ''}${pidioPersona ? `\n\n🙋 Pidió hablar con una persona${previo ? `\nSu pregunta anterior: ${previo}` : ''}` : ''}${pie}`, undefined, undefined, !!auto, tema))
+        const extra = `${auto ? `\n\n🤖 Respuesta automática:\n${auto.texto}` : ''}${pidioPersona ? `\n\n🙋 Pidió hablar con una persona${previo ? `\nSu pregunta anterior: ${previo}` : ''}` : ''}`
+        waId = await enviarEnTema(admin, c, c.nombre, (tema, completo) => enviarTelegram(completo ? `${cab}\n\n${texto}${extra}${pie}` : `${corta}\n${texto}${extra}`, undefined, undefined, !!auto, tema))
       }
     } catch (e) { estado = 'error'; console.error('publico-chat telegram:', e.message) }
     await admin.from('soporte_mensajes').update({ wa_id: waId, wa_estado: estado }).eq('id', msg.id)

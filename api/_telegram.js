@@ -117,18 +117,28 @@ export async function temaDeChat(admin, chat, etiqueta) {
 }
 
 // Envía al tema de la conversación. Si borraste ese tema en Telegram, se crea uno nuevo y se reintenta.
+// `enviar(tema, completo)`: completo = true cuando hay que mandar el aviso con TODOS los datos (primer mensaje del
+// tema, o sin temas). Dentro de un tema que ya existe basta con el nombre y lo que escribió.
 export async function enviarEnTema(admin, chat, etiqueta, enviar) {
+  const yaTenia = !!chat?.telegram_tema_id
   const tema = await temaDeChat(admin, chat, etiqueta)
   try {
-    return await enviar(tema)
+    return await enviar(tema, !tema || !yaTenia)
   } catch (e) {
     if (tema && /thread not found|topic_deleted|topic_closed|TOPIC_ID_INVALID/i.test(e.message || '')) {
       await admin.from('soporte_chats').update({ telegram_tema_id: null }).eq('id', chat.id)
       const nuevo = await temaDeChat(admin, { ...chat, telegram_tema_id: null }, etiqueta)
-      return enviar(nuevo)
+      return enviar(nuevo, true)
     }
     throw e
   }
+}
+
+// Encabezado corto para los mensajes dentro de un tema ya abierto: solo el nombre; la prioridad solo si es urgente
+// y la pantalla solo si cambió desde su mensaje anterior.
+export function cabeceraCorta({ nombre, prioridad, donde, dondeCambio }) {
+  const urgente = /^🔴/.test(String(prioridad || '')) ? String(prioridad) : ''
+  return `${urgente}🙋 ${nombre || 'Usuario'}${dondeCambio && donde ? `\n📍 ${donde}` : ''}`
 }
 
 // Texto del final de cada aviso: cómo contestarle
