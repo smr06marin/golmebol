@@ -292,13 +292,32 @@ export default function AdminJugadoresPage() {
     cFotos:      jugadores.filter(tieneFotoPendiente).length,
   }), [jugadores])
 
-  const filtered = useMemo(() => jugadores.filter(j => {
-    const matchSearch = j.name?.toLowerCase().includes(search.toLowerCase()) || String(j.numero_cedula || '').includes(search)
-    if (!matchSearch) return false
-    if (filtroMembresia === 'sin_cuenta') return !j.user_id
-    if (filtroMembresia === 'fotos')      return tieneFotoPendiente(j)
-    return true
-  }), [jugadores, search, filtroMembresia])
+  // Búsqueda tolerante: ignora espacios de más (el teclado del celular suele agregar uno al final), puntos o
+  // guiones en la cédula ("1.094.916.815"), mayúsculas y tildes ("martinez" encuentra "Martínez"), y busca
+  // cada palabra por separado ("drey vargas"). También encuentra por teléfono.
+  const filtered = useMemo(() => {
+    const sinTildes = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const q = sinTildes(search).trim()
+    const palabras = q.split(/\s+/).filter(Boolean)
+    const digitos = q.replace(/\D/g, '')
+    const soloNumeros = digitos.length >= 3 && /^[\d\s.,\-+()]+$/.test(q)
+    return jugadores.filter(j => {
+      let matchSearch = true
+      if (q) {
+        if (soloNumeros) {
+          matchSearch = String(j.numero_cedula || '').replace(/\D/g, '').includes(digitos) ||
+            String(j.telefono || '').replace(/\D/g, '').includes(digitos)
+        } else {
+          const nombre = sinTildes(j.name)
+          matchSearch = palabras.every(p => nombre.includes(p))
+        }
+      }
+      if (!matchSearch) return false
+      if (filtroMembresia === 'sin_cuenta') return !j.user_id
+      if (filtroMembresia === 'fotos')      return tieneFotoPendiente(j)
+      return true
+    })
+  }, [jugadores, search, filtroMembresia])
 
   // Antes este mismo .filter() se repetía 3 veces idéntico en el JSX (una
   // para el "if" de mostrar la sección, otra para el contador del título, y
