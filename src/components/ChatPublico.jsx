@@ -4,7 +4,8 @@
 // El visitante se identifica con un código secreto guardado en su navegador (no hay cuentas).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Building2, ChevronLeft, MessageCircle, Moon, Send, Trophy, X } from 'lucide-react'
+import { Building2, ChevronLeft, MessageCircle, Mic, Moon, Paperclip, Send, Trash2, Trophy, X } from 'lucide-react'
+import { Capacitor } from '@capacitor/core'
 import { FaWhatsapp } from 'react-icons/fa'
 import { supabase } from '../lib/supabase'
 import { apiUrl } from '../lib/apiBase'
@@ -13,6 +14,34 @@ import { agenteDe, enTurno } from '../lib/agentesSoporte'
 import { digitosWhatsapp } from '../lib/telefonoCo'
 import AvatarAgente, { AvatarAsistente } from './AvatarAgente'
 import TextoConEnlaces from './TextoConEnlaces'
+import { comprimirImagen } from '../lib/imageCompress'
+
+// Fotos y notas de voz en el chat público (suben directo a Storage con un permiso temporal del servidor)
+const BUCKET = 'soporte-adjuntos'
+const TIPOS_OK = ['image/jpeg', 'image/png', 'image/webp', 'audio/mp4', 'audio/x-m4a', 'audio/mpeg', 'audio/aac', 'audio/webm', 'audio/ogg']
+const EXT_AUDIO = { 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/mpeg': 'mp3', 'audio/aac': 'aac', 'audio/webm': 'weba', 'audio/ogg': 'ogg' }
+const MAX_FOTO = 10 * 1024 * 1024
+const MAX_AUDIO = 15 * 1024 * 1024
+const tipoDe = f => (f.type.startsWith('audio/') ? 'audio' : 'imagen')
+const puedeGrabar = () => { try { return !Capacitor.isNativePlatform() && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined' } catch { return false } }
+const mmss = n => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`
+
+// Foto o audio dentro de una burbuja (los recién enviados se ven al instante con su vista previa local)
+function Adjunto({ m, alAbrir }) {
+  const [sinSonido, setSinSonido] = useState(false)
+  const src = m.previa || m.adjunto_url
+  const caja = { display: 'block', width: 'min(240px, 62vw)', height: 'auto', maxHeight: '320px', objectFit: 'cover', borderRadius: '10px', background: '#e8eaed' }
+  if (!src) return <div style={{ ...caja, height: m.adjunto_tipo === 'audio' ? '44px' : '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.72rem', color: '#80868b' }}>{m.tiene_adjunto ? 'Archivo no disponible' : 'Cargando…'}</div>
+  if (m.adjunto_tipo === 'audio') {
+    return (
+      <div>
+        <audio src={src} controls preload="metadata" onError={() => setSinSonido(true)} style={{ display: 'block', width: 'min(240px, 62vw)', height: '40px' }} />
+        {sinSonido && <a href={src} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: '4px', fontSize: '.72rem', fontWeight: '700', color: 'inherit', textDecoration: 'underline' }}>No se pudo reproducir aquí: abrir o descargar el audio</a>}
+      </div>
+    )
+  }
+  return <img src={src} alt="Foto enviada" onClick={() => alAbrir(src)} style={{ ...caja, cursor: 'zoom-in' }} />
+}
 
 const K_TOKEN = 'gm_chat_pub_token'
 const K_NOMBRE = 'gm_chat_pub_nombre'
@@ -100,6 +129,23 @@ function ChatInterno() {
   const panelRef = useRef(null)
   const fin = useRef(null)
   const secuencia = useRef(0)
+  // Foto o audio por enviar
+  const [archivo, setArchivo] = useState(null)
+  const [previa, setPrevia] = useState(null)
+  const [visor, setVisor] = useState(null) // foto abierta a pantalla completa
+  const inputArchivo = useRef(null)
+  const [grabando, setGrabando] = useState(false)
+  const [segundos, setSegundos] = useState(0)
+  const grabadora = useRef(null)
+  const trozos = useRef([])
+  const descartar = useRef(false)
+  const limite = useRef(null)
+
+  useEffect(() => {
+    if (!grabando) return
+    const t = setInterval(() => setSegundos(n => n + 1), 1000)
+    return () => clearInterval(t)
+  }, [grabando])
 
   const aplicar = useCallback(j => {
     if (!j) return
@@ -256,22 +302,98 @@ function ChatInterno() {
     ? `https://wa.me/${torneo.wa}?text=${encodeURIComponent(`Hola${torneo.organizador ? ` ${torneo.organizador}` : ''}, te escribo desde Golmebol por el torneo "${torneo.name}". Quiero consultar sobre el reglamento / hacer una queja: `)}`
     : ''
 
+  async function elegirArchivo(e) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setAviso('')
+    try {
+      let listo = f
+      if (f.type.startsWith('image/')) listo = await comprimirImagen(f, { maxSize: 1600, calidad: 0.82 })
+      else if (!f.type.startsWith('audio/')) throw new Error('Solo puedes enviar fotos y audios.')
+      const tipo = (listo.type || '').split(';')[0]
+      if (!TIPOS_OK.includes(tipo)) throw new Error('Ese formato no se puede enviar. Prueba con una foto JPG o PNG, o un audio MP3 o M4A.')
+      if (tipo.startsWith('audio/') && listo.size > MAX_AUDIO) throw new Error('El audio pesa demasiado. Envía uno más corto.')
+      if (tipo.startsWith('image/') && listo.size > MAX_FOTO) throw new Error('La foto pesa demasiado. Prueba con otra.')
+      if (previa) URL.revokeObjectURL(previa)
+      setArchivo(listo)
+      setPrevia(URL.createObjectURL(listo))
+    } catch (er) {
+      setAviso(er.message || 'No se pudo preparar el archivo.')
+    }
+  }
+
+  function quitarArchivo() {
+    if (previa) URL.revokeObjectURL(previa)
+    setArchivo(null); setPrevia(null)
+  }
+
+  async function empezarGrabacion() {
+    if (enviando || grabando) return
+    setAviso('')
+    try {
+      const flujo = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find(t => MediaRecorder.isTypeSupported(t)) || ''
+      const rec = new MediaRecorder(flujo, mime ? { mimeType: mime } : undefined)
+      const inicio = Date.now()
+      trozos.current = []; descartar.current = false
+      rec.ondataavailable = ev => { if (ev.data?.size) trozos.current.push(ev.data) }
+      rec.onstop = () => {
+        flujo.getTracks().forEach(t => t.stop())
+        clearTimeout(limite.current)
+        setGrabando(false)
+        if (descartar.current || !trozos.current.length || Date.now() - inicio < 800) return
+        const tipo = (rec.mimeType || mime || 'audio/mp4').split(';')[0]
+        const f = new File(trozos.current, `audio.${EXT_AUDIO[tipo] || 'm4a'}`, { type: tipo })
+        enviar({ texto: '', archivo: f, previa: URL.createObjectURL(f) })
+      }
+      rec.start()
+      grabadora.current = rec
+      setSegundos(0); setGrabando(true)
+      limite.current = setTimeout(() => { if (rec.state !== 'inactive') rec.stop() }, 3 * 60000) // máximo 3 minutos
+    } catch {
+      setAviso('No pudimos usar el micrófono. Permite el acceso al micrófono en tu navegador e intenta otra vez.')
+    }
+  }
+
+  function pararGrabacion(mandar) {
+    descartar.current = !mandar
+    const r = grabadora.current
+    if (r && r.state !== 'inactive') r.stop()
+  }
+
+  // "reintento" es un mensaje que falló (trae su texto y su archivo para volver a mandarlo)
   async function enviar(reintento) {
-    const t = (reintento ? reintento.texto : texto).trim()
-    if (!t || enviando) return
+    const t = (reintento ? reintento.texto || '' : texto).trim()
+    const f = reintento ? (reintento.archivo || null) : archivo
+    if ((!t && !f) || enviando) return
     const tk = token || nuevoToken()
     if (!token) { guardar(K_TOKEN, tk); setToken(tk) }
     setEnviando(true); setAviso('')
-    const tmp = { id: `tmp-${++secuencia.current}`, de: 'usuario', texto: t, created_at: new Date().toISOString(), local: true }
+    const tmp = {
+      id: `tmp-${++secuencia.current}`, de: 'usuario', texto: t, created_at: new Date().toISOString(), local: true,
+      archivo: f || null, previa: f ? (reintento ? reintento.previa : previa) : null, adjunto_tipo: f ? tipoDe(f) : null,
+    }
     setMensajes(prev => [...prev.filter(m => !(reintento && m.id === reintento.id)), tmp])
-    if (!reintento) setTexto('')
+    if (!reintento) { setTexto(''); setArchivo(null); setPrevia(null) } // la vista previa pasa a la burbuja
+    const datosNuevo = tieneChat ? {} : { nombre, tema, torneoId: idTorneo || undefined, contacto: cfg.contacto ? contacto : undefined }
     try {
+      let adjunto
+      if (f) {
+        const rp = await fetch(apiUrl('/api/publico-chat'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accion: 'adjunto', token: tk, contentType: f.type, size: f.size, web: trampa, ...datosNuevo }),
+        })
+        const jp = await rp.json().catch(() => ({}))
+        if (!rp.ok) throw new Error(jp.error || 'No se pudo preparar el archivo')
+        setTieneChat(true)
+        const { error: eu } = await supabase.storage.from(BUCKET).uploadToSignedUrl(jp.path, jp.token, f, { contentType: f.type })
+        if (eu) throw new Error('No se pudo subir el archivo. Revisa tu internet e intenta otra vez.')
+        adjunto = { path: jp.path }
+      }
       const r = await fetch(apiUrl('/api/publico-chat'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accion: 'enviar', token: tk, texto: t, ruta, web: trampa,
-          ...(tieneChat ? {} : { nombre, tema, torneoId: idTorneo || undefined, contacto: cfg.contacto ? contacto : undefined }),
-        }),
+        body: JSON.stringify({ accion: 'enviar', token: tk, texto: t, adjunto, ruta, web: trampa, ...datosNuevo }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || 'No se pudo enviar')
@@ -406,7 +528,8 @@ function ChatInterno() {
                         {!mio && (m.automatico ? <AvatarAsistente size={28} /> : <AvatarAgente agente={agenteDe(m.created_at)} size={28} />)}
                         <div style={{ background: mio ? '#1a73e8' : '#fff', color: mio ? '#fff' : '#202124', border: mio ? 'none' : '1px solid #e8eaed', borderRadius: mio ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', lineHeight: 1.45, opacity: m.local ? .7 : 1, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                           {!mio && <div style={{ fontSize: '.66rem', fontWeight: '800', color: m.automatico ? '#0f9d8a' : '#6c35de', marginBottom: '2px' }}>{m.automatico ? 'Asistente automático de Golmebol' : agenteDe(m.created_at).nombre}</div>}
-                          <TextoConEnlaces texto={m.texto} />
+                          {(m.previa || m.adjunto_url || m.tiene_adjunto) && <div style={{ margin: '2px 0 6px' }}><Adjunto m={m} alAbrir={setVisor} /></div>}
+                          {m.texto ? <TextoConEnlaces texto={m.texto} /> : null}
                           <div style={{ fontSize: '.62rem', marginTop: '3px', textAlign: 'right', color: mio ? 'rgba(255,255,255,.75)' : '#9aa0a6' }}>
                             {m.fallo ? 'No se envió' : m.local ? 'Enviando…' : hora(m.created_at)}
                           </div>
@@ -427,19 +550,70 @@ function ChatInterno() {
 
               {aviso && <div style={{ padding: '8px 12px', background: '#fef3c7', color: '#7a5b00', fontSize: '.74rem', lineHeight: 1.4, flexShrink: 0 }}>{aviso}</div>}
 
+              {archivo && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', background: '#f6f7f9', borderTop: '1px solid #e8eaed', flexShrink: 0 }}>
+                  {archivo.type.startsWith('audio/')
+                    ? <div style={{ width: '52px', height: '52px', borderRadius: '8px', background: '#e8f0fe', color: '#1a73e8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Mic size={24} /></div>
+                    : <img src={previa} alt="" style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '8px', flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0, fontSize: '.8rem', color: '#202124', fontWeight: '700', lineHeight: 1.3 }}>
+                    {archivo.type.startsWith('audio/') ? 'Audio listo para enviar' : 'Foto lista para enviar'}
+                    <div style={{ fontWeight: '400', color: '#80868b', fontSize: '.72rem' }}>Puedes escribir un mensaje y tocar enviar</div>
+                  </div>
+                  <button onClick={quitarArchivo} aria-label="Quitar el archivo" style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: 'none', cursor: 'pointer', color: '#5f6368', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><X size={20} /></button>
+                </div>
+              )}
+
+              {grabando ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', borderTop: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
+                  <button onClick={() => pararGrabacion(false)} aria-label="Cancelar el audio"
+                    style={{ width: '44px', height: '44px', borderRadius: '50%', border: '1px solid #dadce0', background: '#fff', color: '#d93025', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Trash2 size={20} />
+                  </button>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '.92rem', fontWeight: '700', color: '#202124' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#d93025', flexShrink: 0 }} />
+                    Grabando… {mmss(segundos)}
+                  </div>
+                  <button onClick={() => pararGrabacion(true)} aria-label="Enviar el audio"
+                    style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: '#1a73e8', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Send size={19} />
+                  </button>
+                </div>
+              ) : (
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', borderTop: '1px solid #e8eaed', background: '#fff', flexShrink: 0 }}>
                 <input value={trampa} onChange={e => setTrampa(e.target.value)} name="web" tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', opacity: 0 }} />
-                <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1} maxLength={600} placeholder="Escribe tu mensaje…"
+                <input ref={inputArchivo} type="file" accept="image/*,audio/*" onChange={elegirArchivo} style={{ display: 'none' }} />
+                <button onClick={() => inputArchivo.current?.click()} disabled={enviando} aria-label="Enviar una foto o un audio"
+                  style={{ width: '44px', height: '44px', borderRadius: '50%', border: '1px solid #dadce0', background: '#fff', color: '#5f6368', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Paperclip size={20} />
+                </button>
+                <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={1} maxLength={600} placeholder={archivo ? 'Añade un mensaje (opcional)…' : 'Escribe tu mensaje…'}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); enviar() } }}
                   style={{ flex: 1, resize: 'none', maxHeight: '110px', minHeight: '44px', border: '1px solid #dadce0', borderRadius: '22px', padding: '11px 14px', fontSize: '16px', fontFamily: 'inherit', outline: 'none', lineHeight: 1.3, boxSizing: 'border-box', color: '#202124', background: '#fff' }}
                   onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 110) + 'px' }} />
-                <button onClick={() => enviar()} disabled={!texto.trim() || enviando} aria-label="Enviar mensaje"
-                  style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: texto.trim() ? '#1a73e8' : '#dadce0', color: '#fff', cursor: texto.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Send size={19} />
-                </button>
+                {(texto.trim() || archivo || !puedeGrabar())
+                  ? <button onClick={() => enviar()} disabled={(!texto.trim() && !archivo) || enviando} aria-label="Enviar mensaje"
+                      style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: (texto.trim() || archivo) ? '#1a73e8' : '#dadce0', color: '#fff', cursor: (texto.trim() || archivo) ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Send size={19} />
+                    </button>
+                  : <button onClick={empezarGrabacion} disabled={enviando} aria-label="Grabar un audio"
+                      style={{ width: '44px', height: '44px', borderRadius: '50%', border: 'none', background: '#1a73e8', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Mic size={20} />
+                    </button>}
               </div>
+              )}
             </>
           )}
+        </div>
+      )}
+
+      {visor && (
+        <div onClick={() => setVisor(null)} role="dialog" aria-label="Foto"
+          style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(0,0,0,.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <img src={visor} alt="Foto enviada" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+          <button onClick={() => setVisor(null)} aria-label="Cerrar la foto"
+            style={{ position: 'absolute', top: 'calc(10px + env(safe-area-inset-top))', right: '12px', width: '48px', height: '48px', borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.18)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={24} />
+          </button>
         </div>
       )}
     </>
