@@ -135,3 +135,8 @@ export async function enviarEnTema(admin, chat, etiqueta, enviar) {
 export const pieResponder = () => temasActivos()
   ? '\n\n↩️ Escribe aquí, en este tema, para contestarle.'
   : '\n\n↩️ Responde a ESTE mensaje para contestarle.'
+
+// Le pone una reacción (ej. 👍) a un mensaje tuyo: así sabes que tu respuesta SÍ le llegó a la persona.
+export async function reaccionar(chatId, messageId, emoji = '👍') {
+  try { await llamar('setMessageReaction', { chat_id: chatId, message_id: messageId, reaction: [{ type: 'emoji', emoji }] }) } catch { /* no es grave */ }
+}

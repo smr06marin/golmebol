@@ -8,7 +8,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
-import { enviarTelegram, descargarTelegramArchivo, registrarComandos, temasActivos } from './_telegram.js'
+import { enviarTelegram, descargarTelegramArchivo, registrarComandos, temasActivos, reaccionar } from './_telegram.js'
 import { listarPendientes, textoPendientes, textoConversacion } from './_prioridadSoporte.js'
 import { oggAM4a } from './_audio.js'
 import { guardarRespuesta, AYUDA_RUTA } from './_soporteRespuesta.js'
@@ -66,7 +66,9 @@ export default async function handler(req, res) {
 
   try {
     const media = leerMedia(m)
-    if (m.from?.is_bot) return res.status(200).json({ ok: true })
+    // Otros bots se ignoran. Ojo: si escribes como administrador ANÓNIMO del grupo, Telegram te muestra como el bot
+    // "GroupAnonymousBot" pero con el grupo como remitente: esos mensajes SÍ son tuyos y se aceptan.
+    if (m.from?.is_bot && String(m.sender_chat?.id || '') !== miChat) return res.status(200).json({ ok: true })
     // Avisos automáticos del grupo (tema creado, alguien entró, mensaje fijado...): se ignoran en silencio
     if (!media && !m.text && !(m.sticker || m.animation || m.location || m.contact || m.poll || m.video_note)) return res.status(200).json({ ok: true })
     if (!media && !m.text) {
@@ -106,6 +108,7 @@ export default async function handler(req, res) {
     } : undefined
     const r = await guardarRespuesta(admin, { texto: m.text || m.caption || '', citadoId: citado, idMensaje: `tg-${m.message_id}`, adjunto, chatIdTema: chatTema?.id })
     if (!r.ok) await avisar(AYUDA_RUTA, m.message_id)
+    else await reaccionar(miChat, m.message_id, '👍') // ✔ le llegó: el bot le pone 👍 a tu mensaje
   } catch (e) {
     if (/too big/i.test(e.message || '')) { // Telegram no dejó bajar el archivo: no sirve reintentar
       await avisar('Ese archivo es demasiado grande para pasarlo al chat. Envíalo más liviano o más corto.', m.message_id)
