@@ -1,21 +1,23 @@
 // Decide a qué chat va TU respuesta (venga de Telegram o de WhatsApp) y la guarda.
 // Orden:
-//   1. Respondiste (Responder / swipe) al mensaje de un organizador       ← lo normal
+//   0. Escribiste dentro del TEMA de esa conversación (grupo de Telegram con Temas)   ← lo más seguro
+//   1. Respondiste (Responder / swipe) al mensaje de esa persona
 //   2. Empezaste el mensaje con su número:  #12 hola, ya te ayudo
-//   3. Si no, va al último organizador que escribió y todavía no tiene respuesta
+// Ya NO se adivina "al último que escribió": con varias personas escribiendo a la vez eso mandaba respuestas
+// a quien no era. Si no se sabe a quién va, no se envía y se te pide aclararlo.
 // Devuelve { ok: true } o { ok: false } cuando no se pudo saber a quién contestarle.
 
 import { avisarOrganizador } from './_soportePush.js'
 
-export const AYUDA_RUTA = 'No supe a quién contestarle. Responde directamente al mensaje del organizador (en Telegram: deslizar o mantener presionado → Responder), o empieza tu mensaje con su número, por ejemplo: #12 hola, ya te ayudo.'
+export const AYUDA_RUTA = '⚠️ No envié tu mensaje porque no supe a quién va. Escríbelo dentro del tema de esa persona, o usa «Responder» sobre su mensaje (deslizar o mantener presionado → Responder), o empieza con su número, por ejemplo: #12 hola, ya te ayudo.'
 
 // "adjunto" (opcional) es una función  async chatId => ({ path, tipo })  que sube el archivo una vez que se sabe a qué chat va.
-export async function guardarRespuesta(admin, { texto, citadoId, idMensaje, adjunto }) {
+export async function guardarRespuesta(admin, { texto, citadoId, idMensaje, adjunto, chatIdTema }) {
   let cuerpo = String(texto || '').trim()
   if (!cuerpo && !adjunto) return { ok: false }
-  let chatId = null
+  let chatId = chatIdTema || null
 
-  if (citadoId) {
+  if (!chatId && citadoId) {
     const { data: orig } = await admin.from('soporte_mensajes').select('chat_id').eq('wa_id', citadoId).maybeSingle()
     chatId = orig?.chat_id || null
   }
@@ -24,13 +26,6 @@ export async function guardarRespuesta(admin, { texto, citadoId, idMensaje, adju
     if (num) {
       const { data: c } = await admin.from('soporte_chats').select('id').eq('codigo', Number(num[1])).maybeSingle()
       if (c) { chatId = c.id; cuerpo = num[2].trim() }
-    }
-  }
-  if (!chatId) {
-    const { data: ult } = await admin.from('soporte_mensajes').select('chat_id, created_at').eq('de', 'usuario').order('created_at', { ascending: false }).limit(1).maybeSingle()
-    if (ult) {
-      const { count } = await admin.from('soporte_mensajes').select('id', { count: 'exact', head: true }).eq('chat_id', ult.chat_id).eq('de', 'soporte').gt('created_at', ult.created_at)
-      if (!count) chatId = ult.chat_id
     }
   }
   if (!chatId) return { ok: false }

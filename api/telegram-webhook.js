@@ -4,10 +4,11 @@
 //
 // Seguridad: Telegram manda el texto TELEGRAM_WEBHOOK_SECRET en una cabecera (si no coincide, se rechaza) y
 // solo se aceptan respuestas desde TU chat (TELEGRAM_CHAT_ID); cualquier otra persona que le escriba al bot es ignorada.
+// Con TELEGRAM_TEMAS=1, lo que escribes dentro del tema de una conversación va SOLO a esa persona.
 
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
-import { enviarTelegram, descargarTelegramArchivo, registrarComandos } from './_telegram.js'
+import { enviarTelegram, descargarTelegramArchivo, registrarComandos, temasActivos } from './_telegram.js'
 import { listarPendientes, textoPendientes, textoConversacion } from './_prioridadSoporte.js'
 import { oggAM4a } from './_audio.js'
 import { guardarRespuesta, AYUDA_RUTA } from './_soporteRespuesta.js'
@@ -51,28 +52,43 @@ export default async function handler(req, res) {
   if (!SUPABASE_URL || !SERVICE_KEY) { console.error('telegram-webhook: falta SUPABASE_SERVICE_ROLE_KEY'); return res.status(500).json({ error: 'Config incompleta' }) }
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
 
+  // ¿Escribiste dentro del tema (hilo) de una conversación? Entonces va a esa persona, sin adivinar nada.
+  const temaId = m.is_topic_message && m.message_thread_id ? m.message_thread_id : null
+  let chatTema = null
+  if (temaId) {
+    const { data } = await admin.from('soporte_chats').select('id, codigo').eq('telegram_tema_id', temaId).maybeSingle()
+    chatTema = data || null
+  }
+  // Las respuestas del bot salen en el mismo tema donde escribiste
+  const avisar = (texto, citar) => enviarTelegram(texto, miChat, citar, false, temaId || undefined).catch(() => {})
+  // En un tema, cada mensaje "responde" al inicio del tema: eso no cuenta como Responder a un mensaje
+  const citado = m.reply_to_message && !m.reply_to_message.forum_topic_created ? `tg-${m.reply_to_message.message_id}` : null
+
   try {
     const media = leerMedia(m)
+    if (m.from?.is_bot) return res.status(200).json({ ok: true })
+    // Avisos automáticos del grupo (tema creado, alguien entró, mensaje fijado...): se ignoran en silencio
+    if (!media && !m.text && !(m.sticker || m.animation || m.location || m.contact || m.poll || m.video_note)) return res.status(200).json({ ok: true })
     if (!media && !m.text) {
-      await enviarTelegram('El chat solo puede mostrar texto, fotos, videos y audios. Envía tu respuesta en uno de esos formatos.', miChat, m.message_id).catch(() => {})
+      await avisar('El chat solo puede mostrar texto, fotos, videos y audios. Envía tu respuesta en uno de esos formatos.', m.message_id)
       return res.status(200).json({ ok: true })
     }
     if (media && !EXT[media.mime]) {
-      await enviarTelegram('Solo puedo pasar fotos, videos y audios (notas de voz, MP3 o M4A).', miChat, m.message_id).catch(() => {})
+      await avisar('Solo puedo pasar fotos, videos y audios (notas de voz, MP3 o M4A).', m.message_id)
       return res.status(200).json({ ok: true })
     }
     if (media && (media.size || 0) > MAX_DESCARGA) {
-      await enviarTelegram('Ese archivo pesa más de 20 MB y Telegram no me deja pasarlo al chat. Envíalo más liviano o más corto.', miChat, m.message_id).catch(() => {})
+      await avisar('Ese archivo pesa más de 20 MB y Telegram no me deja pasarlo al chat. Envíalo más liviano o más corto.', m.message_id)
       return res.status(200).json({ ok: true })
     }
     if (m.text?.startsWith('/')) { // comandos: no son respuestas
       const [cmd, ...args] = m.text.trim().split(/\s+/)
       const comando = cmd.toLowerCase().replace(/@.*$/, '')
-      if (comando === '/pendientes') await enviarTelegram(textoPendientes(await listarPendientes(admin)), miChat).catch(() => {})
-      else if (comando === '/chat') await enviarTelegram(await textoConversacion(admin, String(args[0] || '').replace(/^#/, '')), miChat).catch(() => {})
+      if (comando === '/pendientes') await avisar(textoPendientes(await listarPendientes(admin)))
+      else if (comando === '/chat') await avisar(await textoConversacion(admin, String(args[0] || chatTema?.codigo || '').replace(/^#/, '')))
       else {
         await registrarComandos().catch(() => {})
-        await enviarTelegram('Listo, estás conectado. Cuando alguien escriba en el chat de ayuda, te llega aquí con su prioridad: 🔴 urgente, 🟠 importante o ⚪ normal.\n\nComandos:\n/pendientes → chats sin responder, ordenados por prioridad\n/chat 14 → ver la conversación del chat #14\n\nPara responder: usa «Responder» sobre el aviso, o escribe el número y tu mensaje: #14 Hola, ya te ayudo.', miChat).catch(() => {})
+        await avisar(`Listo, estás conectado. Cuando alguien escriba en el chat de ayuda, te llega aquí con su prioridad: 🔴 urgente, 🟠 importante o ⚪ normal.\n\nComandos:\n/pendientes → chats sin responder, ordenados por prioridad\n/chat 14 → ver la conversación del chat #14\n\n${temasActivos() ? 'Cada persona tiene su propio tema en este grupo: para contestarle, escribe dentro de su tema.' : 'Para responder: usa «Responder» sobre el aviso, o escribe el número y tu mensaje: #14 Hola, ya te ayudo.'}`)
       }
       return res.status(200).json({ ok: true })
     }
@@ -88,11 +104,11 @@ export default async function handler(req, res) {
       if (error) throw error
       return { path, tipo: media.tipo }
     } : undefined
-    const r = await guardarRespuesta(admin, { texto: m.text || m.caption || '', citadoId: m.reply_to_message ? `tg-${m.reply_to_message.message_id}` : null, idMensaje: `tg-${m.message_id}`, adjunto })
-    if (!r.ok) await enviarTelegram(AYUDA_RUTA, miChat, m.message_id).catch(() => {})
+    const r = await guardarRespuesta(admin, { texto: m.text || m.caption || '', citadoId: citado, idMensaje: `tg-${m.message_id}`, adjunto, chatIdTema: chatTema?.id })
+    if (!r.ok) await avisar(AYUDA_RUTA, m.message_id)
   } catch (e) {
     if (/too big/i.test(e.message || '')) { // Telegram no dejó bajar el archivo: no sirve reintentar
-      await enviarTelegram('Ese archivo es demasiado grande para pasarlo al chat. Envíalo más liviano o más corto.', miChat, m.message_id).catch(() => {})
+      await avisar('Ese archivo es demasiado grande para pasarlo al chat. Envíalo más liviano o más corto.', m.message_id)
       return res.status(200).json({ ok: true })
     }
     console.error('telegram-webhook:', e.message || e)
