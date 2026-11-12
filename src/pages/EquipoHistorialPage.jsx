@@ -253,7 +253,8 @@ export default function EquipoHistorialPage() {
     setQuitandoJugadorId(null)
     if (error) return showMsg(mensajeInscripcion(error, 'No se pudo quitar del torneo'), 'error')
     showMsg(`${reg.players?.name} quitado del torneo — se liberó un cupo`)
-    fetchTorneos()
+    // También la plantilla general: si no, la jugadora seguía marcada como "Activo" después de quitarla
+    await Promise.all([fetchTorneos(), fetchJugadoresGlobal()])
   }
 
   // Agrega (o vuelve a activar) un jugador del equipo EN ESTE torneo,
