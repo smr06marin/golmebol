@@ -13,6 +13,7 @@ import { comprimirImagen } from '../lib/imageCompress'
 import { compararPosiciones } from '../lib/torneoTablas'
 import { FASES } from '../lib/palmaresJugador'
 import { abrirChatAyuda } from '../lib/abrirChat'
+import DuenosEquipo from '../components/DuenosEquipo'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -103,6 +104,15 @@ export default function EquipoHistorialPage() {
   useEffect(() => {
     if (user) supabase.from('players').select('id, numero_cedula').eq('user_id', user.id).maybeSingle().then(({ data }) => setMiPlayer(data))
   }, [user])
+  // ¿Soy dueño (principal o adicional)? Lo responde la base; si aún no tiene la función, se compara la cédula como antes.
+  const [soyDuenoBase, setSoyDuenoBase] = useState(null)
+  useEffect(() => {
+    if (!user || !id) return
+    let vivo = true
+    supabase.rpc('soy_dueno_de_equipo', { p_team_id: id }).then(({ data, error }) => { if (vivo && !error) setSoyDuenoBase(data === true) })
+    return () => { vivo = false }
+  }, [user, id])
+  const duenoPorCedula = (eq, yo) => !!(yo?.numero_cedula && eq?.representante_cedula && String(yo.numero_cedula) === String(eq.representante_cedula))
   // Si quien entra es el DUEÑO del equipo, el filtro de jugadores arranca
   // en "Activos" — pero ahí el botón "Quitar del torneo" (para liberar
   // cupo) no puede salir, porque no hay forma de saber de qué torneo
@@ -116,12 +126,12 @@ export default function EquipoHistorialPage() {
   useEffect(() => {
     if (autoSeleccionoTorneoRef.current) return
     if (!equipo || !miPlayer || torneos.length === 0) return
-    const esDuenoEquipo = !!(miPlayer?.numero_cedula && equipo.representante_cedula && String(miPlayer.numero_cedula) === String(equipo.representante_cedula))
+    const esDuenoEquipo = soyDuenoBase ?? duenoPorCedula(equipo, miPlayer)
     if (!esDuenoEquipo) return
     autoSeleccionoTorneoRef.current = true
     const torneoDefault = torneos.find(t => t.tournaments?.status === 'active') || torneos[0]
     setFiltroJugadores(torneoDefault.tournament_id)
-  }, [equipo, miPlayer, torneos])
+  }, [equipo, miPlayer, torneos, soyDuenoBase])
   useEffect(() => {
     if (tab === 'buscador' && !statsJugadores) {
       supabase.from('player_match_stats')
@@ -590,7 +600,7 @@ export default function EquipoHistorialPage() {
   if (loading) return <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.cyan, fontSize:'.9rem' }}>Cargando equipo...</div>
   if (!equipo) return <div style={{ minHeight:'100vh', background:S.navy, display:'flex', alignItems:'center', justifyContent:'center', color:S.muted, fontSize:'.9rem' }}>Equipo no encontrado</div>
 
-  const esDueno = !!(miPlayer?.numero_cedula && equipo.representante_cedula && String(miPlayer.numero_cedula) === String(equipo.representante_cedula))
+  const esDueno = soyDuenoBase ?? duenoPorCedula(equipo, miPlayer)
 
   const titulos = logros.filter(l => l.tipo === 'campeon').length
   const efectividad = stats?.pj > 0 ? Math.round((stats.pg / stats.pj) * 100) : 0
@@ -676,6 +686,7 @@ export default function EquipoHistorialPage() {
                   👑 Eres el encargado de este equipo — en la pestaña Jugadores puedes inscribir y quitar jugadores de cada torneo (dentro del cupo y mientras la inscripción esté abierta) y corregir su teléfono/foto.
                 </div>
               )}
+              {esDueno && <DuenosEquipo teamId={id}/>}
             </div>
             <div style={{ textAlign:'center', background:S.card, border:`1px solid ${S.gold}55`, borderRadius:'16px', padding:'14px 20px', flexShrink:0 }}>
               <Trophy size={22} color={S.gold} style={{ marginBottom:'4px' }}/>

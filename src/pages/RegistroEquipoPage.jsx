@@ -250,11 +250,13 @@ export default function RegistroEquipoPage() {
     // equipo, ellos no pueden desactivar a nadie, solo el dueño.
     // (La cédula del representante ya no se descarga al celular: se pregunta a la base "¿es esta cédula la suya?".
     //  Con la base sin migrar, equipo.representante_cedula sí viene y se compara aquí como antes.)
+    // Siempre se le pregunta a la base: así sirve también para los dueños ADICIONALES del equipo.
     let esRepresentante
-    if (equipo.representante_cedula !== undefined) {
+    const { data: okRep, error: errRep } = await supabase.rpc('es_representante_equipo', { p_token: token, p_cedula: authCedula.trim() })
+    const faltaFn = errRep && (errRep.code === 'PGRST202' || /could not find the function/i.test(errRep.message || ''))
+    if (faltaFn && equipo.representante_cedula !== undefined) {
       esRepresentante = !equipo.representante_cedula || String(equipo.representante_cedula).trim() === authCedula.trim()
     } else {
-      const { data: okRep, error: errRep } = await supabase.rpc('es_representante_equipo', { p_token: token, p_cedula: authCedula.trim() })
       if (errRep) {
         await supabaseVerify.auth.signOut()
         setErrorDesactivar('No se pudo verificar que seas el representante del equipo. Revisa tu conexión e intenta de nuevo — no se desactivó nada.')
@@ -265,7 +267,7 @@ export default function RegistroEquipoPage() {
     }
     if (!esRepresentante) {
       await supabaseVerify.auth.signOut()
-      setErrorDesactivar('Solo el dueño/representante del equipo puede desactivar jugadores. Si necesitas hacer este cambio, pídeselo a él.')
+      setErrorDesactivar('Solo los dueños del equipo pueden desactivar jugadores. Si necesitas hacer este cambio, pídeselo a uno de ellos.')
       setDesactivando(false)
       return
     }
@@ -950,7 +952,7 @@ export default function RegistroEquipoPage() {
                 <b>{equipo.name}</b> · {torneo.name}. Hoja con foto, nombre, cédula y fecha de nacimiento de cada jugador, lista para imprimir o guardar en PDF.
               </div>
               <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', fontSize: '.75rem', color: '#f57f17', lineHeight: 1.5 }}>
-                🔒 Incluye cédulas, por eso solo <b>{equipo.representante_nombre || 'el dueño/representante del equipo'}</b> puede descargarla: identifícate con tu cuenta de Golmebol.
+                🔒 Incluye cédulas, por eso solo <b>los dueños del equipo</b> pueden descargarla: identifícate con tu cuenta de Golmebol.
               </div>
               <form onSubmit={handleDescargarPlanilla} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <input value={plCedula} onChange={ev => setPlCedula(ev.target.value)} placeholder="Cédula del dueño del equipo" type="number" style={inputStyle}/>
@@ -1000,7 +1002,7 @@ export default function RegistroEquipoPage() {
                     Equipo <b>{equipo.name}</b> · {torneo.name}. Para hacerlo debes identificarte con tu cuenta de Golmebol: <b>quedará registrado quién desactivó al jugador</b>.
                   </div>
                   <div style={{ background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px', fontSize: '.75rem', color: '#f57f17', lineHeight: 1.5 }}>
-                    🔒 Solo <b>{equipo.representante_nombre || 'el dueño/representante del equipo'}</b> puede desactivar jugadores, aunque este link se lo compartan a todo el equipo.
+                    🔒 Solo <b>los dueños del equipo</b> pueden desactivar jugadores, aunque este link se lo compartan a todo el equipo.
                   </div>
 
                   <div style={{ fontSize: '.72rem', fontWeight: '700', color: '#5f6368', marginBottom: '6px' }}>1. ¿A quién desactivas?</div>

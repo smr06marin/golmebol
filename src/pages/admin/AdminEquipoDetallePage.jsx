@@ -13,6 +13,7 @@ import { buscarPersonaPorCedula, buscarDuenoEquipoPorCedula, resolverIdentidadPo
 import { useAuthStore } from '../../store/authStore'
 import { confirmar } from '../../lib/confirmar'
 import { abrirChatAyuda } from '../../lib/abrirChat'
+import DuenosEquipo from '../../components/DuenosEquipo'
 
 const FECHAS_LIMITE_EDICION = 3 // el organizador ya no puede editar el equipo (nombre/escudo) una vez jugó esta cantidad de fechas
 
@@ -1175,6 +1176,7 @@ export default function AdminEquipoDetallePage({ modoLectura = false }) {
                 )}
               </div>
             )}
+            {!editandoDueno && <DuenosEquipo teamId={equipo.id} puedeEditar={!modoLectura}/>}
             {!modoLectura && subiendoLogo && <div style={{ fontSize: '.75rem', color: '#8ec3ff', marginTop: '8px', fontWeight: '600' }}>Subiendo logo...</div>}
           </div>
           <div style={{ textAlign: 'center', ...GLASS_SM, borderRadius: '18px', padding: '12px 18px' }}>
