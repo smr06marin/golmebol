@@ -9,9 +9,10 @@ import SelectorUbicacion from '../../components/SelectorUbicacion'
 import { ubicacionDeTorneo } from '../../lib/ubicaciones'
 import { reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import { confirmar } from '../../lib/confirmar'
+import CampoInicioAutomatico from '../../components/CampoInicioAutomatico'
 
 
-const EMPTY = { name: '', season: String(new Date().getFullYear()), city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', organizador_id: '', planilla_tipo: '', inscripcion_jugadores_modo: 'sin_limite', inscripcion_jugadores_hasta: '' }
+const EMPTY = { name: '', season: String(new Date().getFullYear()), city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', cronometro_auto_min: '', organizador_id: '', planilla_tipo: '', inscripcion_jugadores_modo: 'sin_limite', inscripcion_jugadores_hasta: '' }
 // Solo estas cuentas pueden asignar/cambiar el organizador de un torneo ya
 // creado (mismo criterio que en AdminEquiposPage.jsx / AdminJugadorDetallePage.jsx
 // para "cambiar dueño" — respaldo por si la tabla de roles falla).
@@ -179,6 +180,8 @@ export default function AdminTorneosPage() {
       // Vacío = sin límite (null), no 0 — 0 significaría "no puede haber jugadores".
       limite_jugadores_equipo: (form.limite_jugadores_equipo === '' || form.limite_jugadores_equipo === null || form.limite_jugadores_equipo === undefined) ? null : (parseInt(form.limite_jugadores_equipo, 10) || null),
       // Vacío = usar el valor por defecto de la modalidad (20/25/45 min).
+      // Puntualidad: minutos después de la hora del partido en que el cronómetro arranca solo (vacío = apagado)
+      cronometro_auto_min: (form.cronometro_auto_min === '' || form.cronometro_auto_min === null || form.cronometro_auto_min === undefined || isNaN(parseInt(form.cronometro_auto_min, 10))) ? null : Math.max(0, Math.min(120, parseInt(form.cronometro_auto_min, 10))),
       duracion_tiempo_min: (form.duracion_tiempo_min === '' || form.duracion_tiempo_min === null || form.duracion_tiempo_min === undefined) ? null : (parseInt(form.duracion_tiempo_min, 10) || null),
       // Solo se usa al EDITAR (abajo, en "crear" se pisa siempre) — y solo el
       // admin principal ve el selector para cambiarlo; para cualquier otro
@@ -218,6 +221,9 @@ export default function AdminTorneosPage() {
     const sinInscripcion = obj => { const { inscripcion_jugadores_modo, inscripcion_jugadores_hasta, ...resto } = obj; return resto }
     const esErrorInscripcion = error => error?.message?.includes('inscripcion_jugadores')
     const sinDuracion = obj => { const { duracion_tiempo_min, ...resto } = obj; return resto }
+    const sinCrono = obj => { const { cronometro_auto_min, ...resto } = obj; return resto }
+    const esErrorCrono = error => error?.message?.includes('cronometro_auto_min')
+    const avisoCrono = accion => `Torneo ${accion}, pero el arranque automático del cronómetro NO se guardó. Falta ejecutar migracion_cronometro_automatico.sql en Supabase`
     const sinPlanilla = obj => { const { planilla_tipo, ...resto } = obj; return resto }
     const sinUbicacion = obj => { const { pais, departamento, municipio_codigo, vereda, ...resto } = obj; return resto }
     const esErrorFinanzas = error => error?.message?.includes('finanzas_config')
@@ -271,6 +277,11 @@ export default function AdminTorneosPage() {
       if (error && esErrorPlanilla(error)) {
         payload = sinPlanilla(payload)
         avisoDegradado = 'Torneo actualizado, pero la planilla NO se guardó. Avísale al administrador de Golmebol para activarlo'
+        ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
+      }
+      if (error && esErrorCrono(error)) {
+        payload = sinCrono(payload)
+        if (formNorm.cronometro_auto_min !== null) avisoDegradado = avisoCrono('actualizado')
         ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', editId).select('id'))
       }
       if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(errorAmigable(error, 'Error al guardar'), 'error') }
@@ -337,6 +348,11 @@ export default function AdminTorneosPage() {
         avisoDegradado = 'Torneo creado, pero la planilla NO se guardó. Avísale al administrador de Golmebol para activarlo'
         ;({ error } = await supabase.from('tournaments').insert(payload))
       }
+      if (error && esErrorCrono(error)) {
+        payload = sinCrono(payload)
+        if (formNorm.cronometro_auto_min !== null) avisoDegradado = avisoCrono('creado')
+        ;({ error } = await supabase.from('tournaments').insert(payload))
+      }
       if (error) { console.log('ERROR DETALLE:', error); showMsg('Error al crear', 'error') }
       else showMsg(avisoDegradado || 'Torneo creado ✓', avisoDegradado ? 'error' : 'ok')
     }
@@ -352,7 +368,7 @@ export default function AdminTorneosPage() {
     const ub = ubicacionDeTorneo(t)
     const detectada = !t.municipio_codigo && !!ub.munCodigo
     setUbicInferida(detectada)
-    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, w_goles_ganador: t.w_goles_ganador ?? 3, w_puntos_ganador: t.w_puntos_ganador ?? '', limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', organizador_id: t.organizador_id || '', planilla_tipo: t.planilla_tipo || '', inscripcion_jugadores_modo: t.inscripcion_jugadores_modo || 'sin_limite', inscripcion_jugadores_hasta: t.inscripcion_jugadores_hasta || '', _inscColumna: 'inscripcion_jugadores_modo' in t })
+    setForm({ name: t.name || '', season: t.season || '', city: detectada ? ub.munLabel : (t.city || ''), pais: t.pais || 'CO', departamento: detectada ? ub.depLabel : (t.departamento || ''), municipio_codigo: detectada ? ub.munCodigo : (t.municipio_codigo || ''), vereda: t.vereda || '', modalidad: t.modalidad || '', categoria: t.categoria || '', genero: t.genero || '', formato: t.formato || '', fecha_inicio: t.fecha_inicio || '', fecha_fin: t.fecha_fin || '', pts_victoria: t.pts_victoria ?? 3, pts_empate: t.pts_empate ?? 1, pts_derrota: t.pts_derrota ?? 0, w_goles_ganador: t.w_goles_ganador ?? 3, w_puntos_ganador: t.w_puntos_ganador ?? '', limite_jugadores_equipo: t.limite_jugadores_equipo ?? '', duracion_tiempo_min: t.duracion_tiempo_min ?? '', cronometro_auto_min: t.cronometro_auto_min ?? '', organizador_id: t.organizador_id || '', planilla_tipo: t.planilla_tipo || '', inscripcion_jugadores_modo: t.inscripcion_jugadores_modo || 'sin_limite', inscripcion_jugadores_hasta: t.inscripcion_jugadores_hasta || '', _inscColumna: 'inscripcion_jugadores_modo' in t })
     const fc = t.finanzas_config || {}
     setFin({
       llevar_cuentas:       !!fc.llevar_cuentas,
@@ -632,6 +648,9 @@ export default function AdminTorneosPage() {
               <input type="number" min="1" value={form.duracion_tiempo_min} onChange={e => setForm(f => ({ ...f, duracion_tiempo_min: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={input}
                 placeholder={form.modalidad && DURACION_SUGERIDA[form.modalidad] ? `${DURACION_SUGERIDA[form.modalidad]} (por defecto)` : 'Ej: 25'}/>
             </div>
+
+            {/* Puntualidad: el cronómetro arranca solo después de la hora del partido */}
+            <CampoInicioAutomatico valor={form.cronometro_auto_min} onChange={v => setForm(f => ({ ...f, cronometro_auto_min: v }))}/>
 
             {/* Asignar organizador — solo el admin principal, y solo al editar un torneo ya creado */}
             {editId && esAdmin && esPrincipal && (

@@ -38,6 +38,7 @@ import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
 import { apiUrl } from '../../lib/apiBase'
 import AyudaTermino from '../../components/AyudaTermino'
 import PreguntaClasificados from '../../components/PreguntaClasificados'
+import CampoInicioAutomatico from '../../components/CampoInicioAutomatico'
 import { leerClasificacionElim, idsClasificados, textoClasificacion } from '../../lib/clasificacionElim'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { confirmar } from '../../lib/confirmar'
@@ -3818,7 +3819,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true,
       pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0,
       w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? null,
-      limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? null, duracion_tiempo_min: torneo.duracion_tiempo_min ?? null,
+      limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? null, duracion_tiempo_min: torneo.duracion_tiempo_min ?? null, cronometro_auto_min: torneo.cronometro_auto_min ?? null,
       // La edición nueva conserva «inscripción hasta que termine la fase de grupos»; una fecha concreta no se copia (ya sería vieja)
       ...(torneo.inscripcion_jugadores_modo === 'fase_grupos' ? { inscripcion_jugadores_modo: 'fase_grupos' } : {}),
       // La edición nueva usa la misma planilla (salón / fútbol 11) que la anterior.
@@ -3828,7 +3829,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     // El sistema de puntos y algunos campos son relativamente nuevos: si en
     // este proyecto todavía falta correr su migración, no bloquea la
     // creación de la edición entera — se reintenta sin ese campo puntual.
-    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'w_goles_ganador', 'w_puntos_ganador', 'limite_jugadores_equipo', 'inscripcion_jugadores_modo', 'duracion_tiempo_min', 'planilla_tipo', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
+    const camposOpcionales = ['pts_victoria', 'pts_empate', 'pts_derrota', 'w_goles_ganador', 'w_puntos_ganador', 'limite_jugadores_equipo', 'inscripcion_jugadores_modo', 'duracion_tiempo_min', 'cronometro_auto_min', 'planilla_tipo', 'color_primario', 'color_secundario', 'favicon_url', 'custom_domain']
     while (error && camposOpcionales.some(c => (error.message || '').includes(c))) {
       const campo = camposOpcionales.find(c => (error.message || '').includes(c))
       payload = { ...payload }
@@ -4261,7 +4262,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const modoInsc = modoInsc0 || 'sin_limite'
     const camposInscripcion = (modoInsc !== 'sin_limite' || _inscColumna)
       ? { inscripcion_jugadores_modo: modoInsc, inscripcion_jugadores_hasta: modoInsc === 'fecha' ? (hastaInsc0 || null) : null } : {}
-    let payload = { ...formTorneoBase, ...camposInscripcion, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), w_goles_ganador: Math.max(0, numDef(formTorneo.w_goles_ganador, 3)), w_puntos_ganador: numOrNull(formTorneo.w_puntos_ganador), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo), duracion_tiempo_min: numOrNull(formTorneo.duracion_tiempo_min) }
+    let payload = { ...formTorneoBase, ...camposInscripcion, pts_victoria: numDef(formTorneo.pts_victoria, 3), pts_empate: numDef(formTorneo.pts_empate, 1), pts_derrota: numDef(formTorneo.pts_derrota, 0), w_goles_ganador: Math.max(0, numDef(formTorneo.w_goles_ganador, 3)), w_puntos_ganador: numOrNull(formTorneo.w_puntos_ganador), limite_jugadores_equipo: numOrNull(formTorneo.limite_jugadores_equipo), duracion_tiempo_min: numOrNull(formTorneo.duracion_tiempo_min), cronometro_auto_min: numOrNull(formTorneo.cronometro_auto_min) === null ? null : Math.max(0, Math.min(120, numOrNull(formTorneo.cronometro_auto_min))) }
     let avisoDegradado = null
     let { data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id')
     if (error && (error.message?.includes('w_goles_ganador') || error.message?.includes('w_puntos_ganador'))) {
@@ -4298,6 +4299,13 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const { duracion_tiempo_min, ...resto } = payload
       payload = resto
       avisoDegradado = 'Torneo actualizado, pero la duración de cada tiempo NO se guardó. Avísale al administrador de Golmebol para activarlo'
+      ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
+    }
+    if (error && error.message?.includes('cronometro_auto_min')) {
+      // Falta correr migracion_cronometro_automatico.sql en Supabase: se reintenta sin ese campo
+      const { cronometro_auto_min, ...resto } = payload
+      payload = resto
+      if (cronometro_auto_min !== null) avisoDegradado = 'Torneo actualizado, pero el arranque automático del cronómetro NO se guardó. Falta ejecutar migracion_cronometro_automatico.sql en Supabase'
       ;({ data, error } = await supabase.from('tournaments').update(payload).eq('id', id).select('id'))
     }
     if (error) { console.log('ERROR DETALLE (editar torneo):', error); showMsg(errorAmigable(error, 'Error al actualizar torneo'), 'error'); return }
@@ -5354,6 +5362,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 <input type="number" min="1" value={formTorneo.duracion_tiempo_min ?? ''} onChange={e => setFormTorneo(p => ({ ...p, duracion_tiempo_min: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} style={inputStyle} placeholder="Automático según modalidad"/>
                 <div style={{ fontSize: '.68rem', color: '#9aa0a6', marginTop: '4px' }}>Lo usa el cronómetro de la planilla del árbitro. Vacío = 20 min (Fútbol 5), 25 min (Fútbol 7) o 45 min (Fútbol 11) según la modalidad de arriba.</div>
               </div>
+              <CampoInicioAutomatico valor={formTorneo.cronometro_auto_min ?? ''} onChange={v => setFormTorneo(p => ({ ...p, cronometro_auto_min: v }))}/>
               <div><label style={labelStyle}>Género</label><select value={formTorneo.genero || ''} onChange={e => setFormTorneo(p => ({ ...p, genero: e.target.value }))} style={inputStyle}><option value="">Seleccionar...</option><option>Masculino</option><option>Femenino</option><option>Mixto</option></select></div>
               <div>
                 <label style={labelStyle}>Sistema de puntos (victoria / empate / derrota)</label>
@@ -5718,7 +5727,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368', fontSize: '14px' }}>
             🗄️
           </button>
-          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? '', limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '', inscripcion_jugadores_modo: torneo.inscripcion_jugadores_modo || 'sin_limite', inscripcion_jugadores_hasta: torneo.inscripcion_jugadores_hasta || '', _inscColumna: 'inscripcion_jugadores_modo' in torneo }); setEditandoTorneo(true) }}
+          <button onClick={() => { setFormTorneo({ name: torneo.name, city: torneo.city, season: torneo.season, categoria: torneo.categoria, modalidad: torneo.modalidad, genero: torneo.genero, equipos_permitidos: torneo.equipos_permitidos ?? 0, requiere_cedula: torneo.requiere_cedula !== false, registro_simple: torneo.registro_simple === true, pts_victoria: torneo.pts_victoria ?? 3, pts_empate: torneo.pts_empate ?? 1, pts_derrota: torneo.pts_derrota ?? 0, w_goles_ganador: torneo.w_goles_ganador ?? 3, w_puntos_ganador: torneo.w_puntos_ganador ?? '', limite_jugadores_equipo: torneo.limite_jugadores_equipo ?? '', duracion_tiempo_min: torneo.duracion_tiempo_min ?? '', cronometro_auto_min: torneo.cronometro_auto_min ?? '', inscripcion_jugadores_modo: torneo.inscripcion_jugadores_modo || 'sin_limite', inscripcion_jugadores_hasta: torneo.inscripcion_jugadores_hasta || '', _inscColumna: 'inscripcion_jugadores_modo' in torneo }); setEditandoTorneo(true) }}
             title="Editar torneo"
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', background: 'none', border: '1px solid #dadce0', borderRadius: '8px', cursor: 'pointer', color: '#5f6368' }}>
             <Pencil size={13}/>

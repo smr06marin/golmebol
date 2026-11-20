@@ -11,6 +11,8 @@ import ModalFotoNumero from './ModalFotoNumero'
 import AlertaNumeroDesconocido from './AlertaNumeroDesconocido'
 import AlertaFaltasEquipo from './AlertaFaltasEquipo'
 import AlertaDosAmarillas from './AlertaDosAmarillas'
+import AvisoInicioAutomatico from './AvisoInicioAutomatico'
+import { fmtHoraDate } from '../../lib/horaHelpers'
 import { timbreConVoz } from '../../lib/timbreTarjetas'
 import ModalCierrePartido from './ModalCierrePartido'
 import ModalPartidoEspecialRapida from './ModalPartidoEspecialRapida'
@@ -25,6 +27,21 @@ import ModalCierrePapel from '../planillaPapel/ModalCierrePapel'
 import { papelVacio, normalizarPapel, papelParaGuardar } from '../../lib/planillaPapel'
 import { prepararAlarma, sonarAlarmaUnaVez, detenerVibracion, usePantallaEncendida } from '../../lib/alarmaTiempo'
 import { useCierreAutomatico, textoCierreAutomatico, calcularFinTiempoSnap, registrarPlanillaAbierta } from '../../lib/cierreAutomatico'
+
+// Puntualidad: minutos después de la hora del partido en que el cronómetro
+// arranca solo (null = apagado). La planilla del link del árbitro puede no
+// tener permiso de leer la tabla de torneos: ahí se lee la vista pública.
+async function leerInicioAutomatico(torneoId) {
+  for (const tabla of ['tournaments', 'tournaments_publico']) {
+    try {
+      const { data, error } = await supabase.from(tabla).select('cronometro_auto_min').eq('id', torneoId).maybeSingle()
+      if (error || !data) continue
+      const n = Number(data.cronometro_auto_min)
+      return data.cronometro_auto_min === null || data.cronometro_auto_min === undefined || !Number.isFinite(n) || n < 0 ? null : n
+    } catch { /* se intenta la siguiente */ }
+  }
+  return null
+}
 
 function idUnico() {
   try { return crypto.randomUUID() } catch (e) { return `${Date.now()}-${Math.random().toString(36).slice(2)}` }
@@ -205,6 +222,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const alarmaRef = useRef(null)
   const alarmaDisparoRef = useRef(false) // ya sonó la alarma de "tiempo cumplido" de este tiempo
   const [alarmaActiva, setAlarmaActiva] = useState(false)
+  // Arranque automático del cronómetro (puntualidad, opción del torneo)
+  const [inicioAutoMin, setInicioAutoMin] = useState(null) // minutos después de la hora del partido (null = apagado)
+  const autoInicioHechoRef = useRef(false) // ya arrancó solo una vez en este partido: no vuelve a hacerlo (ni tras reiniciar)
+  const [avisoAutoArranco, setAvisoAutoArranco] = useState(null) // { horaArranque } — pregunta si quieren reiniciar el tiempo
+  const [ahoraAuto, setAhoraAuto] = useState(() => Date.now())
   const inicioEpochRef = useRef(null) // ancla de hora real: si el celular se bloquea o el navegador frena el temporizador en 2do plano, al volver se recalcula el tiempo real transcurrido en vez de quedar atrasado
   const registroSimpleEnCursoRef = useRef(new Set()) // nombres ya en proceso de registro, para no duplicar el jugador si se dispara dos veces
   const finanzasConfigRef = useRef(null) // config de finanzas más reciente (para el refresco en vivo del roster)
@@ -344,6 +366,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     if (!volviendoRef.current) setStep(prev => ((RANGO[snap.step] ?? -1) > (RANGO[prev] ?? 0)) ? snap.step : prev)
 
     // 3) Cronómetro / tiempo
+    if (snap.autoInicioHecho) autoInicioHechoRef.current = true
     const relojRemoto = Number(snap.relojV) > 1e11 ? 0 : (snap.relojV || 0) // (versiones viejas guardadas con hora: se ignoran)
     const firmaRelojRemoto = `${!!snap.corriendo}|${snap.periodo}|${!!snap.tiempoAgotado}|${snap.duracionMinutos}`
     const gana = relojRemoto > relojVRef.current ||
@@ -720,6 +743,8 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     const dur = duracionPropia > 0 ? duracionPropia : modalidadDB === 'Fútbol 7' ? 25 : modalidadDB === 'Fútbol 11' ? 45 : 20
     setModalidad(modalidadDB)
     if (torn.data?.name) setTorneoNombre(torn.data.name)
+    // Se activa recién cuando ya se aplicó lo que hay en la base (borrador de otro celular), para no pisarlo
+    const inicioAutoProm = leerInicioAutomatico(partido.tournament_id)
 
     // Un partido ya jugado conserva su alineación histórica tal cual —
     // la sanción solo bloquea que aparezca como opción hacia adelante.
@@ -806,6 +831,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     }
     // Ya se consultó lo que hay en la base de datos: desde ahora sí se puede subir.
     if (!liveDB?.error) marcarSincronizado()
+    inicioAutoProm.then(setInicioAutoMin).catch(() => {})
   }
 
   // Un borrador (local o remoto) puede traer jugadores sin el flag de deuda
@@ -845,6 +871,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       papelAutorRef.current = snap.papelAutor || ''
       papelSigRef.current = JSON.stringify(papelSnap)
     }
+    if (snap.autoInicioHecho) autoInicioHechoRef.current = true
     setPeriodo(snap.periodo || 1)
     setSegundos1T(typeof snap.segundos1T === 'number' ? snap.segundos1T : null)
     const durFinal = snap.duracionMinutos || dur
@@ -961,7 +988,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
       if (firmaHoja !== papelSigRef.current) { papelSigRef.current = firmaHoja; papelVRef.current += 1; papelAutorRef.current = deviceIdRef.current }
       extraPapel = { papel, papelV: papelVRef.current, papelAutor: papelAutorRef.current }
     }
-    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, finTiempoEn, duracionMinutos, step: (esPapel || volviendoDesdePartido) ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString(), partidoIniciado: partidoIniciadoRef.current }
+    return { ...base, ...extraPapel, eventos, eventosEliminados, periodo, segundos1T, segundos: segs, corriendo, tiempoAgotado, finTiempoEn, duracionMinutos, step: (esPapel || volviendoDesdePartido) ? 'partido' : step, autor: deviceIdRef.current, plantillaV: plantillaVRef.current, plantillaAutor: plantillaAutorRef.current, relojV: relojVRef.current, relojAutor: relojAutorRef.current, savedAt: new Date().toISOString(), partidoIniciado: partidoIniciadoRef.current, autoInicioHecho: autoInicioHechoRef.current }
   }
   // Re-sube ya mismo el estado de ESTE celular (ver defensa de borrones en procesarRemoto)
   restituirRef.current = () => { try { localStorage.setItem(localKey, JSON.stringify(construirSnap())) } catch (e) {}; guardarRemotoInmediato(construirSnap()) }
@@ -1046,6 +1073,44 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [corriendo, duracionMinutos, tiempoAgotado])
+
+  // ── Arranque automático (puntualidad) ─────────────────────────────────
+  // Si el torneo lo tiene activado, el 1er tiempo arranca SOLO a la hora del
+  // partido + N minutos, aunque nadie toque INICIAR (y aunque falte un equipo).
+  // El reloj cuenta desde esa hora: si la planilla se abre tarde, ya trae el
+  // tiempo corrido. Pasa una sola vez por partido; después el árbitro decide
+  // si sigue así o reinicia el tiempo a 00:00.
+  const horaArranqueAuto = (inicioAutoMin !== null && partido?.played_at) ? new Date(partido.played_at).getTime() + inicioAutoMin * 60000 : null
+  const autoPendiente = !!horaArranqueAuto && Number.isFinite(horaArranqueAuto) && listo && !oculta &&
+    partido.status !== 'finished' && !autoInicioHechoRef.current &&
+    periodo === 1 && !corriendo && segundos === 0 && !tiempoAgotado && eventos.length === 0
+  useEffect(() => {
+    if (!autoPendiente) return
+    const revisar = () => setAhoraAuto(Date.now())
+    revisar()
+    const id = setInterval(revisar, 1000)
+    document.addEventListener('visibilitychange', revisar)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', revisar) }
+  }, [autoPendiente])
+  useEffect(() => {
+    if (!autoPendiente || ahoraAuto < horaArranqueAuto) return
+    autoInicioHechoRef.current = true
+    const transcurrido = Math.floor((Date.now() - horaArranqueAuto) / 1000)
+    // Planilla abierta mucho después (ej. al otro día para pasar el resultado): no se arranca nada
+    if (transcurrido > 3 * 3600) return
+    pararAlarma()
+    nuevaAccionReloj()
+    inicioEpochRef.current = horaArranqueAuto
+    setSegundos(Math.max(0, transcurrido))
+    setCorriendo(true)
+    setAvisoAutoArranco({ horaArranque: horaArranqueAuto })
+    try { navigator.vibrate && navigator.vibrate([200, 100, 200]) } catch { /* sin vibración */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPendiente, ahoraAuto, horaArranqueAuto])
+  const faltaAuto = autoPendiente ? Math.max(0, Math.ceil((horaArranqueAuto - ahoraAuto) / 1000)) : null
+  const avisoInicioAuto = autoPendiente && faltaAuto > 0
+    ? `⏱️ Arranca solo a las ${fmtHoraDate(new Date(horaArranqueAuto))}${faltaAuto <= 3600 ? ` (en ${formatTiempo(faltaAuto)})` : ''}`
+    : ''
 
   function iniciarAlarma() {
     if (oculta || alarmaRef.current) return // oculta = la abrió el vigilante del cierre automático: sin sonido
@@ -1856,8 +1921,13 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
           onQuitarEvento={quitarEvento} onAgregarJugador={agregarJugadorPapel}
           onSalir={pausarYSalir} onAbrirCierre={() => setMostrarCierre(true)}
           onAbrirEspecial={tipo => { setTipoEspecialInicial(tipo || null); setMostrarEspecial(true) }}
-          onCambiarProfesional={onCambiarProfesional}
+          onCambiarProfesional={onCambiarProfesional} avisoInicioAuto={avisoInicioAuto}
         />
+        {avisoAutoArranco && (
+          <AvisoInicioAutomatico horaArranque={avisoAutoArranco.horaArranque} minutos={inicioAutoMin}
+            onSeguir={() => setAvisoAutoArranco(null)}
+            onReiniciar={() => { reiniciarReloj(); setAvisoAutoArranco(null) }}/>
+        )}
         {modalFoto && (
           <ModalFotoNumero jugador={modalFoto.jugador} tarifaInscripcion={finanzasConfig?.inscripcion_jugador || 0} deudaItems={deudaDetalle[modalFoto.jugador?.id] || []} equiposNombre={equiposNombre}
             onConfirmar={confirmarNumeroPapel} onQuitar={quitarNumeroPapel} onCerrar={() => setModalFoto(null)}/>
@@ -1916,7 +1986,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         onRegistrarEvento={registrarEvento} onQuitarEvento={quitarEvento}
         onSalir={pausarYSalir} onAbrirEspecial={() => setMostrarEspecial(true)}
         globalLlave={globalLlave}
-        puedeIniciar={puedeIniciar} motivoNoIniciar={motivoNoIniciar}
+        puedeIniciar={puedeIniciar} motivoNoIniciar={motivoNoIniciar} avisoInicioAuto={avisoInicioAuto}
         onReiniciar={reiniciarReloj} onVolverPrimero={volverAPrimero} onSilenciar={pararAlarma}
         nuevosSinNumero={nuevosSinNumero}
       />
@@ -1935,6 +2005,11 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
           equipoNombre={alertaFaltas.team === 'local' ? nombreLocal : nombreVis}
           onCerrar={() => setAlertaFaltas(null)}
         />
+      )}
+      {avisoAutoArranco && (
+        <AvisoInicioAutomatico horaArranque={avisoAutoArranco.horaArranque} minutos={inicioAutoMin}
+          onSeguir={() => setAvisoAutoArranco(null)}
+          onReiniciar={() => { reiniciarReloj(); setAvisoAutoArranco(null) }}/>
       )}
       {alertaDosAmarillas && (
         <AlertaDosAmarillas

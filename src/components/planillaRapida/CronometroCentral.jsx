@@ -12,7 +12,7 @@ import { formatTiempo } from './estilosRapida'
 // "tap" de "arrastre" para que los botones de adentro sigan funcionando.
 export default function CronometroCentral({
   periodo, segundos, corriendo, tiempoAgotado, golesLocal, golesVis, globalLlave,
-  puedeIniciar = true, motivoNoIniciar = '',
+  puedeIniciar = true, motivoNoIniciar = '', avisoInicioAuto = '',
   duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo,
   onToggle, onReiniciar, onCambiarPeriodo, onVolverPrimero, onSilenciar, onFinalizar,
 }) {
@@ -182,6 +182,9 @@ export default function CronometroCentral({
               {bloqueado && motivoNoIniciar && (
                 <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#ffe066', lineHeight: 1.25, marginTop: '5px' }}>{motivoNoIniciar}</div>
               )}
+              {avisoInicioAuto && (
+                <div style={{ fontSize: '.66rem', fontWeight: '800', color: '#b9fff9', lineHeight: 1.25, marginTop: '5px' }}>{avisoInicioAuto}</div>
+              )}
             </>
           )}
 
@@ -229,6 +232,9 @@ export default function CronometroCentral({
               )}
               {bloqueado && motivoNoIniciar && (
                 <div style={{ fontSize: '.72rem', fontWeight: '800', color: '#ffe066', lineHeight: 1.25 }}>{motivoNoIniciar}</div>
+              )}
+              {avisoInicioAuto && (
+                <div style={{ fontSize: '.78rem', fontWeight: '800', color: '#b9fff9', lineHeight: 1.3, background: 'rgba(0,0,0,.25)', borderRadius: '8px', padding: '6px 8px' }}>{avisoInicioAuto}</div>
               )}
               <div style={{ display: 'flex', gap: '7px' }}>
                 <button onClick={() => pedirConfirmacion('reiniciar')} disabled={segundos === 0 && !corriendo}

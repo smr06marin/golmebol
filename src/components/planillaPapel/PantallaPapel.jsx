@@ -506,7 +506,7 @@ export default function PantallaPapel({
   arqueroLocal, arqueroVis, onElegirArquero,
   onToggleCronometro, onCambiarPeriodo, onAsignarNumero, onAbrirJugador, onGol, onGolSinJugador, onTarjeta, onQuitarEvento, onAgregarJugador,
   onSalir, onAbrirCierre, onAbrirEspecial,
-  duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo, onSilenciar, onCambiarProfesional,
+  duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo, onSilenciar, onCambiarProfesional, avisoInicioAuto = '',
 }) {
   const hojaRef = useRef(null)
   const informeRef = useRef(null)
@@ -638,6 +638,9 @@ export default function PantallaPapel({
           )}
         </div>
 
+        {avisoInicioAuto && (
+          <div style={{ textAlign: 'center', fontSize: '.8rem', fontWeight: 800, marginTop: '6px', background: 'rgba(0,0,0,.25)', borderRadius: '8px', padding: '5px 8px' }}>{avisoInicioAuto}</div>
+        )}
         {/* Fila 2: EL MARCADOR, grande y centrado */}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
           <div style={{ textAlign: 'right', minWidth: 0 }}>

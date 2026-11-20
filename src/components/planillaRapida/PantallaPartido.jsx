@@ -12,7 +12,7 @@ export default function PantallaPartido({
   arqueroLocal, arqueroVis, eventosLocal, eventosVis, periodo, segundos, corriendo, tiempoAgotado, modalidad,
   onVolverLista, onVolverColores, onAbrirCierre, onToggleCronometro, onCambiarPeriodo, onSeleccionarArquero,
   onRegistrarEvento, onQuitarEvento, onAbrirEspecial, globalLlave, cambiosReloj = [],
-  puedeIniciar = true, motivoNoIniciar = '', onReiniciar, onVolverPrimero, onSilenciar, nuevosSinNumero = 0,
+  puedeIniciar = true, motivoNoIniciar = '', avisoInicioAuto = '', onReiniciar, onVolverPrimero, onSilenciar, nuevosSinNumero = 0,
   duracionMinutos = 0, alarmaActiva = false, onTerminarTiempo,
 }) {
   const cLocal = colorPorHex(colorLocal)
@@ -94,7 +94,7 @@ export default function PantallaPartido({
       <CronometroCentral
         periodo={periodo} segundos={segundos} corriendo={corriendo} tiempoAgotado={tiempoAgotado}
         golesLocal={golesLocal} golesVis={golesVis} globalLlave={globalLlave}
-        puedeIniciar={puedeIniciar} motivoNoIniciar={motivoNoIniciar}
+        puedeIniciar={puedeIniciar} motivoNoIniciar={motivoNoIniciar} avisoInicioAuto={avisoInicioAuto}
         duracionMinutos={duracionMinutos} alarmaActiva={alarmaActiva} onTerminarTiempo={onTerminarTiempo}
         onToggle={onToggleCronometro} onReiniciar={onReiniciar} onCambiarPeriodo={onCambiarPeriodo}
         onVolverPrimero={onVolverPrimero} onSilenciar={onSilenciar} onFinalizar={onAbrirCierre}
