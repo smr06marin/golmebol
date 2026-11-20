@@ -44,6 +44,9 @@ import { useIsMobile } from '../../hooks/useIsMobile'
 import { confirmar } from '../../lib/confirmar'
 import { armarLiquidaciones, descargarLiquidacionCancha, descargarLiquidacionArbitros } from '../../lib/liquidacionesPdf'
 import { abrirChatAyuda } from '../../lib/abrirChat'
+import { traerPartidosLivianos } from '../../lib/partidosLivianos'
+import { leerCacheRapido, guardarCacheRapido } from '../../lib/cacheRapido'
+import { urlMini, alFallarMini } from '../../lib/imagenMini'
 
 // Le pone un límite de tiempo a una consulta a Supabase para que un botón
 // nunca se quede "cargando..." para siempre (por ejemplo si internet falla a
@@ -101,7 +104,7 @@ function ModalPartidoAdmin({ partido, onClose }) {
           <div style={{ display:'flex', alignItems:'center', gap:'8px', flex:1, justifyContent:'flex-end' }}>
             <span style={{ fontWeight:'700', fontSize:'.9rem', color:'#202124', textAlign:'right' }}>{partido.home?.name}</span>
             <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:'#fff', border:'1px solid #e8eaed', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              {partido.home?.logo_url ? <img src={partido.home.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={14} color="#9aa0a6"/>}
+              {partido.home?.logo_url ? <img src={urlMini(partido.home.logo_url, 56)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={14} color="#9aa0a6"/>}
             </div>
           </div>
           <div style={{ fontWeight:'900', fontSize:'1.8rem', color:'#202124', background:'#fff', border:'1px solid #e8eaed', borderRadius:'10px', padding:'6px 18px', flexShrink:0 }}>
@@ -109,7 +112,7 @@ function ModalPartidoAdmin({ partido, onClose }) {
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:'8px', flex:1 }}>
             <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:'#fff', border:'1px solid #e8eaed', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              {partido.away?.logo_url ? <img src={partido.away.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={14} color="#9aa0a6"/>}
+              {partido.away?.logo_url ? <img src={urlMini(partido.away.logo_url, 56)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={14} color="#9aa0a6"/>}
             </div>
             <span style={{ fontWeight:'700', fontSize:'.9rem', color:'#202124' }}>{partido.away?.name}</span>
           </div>
@@ -117,7 +120,7 @@ function ModalPartidoAdmin({ partido, onClose }) {
         {mvp && (
           <div style={{ padding:'10px 20px', background:'#fff8e1', borderBottom:'1px solid #ffe082', display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
             <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:'#f1f3f4', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {mvp.players?.photo_face_url || mvp.players?.photo_url ? <img src={mvp.players.photo_face_url || mvp.players.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.85rem' }}>👤</span>}
+              {mvp.players?.photo_face_url || mvp.players?.photo_url ? <img src={urlMini(mvp.players.photo_face_url || mvp.players.photo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.85rem' }}>👤</span>}
             </div>
             <div>
               <div style={{ fontSize:'.65rem', color:'#e8710a', fontWeight:'700', textTransform:'uppercase', letterSpacing:'.05em' }}>⭐ MVP del partido</div>
@@ -161,7 +164,7 @@ function TeamStats({ jugadores, equipo, logo }) {
     <div style={{ flex: 1 }}>
       <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
         <div style={{ width:'28px', height:'28px', borderRadius:'50%', background:'#f1f3f4', border:'1px solid #e8eaed', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-          {logo ? <img src={logo} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={13} color="#9aa0a6"/>}
+          {logo ? <img src={urlMini(logo, 40)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={13} color="#9aa0a6"/>}
         </div>
         <span style={{ fontWeight:'700', fontSize:'.85rem', color:'#202124' }}>{equipo}</span>
       </div>
@@ -172,7 +175,7 @@ function TeamStats({ jugadores, equipo, logo }) {
           {goleadores.map(j => (
             <div key={j.player_id} style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px' }}>
               <div style={{ width:'22px', height:'22px', borderRadius:'50%', background:'#f1f3f4', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {j.players?.photo_face_url || j.players?.photo_url ? <img src={j.players.photo_face_url || j.players.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.65rem' }}>👤</span>}
+                {j.players?.photo_face_url || j.players?.photo_url ? <img src={urlMini(j.players.photo_face_url || j.players.photo_url, 32)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ fontSize:'.65rem' }}>👤</span>}
               </div>
               <span style={{ fontSize:'.78rem', color:'#202124', flex:1 }}>{j.players?.name}</span>
               <span style={{ fontSize:'.78rem', fontWeight:'700', color:'#1e8e3e' }}>×{j.goals_scored}</span>
@@ -493,7 +496,7 @@ function playedAtToLocal(playedAt) {
 
 function TeamLogo({ logo_url, name, size = 28 }) {
   const iniciales = (name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
-  if (logo_url) return <img src={logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+  if (logo_url) return <img src={urlMini(logo_url, 40)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
   return (
     <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ fontSize: size * 0.32 + 'px', fontWeight: '800', color: '#fff', fontFamily: 'system-ui' }}>{iniciales}</span>
@@ -733,7 +736,7 @@ function EquiposDesactivadosTorneo({ torneoId, onReactivar, showMsg }) {
       {lista.map((tt, i) => (
         <div key={tt.id} style={{ padding:'12px 16px', borderBottom: i<lista.length-1?'1px solid #f1f3f4':'none', display:'flex', alignItems:'center', gap:'12px', opacity:.7 }}>
           <div style={{ width:'36px', height:'36px', borderRadius:'8px', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
-            {tt.teams?.logo_url ? <img src={tt.teams.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={16} color="#9aa0a6"/>}
+            {tt.teams?.logo_url ? <img src={urlMini(tt.teams.logo_url, 40)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'contain', padding:'2px' }}/> : <Shield size={16} color="#9aa0a6"/>}
           </div>
           <div style={{ flex:1 }}>
             <div style={{ fontWeight:'600', fontSize:'.875rem', color:'#5f6368' }}>{tt.teams?.name}</div>
@@ -1265,7 +1268,6 @@ export default function AdminTorneoDetallePage() {
   const [uploadingSponsorId, setUploadingSponsorId] = useState(null)
   const [savingSponsorId,    setSavingSponsorId]    = useState(null)
 
-  useEffect(() => { if (id && id !== 'undefined') fetchTodo() }, [id])
   // Nombre del equipo SOLO en este torneo (tournament_teams.nombre_torneo): se carga una vez y se aplica a partidos, grupos, finanzas...
   const aliasRef = useRef(null)
   const getAlias = () => { if (!aliasRef.current) aliasRef.current = cargarAliasTorneo(id); return aliasRef.current }
@@ -1403,8 +1405,23 @@ export default function AdminTorneoDetallePage() {
     setTimeout(() => setMsg(null), type === 'error' ? 8000 : 3000)
   }
 
+  // ENTRADA RÁPIDA: lo último que se vio de este torneo (datos, equipos y partidos) queda guardado en este
+  // celular y se pinta al instante; lo fresco llega detrás en 1–2 s y lo reemplaza. Sin claves de links.
+  const claveCacheAdmin = `admin_torneo_${id}`
+  function actualizarCacheAdmin(parcial) {
+    const actual = leerCacheRapido(claveCacheAdmin, 7 * 24 * 3600 * 1000) || {}
+    guardarCacheRapido(claveCacheAdmin, { ...actual, ...parcial })
+  }
+  const sinSecretosTorneo = t => { if (!t) return t; const { link_deudores_token, link_deudores_password, ...resto } = t; return resto }
+
   async function fetchTodo() {
-    setLoading(true)
+    const copia = leerCacheRapido(claveCacheAdmin, 12 * 3600 * 1000)
+    if (copia?.torneo && copia.torneo.id === id) {
+      aplicarTorneo(copia.torneo, true)
+      if (Array.isArray(copia.equipos)) setEquipos(copia.equipos)
+      if (Array.isArray(copia.partidos)) setPartidos(copia.partidos)
+      setLoading(false)
+    } else setLoading(true)
     // Pintar la página apenas llega el torneo; equipos y partidos llegan
     // en paralelo y van llenando las secciones (clave en celular).
     // fetchBracket() va acá también (antes solo se cargaba al entrar a la
@@ -1520,6 +1537,12 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchTorneo() {
     const { data } = await supabase.from('tournaments').select('*').eq('id', id).single()
+    aplicarTorneo(data)
+    if (data) actualizarCacheAdmin({ torneo: sinSecretosTorneo(data) })
+  }
+  // desdeCache: la copia guardada solo PINTA; la vista previa de eliminatorias no se da por cargada hasta que llegue
+  // lo fresco (si no, el guardado automático podría volver a escribir en la base una configuración vieja).
+  function aplicarTorneo(data, desdeCache = false) {
     setTorneo(data)
     if (data?.num_grupos)           setNumGrupos(data.num_grupos)
     if (data?.equipos_clasifican)   setClasificanPorGrupo(data.equipos_clasifican)
@@ -1536,7 +1559,7 @@ export default function AdminTorneoDetallePage() {
       if (pc.idaVueltaPorFase)       setIdaVueltaPorFase(pc.idaVueltaPorFase)
     }
     if (data?.preview_calendario) setPreviewCalendario(data.preview_calendario)
-    setPreviewConfigCargado(true)
+    if (!desdeCache) setPreviewConfigCargado(true)
   }
 
   // Otras ediciones de este mismo torneo (creadas con "Crear siguiente
@@ -1563,7 +1586,9 @@ export default function AdminTorneoDetallePage() {
 
   async function fetchEquipos() {
     const { data } = await supabase.from('tournament_teams').select('*, teams(id, name, city, logo_url, modalidad, genero, registro_token)').eq('tournament_id', id)
-    setEquipos((data || []).map(d => ({ ...d.teams, name: (d.nombre_torneo || '').trim() || d.teams?.name, nombre_base: d.teams?.name, nombre_torneo: (d.nombre_torneo || '').trim(), tournament_team_id: d.id, dias_preferidos: d.dias_preferidos || [], hora_preferida: d.hora_preferida ? d.hora_preferida.slice(0, 5) : '' })))
+    const lista = (data || []).map(d => ({ ...d.teams, name: (d.nombre_torneo || '').trim() || d.teams?.name, nombre_base: d.teams?.name, nombre_torneo: (d.nombre_torneo || '').trim(), tournament_team_id: d.id, dias_preferidos: d.dias_preferidos || [], hora_preferida: d.hora_preferida ? d.hora_preferida.slice(0, 5) : '' }))
+    setEquipos(lista)
+    if (data) actualizarCacheAdmin({ equipos: lista.map(({ registro_token, ...e }) => e) })
   }
 
   // Preferencia de días/hora de un equipo PARA ESTE TORNEO — se usa al
@@ -1658,12 +1683,12 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function fetchPartidos() {
-    const { data } = await supabase
-      .from('matches')
-      .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
-      .eq('tournament_id', id)
-      .order('played_at', { ascending: true })
-    setPartidos(aplicarAlias(data || [], await getAlias()))
+    // Sin firmas ni planillas completas: ver partidosLivianos.js (antes bajaba 1–2 MB por torneo)
+    const { data } = await traerPartidosLivianos('home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)',
+      q => q.eq('tournament_id', id).order('played_at', { ascending: true }))
+    const lista = aplicarAlias(data || [], await getAlias())
+    setPartidos(lista)
+    if (data) actualizarCacheAdmin({ partidos: lista })
   }
 
   // Cambiar la foto de perfil de un jugador (organizador o admin). La comprime
@@ -1896,12 +1921,8 @@ export default function AdminTorneoDetallePage() {
   }
 
   async function fetchBracket() {
-    const { data } = await supabase
-      .from('matches')
-      .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
-      .eq('tournament_id', id)
-      .neq('fase', 'grupo')
-      .order('ronda').order('played_at', { ascending: true })
+    const { data } = await traerPartidosLivianos('home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)',
+      q => q.eq('tournament_id', id).neq('fase', 'grupo').order('ronda').order('played_at', { ascending: true }))
     setBracket(aplicarAlias(data || [], await getAlias()))
   }
 
@@ -5657,7 +5678,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <div style={{ width: '38px', height: '38px', borderRadius: '9px', background: '#e8f0fe', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              {torneo.logo_url ? <img src={torneo.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Trophy size={18} color="#1a73e8"/>}
+              {torneo.logo_url ? <img src={urlMini(torneo.logo_url, 72)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/> : <Trophy size={18} color="#1a73e8"/>}
             </div>
             <label style={{ position: 'absolute', bottom: '-4px', right: '-4px', width: '16px', height: '16px', borderRadius: '50%', background: '#1a73e8', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <Camera size={8} color="#fff"/>
@@ -7105,7 +7126,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                     style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', minHeight:'48px', cursor:'pointer', background: abierto ? '#f4f8ff' : '#fff', WebkitTapHighlightColor:'transparent', touchAction:'manipulation' }}>
                                     <span style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                                       {p.photo_face_url || p.photo_url
-                                        ? <img src={p.photo_face_url||p.photo_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                        ? <img src={urlMini(p.photo_face_url||p.photo_url, 40)} onError={alFallarMini} loading="lazy" decoding="async" alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
                                         : <span style={{ fontSize:'.9rem' }}>👤</span>}
                                     </span>
                                     <div style={{ flex:1, minWidth:0 }}>
@@ -7340,7 +7361,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                   <div key={j.id} style={{ display:'flex', alignItems:'center', gap:'10px', background:'#fff', borderRadius:'8px', padding:'8px 12px', border:'1px solid #fad2cf', opacity:.75 }}>
                                     <div style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', flexShrink:0, background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center' }}>
                                       {p.photo_face_url || p.photo_url
-                                        ? <img src={p.photo_face_url||p.photo_url} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                        ? <img src={urlMini(p.photo_face_url||p.photo_url, 40)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
                                         : <span style={{ fontSize:'.85rem' }}>👤</span>}
                                     </div>
                                     <div style={{ flex:1, minWidth:0 }}>

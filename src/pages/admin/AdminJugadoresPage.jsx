@@ -8,6 +8,7 @@ import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { Plus, Pencil, Trash2, Users, Upload, X, Camera, Eye, AlertTriangle, CheckCircle, User } from 'lucide-react'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 import { confirmar } from '../../lib/confirmar'
+import { urlMini, alFallarMini } from '../../lib/imagenMini'
 
 // Posición simplificada (Arquero/Jugador, sin detalle por modalidad) — se
 // sigue guardando en las 3 columnas posicion_futbol5/7/11 para no romper
@@ -916,8 +917,8 @@ export default function AdminJugadoresPage() {
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: 1, minWidth: 0 }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#f1f3f4', border: '2px solid #1e8e3e', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {j.photo_face_url ? <img src={j.photo_face_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-                      : j.photo_url  ? <img src={j.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}/>
+                    {j.photo_face_url ? <img src={urlMini(j.photo_face_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                      : j.photo_url  ? <img src={urlMini(j.photo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}/>
                       : <User size={22} color="#9aa0a6"/>}
                   </div>
                   <div style={{ minWidth: 0 }}>

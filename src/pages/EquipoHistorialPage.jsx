@@ -14,6 +14,7 @@ import { compararPosiciones } from '../lib/torneoTablas'
 import { FASES } from '../lib/palmaresJugador'
 import { abrirChatAyuda } from '../lib/abrirChat'
 import DuenosEquipo from '../components/DuenosEquipo'
+import { traerPartidosLivianos } from '../lib/partidosLivianos'
 
 const S = {
   navy:    '#07070e', surface: '#0d1117', card: '#111827', card2: '#1a2234',
@@ -202,8 +203,10 @@ export default function EquipoHistorialPage() {
   }
 
   async function fetchPartidos() {
-    const { data: local }     = await supabase.from('matches').select('*, tournaments(name), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('home_team_id', id).eq('status', 'finished').order('played_at', { ascending: false })
-    const { data: visitante } = await supabase.from('matches').select('*, tournaments(name), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)').eq('away_team_id', id).eq('status', 'finished').order('played_at', { ascending: false })
+    const [{ data: local }, { data: visitante }] = await Promise.all([
+      traerPartidosLivianos('tournaments(name), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)', q => q.eq('home_team_id', id).eq('status', 'finished').order('played_at', { ascending: false })),
+      traerPartidosLivianos('tournaments(name), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)', q => q.eq('away_team_id', id).eq('status', 'finished').order('played_at', { ascending: false })),
+    ])
     const todos = [...(local || []), ...(visitante || [])].sort((a, b) => new Date(b.played_at) - new Date(a.played_at))
     setPartidos(todos)
 

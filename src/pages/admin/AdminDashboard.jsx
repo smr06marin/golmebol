@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import EstadoSistema from '../../components/EstadoSistema'
 import AvisosOrganizador from '../../components/AvisosOrganizador'
+import { traerPartidosLivianos } from '../../lib/partidosLivianos'
+import { urlMini, alFallarMini } from '../../lib/imagenMini'
 
 // Solo el administrador PRINCIPAL ve las analíticas del sitio
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
@@ -203,10 +205,8 @@ export default function AdminDashboard() {
         supabase.from('matches').select('id', { count: 'exact', head: true }).in('tournament_id', torneoIds)
           .gte('played_at', hoyStr + 'T00:00:00').lte('played_at', hoyStr + 'T23:59:59'),
         supabase.from('matches').select('id', { count: 'exact', head: true }).in('tournament_id', torneoIds).eq('status', 'finished'),
-        supabase.from('matches')
-          .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
-          .in('tournament_id', torneoIds).eq('status', 'finished')
-          .order('played_at', { ascending: false }).limit(5),
+        traerPartidosLivianos('home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)',
+          q => q.in('tournament_id', torneoIds).eq('status', 'finished').order('played_at', { ascending: false }).limit(5)),
         supabase.from('tournament_logros').select('tournament_id').in('tournament_id', torneoIds).eq('tipo', 'campeon'),
       ])
 
@@ -243,11 +243,8 @@ export default function AdminDashboard() {
         .gte('played_at', hoyStr + 'T00:00:00')
         .lte('played_at', hoyStr + 'T23:59:59'),
       supabase.from('matches').select('id', { count: 'exact', head: true }).eq('status', 'finished'),
-      supabase.from('matches')
-        .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
-        .eq('status', 'finished')
-        .order('played_at', { ascending: false })
-        .limit(5),
+      traerPartidosLivianos('home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)',
+        q => q.eq('status', 'finished').order('played_at', { ascending: false }).limit(5)),
       supabase.from('tournaments')
         .select('*')
         .order('created_at', { ascending: false })
@@ -362,7 +359,7 @@ export default function AdminDashboard() {
                       onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
                       onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                       <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#f1f3f4', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span>🏆</span>}
+                        {t.logo_url ? <img src={urlMini(t.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span>🏆</span>}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: '600', color: '#202124', fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
@@ -469,7 +466,7 @@ export default function AdminDashboard() {
                 onMouseEnter={e => e.currentTarget.style.background = '#f8f9fa'}
                 onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
                 <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#f1f3f4', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span>🏆</span>}
+                  {t.logo_url ? <img src={urlMini(t.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '4px' }}/> : <span>🏆</span>}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: '600', color: '#202124', fontSize: '.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>

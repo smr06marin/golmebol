@@ -10,6 +10,8 @@ import { ubicacionDeTorneo } from '../../lib/ubicaciones'
 import { reaplicarMarcadorW } from '../../lib/puntosTorneo'
 import { confirmar } from '../../lib/confirmar'
 import CampoInicioAutomatico from '../../components/CampoInicioAutomatico'
+import { leerCacheRapido, guardarCacheRapido } from '../../lib/cacheRapido'
+import { urlMini, alFallarMini } from '../../lib/imagenMini'
 
 
 const EMPTY = { name: '', season: String(new Date().getFullYear()), city: '', pais: 'CO', departamento: '', municipio_codigo: '', vereda: '', modalidad: '', categoria: '', genero: '', formato: '', fecha_inicio: '', fecha_fin: '', pts_victoria: 3, pts_empate: 1, pts_derrota: 0, w_goles_ganador: 3, w_puntos_ganador: '', limite_jugadores_equipo: '', duracion_tiempo_min: '', cronometro_auto_min: '', organizador_id: '', planilla_tipo: '', inscripcion_jugadores_modo: 'sin_limite', inscripcion_jugadores_hasta: '' }
@@ -53,7 +55,9 @@ export default function AdminTorneosPage() {
   const cols2 = isMobile ? '1fr' : '1fr 1fr'
   const cols3 = isMobile ? '1fr' : '1fr 1fr 1fr'
 
-  const [torneos, setTorneos] = useState([])
+  // Lo último que se vio se pinta al instante (en este celular); lo fresco llega detrás
+  const claveCacheLista = `admin_torneos_${user?.id || 'x'}`
+  const [torneos, setTorneos] = useState(() => leerCacheRapido(claveCacheLista, 7 * 24 * 3600 * 1000) || [])
   const [organizadores, setOrganizadores] = useState({}) // user_id -> email
   const [listaOrganizadores, setListaOrganizadores] = useState([]) // [{user_id, email}] — para el selector, solo admin principal
   const [form, setForm] = useState(EMPTY)
@@ -78,12 +82,19 @@ export default function AdminTorneosPage() {
   const eliminandoTorneoRef = useRef(false) // guarda sincrónico contra doble clic, antes de cualquier await
 
   useEffect(() => { fetchTorneos() }, [])
+  // Con la lista ya a la vista, en un rato libre se baja el código del panel de cada torneo: al tocar uno, abre sin esperar descarga
+  useEffect(() => {
+    const ric = window.requestIdleCallback
+    const h = ric ? ric(() => import('./AdminTorneoDetallePage').catch(() => {}), { timeout: 2500 }) : setTimeout(() => import('./AdminTorneoDetallePage').catch(() => {}), 1500)
+    return () => { if (ric) window.cancelIdleCallback?.(h); else clearTimeout(h) }
+  }, [])
 
   async function fetchTorneos() {
     let query = supabase.from('tournaments').select('*').order('created_at', { ascending: false })
     if (esOrganizador) query = query.eq('organizador_id', user?.id)
-    const { data } = await query
+    const { data, error } = await query
     setTorneos(data || [])
+    if (!error && data) guardarCacheRapido(claveCacheLista, data.map(({ link_deudores_token, link_deudores_password, ...t }) => t))
     // Para el admin: mapa de organizadores (id de cuenta -> correo)
     if (esAdmin) {
       try {
@@ -796,7 +807,7 @@ export default function AdminTorneosPage() {
                 <div onClick={() => navigate(`/admin/torneos/${t.id}`)}
                   style={{ padding: '14px 14px 14px 16px', display: 'flex', alignItems: 'center', gap: '13px', cursor: 'pointer' }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                    {t.logo_url ? <img src={t.logo_url} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '3px' }}/> : <Trophy size={22} color="#1a73e8"/>}
+                    {t.logo_url ? <img src={urlMini(t.logo_url, 48)} onError={alFallarMini} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '3px' }}/> : <Trophy size={22} color="#1a73e8"/>}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: '700', color: '#202124', fontSize: '.95rem', marginBottom: '6px', lineHeight: 1.25 }}>{t.name}</div>

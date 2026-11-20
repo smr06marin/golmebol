@@ -14,6 +14,7 @@ import { fmtHoraDate } from '../../lib/horaHelpers'
 import { crearDetectorIntergrupo } from '../../lib/torneoTablas'
 import { notify } from '../../lib/notify'
 import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
+import { urlMini, alFallarMini } from '../../lib/imagenMini'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDIMIENTO — por qué esta página ya no es lenta
@@ -75,7 +76,7 @@ async function traerPartidos(torneoIds, alPagina) {
 }
 
 function TeamLogo({ logo_url, size = 32 }) {
-  if (logo_url) return <img src={logo_url} loading="lazy" decoding="async" style={{ width: size, height: size, objectFit: 'contain' }}/>
+  if (logo_url) return <img src={urlMini(logo_url, 40)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: size, height: size, objectFit: 'contain' }}/>
   return <div style={{ width: size, height: size, background: '#e8f0fe', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Shield size={size * 0.5} color="#1a73e8"/></div>
 }
 
@@ -404,7 +405,7 @@ const TorneoBloque = memo(function TorneoBloque({ grupo, abierto, defaultAbierto
         style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', background: abierto ? '#f8f9fa' : '#fff' }}>
         <div style={{ width: '40px', height: '40px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#f1f3f4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {torneo?.logo_url
-            ? <img src={torneo.logo_url} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+            ? <img src={urlMini(torneo.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
             : <Trophy size={20} color="#9aa0a6"/>}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>

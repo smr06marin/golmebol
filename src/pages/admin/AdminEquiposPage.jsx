@@ -13,6 +13,7 @@ import ModalEquipoParecido from '../../components/ModalEquipoParecido'
 const ADMINS_PRINCIPALES = ['golmebol@gmail.com', 'smr06marin@gmail.com']
 import { Plus, Shield, Upload, X, Search, MoreVertical, Users, Trophy, FileText, Shirt, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { urlMini, alFallarMini } from '../../lib/imagenMini'
 
 const EMPTY = { name: '', city: '', genero: '', modalidad: '', descripcion: '', logros: '', representante_nombre: '', representante_cedula: '', representante_telefono: '' }
 const MODALIDADES = ['Fútbol 5', 'Fútbol 7', 'Fútbol 11']
@@ -536,7 +537,7 @@ export default function AdminEquiposPage() {
                 {uploading===equipo.id ? (
                   <div style={{ fontSize:'.6rem', color:'#9aa0a6' }}>...</div>
                 ) : equipo.logo_url ? (
-                  <img src={equipo.logo_url} style={{ width:'100%', height:'100%', objectFit:'contain', padding:'4px' }}/>
+                  <img src={urlMini(equipo.logo_url, 48)} onError={alFallarMini} loading="lazy" decoding="async" style={{ width:'100%', height:'100%', objectFit:'contain', padding:'4px' }}/>
                 ) : (
                   <Shield size={20} color="#9aa0a6"/>
                 )}

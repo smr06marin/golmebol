@@ -9,6 +9,7 @@ import { PaginaPanel, EncabezadoPanel, Saludo, G } from '../components/PanelUI'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { useEstadoUI, useRestaurarScroll } from '../hooks/useEstadoUI'
 import { clasificarTorneos } from '../lib/torneosCoordinador'
+import { traerPartidosLivianos } from '../lib/partidosLivianos'
 
 const inp ={ width:'100%', background:'#161616', border:'1px solid #2a2a2a', borderRadius:'8px', padding:'8px 12px', color:'#ffffff', fontSize:'.875rem', outline:'none', boxSizing:'border-box' }
 const lbl = { fontSize:'.75rem', fontWeight:'500', color:'#8a8a8a', display:'block', marginBottom:'4px' }
@@ -648,13 +649,14 @@ export default function ArbitroLiderPage() {
     // Los partidos de torneos finalizados o archivados NO se muestran nunca (ver clasificarTorneos): ya no se descargan,
     // y era la parte más pesada de la entrada (todo el historial de todos los torneos).
     const rT = await pTorneos
-    let q = supabase.from('matches')
-      .select('*, tournaments(id,name,modalidad,logo_url), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)')
-      .order('played_at', { ascending: true })
+    let abiertos = null
     if (!rT.error) {
-      const abiertos = (rT.data||[]).filter(t => !(t.status === 'finished' || t.archivado)).map(t => t.id)
-      if (abiertos.length <= 300) q = q.in('tournament_id', abiertos)
+      const ids = (rT.data||[]).filter(t => !(t.status === 'finished' || t.archivado)).map(t => t.id)
+      if (ids.length <= 300) abiertos = ids
     }
+    // Sin firmas ni planillas completas (ver partidosLivianos.js)
+    const q = traerPartidosLivianos('tournaments(id,name,modalidad,logo_url), home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url)',
+      b => { const x = b.order('played_at', { ascending: true }); return abiertos ? x.in('tournament_id', abiertos) : x })
     const [{ data }, rC, { data: recs }] = await Promise.all([q, pMios, pReclamos])
 
     setPartidos(data||[])
