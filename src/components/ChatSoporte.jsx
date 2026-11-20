@@ -371,7 +371,7 @@ function ChatInterno() {
       if (!r.ok) throw new Error(j.error || 'No se pudo enviar')
       setMensajes(prev => prev.some(m => m.id === j.id) ? prev.filter(m => m.id !== tmp.id) : prev.map(m => m.id === tmp.id ? { ...m, id: j.id, local: false, adjunto_path: adjunto?.path || null } : m))
       if (tmp.previa) setTimeout(() => URL.revokeObjectURL(tmp.previa), 90000)
-      if (j.auto) cargar(chat.id) // el asistente automático ya respondió: se muestra de una
+      if (j.auto) cargar(chat.id) // primera vez: se muestra de una el aviso de "vuelve a mirar en unos minutos"
       if (j.wa_estado === 'error' && !j.auto) setAviso('Tu mensaje quedó guardado, pero no pudimos avisar a soporte en este momento. Lo veremos en cuanto entremos.')
       if (j.wa_estado === 'sin_configurar' && !j.auto) setAviso('Tu mensaje quedó guardado, pero el chat todavía no está conectado, así que nadie lo recibe en el momento.')
     } catch (e) {
@@ -461,7 +461,7 @@ function ChatInterno() {
                   <div style={{ alignSelf: mio ? 'flex-end' : 'flex-start', maxWidth: mio ? '86%' : '92%', display: 'flex', alignItems: 'flex-end', gap: '6px' }}>
                     {!mio && (m.automatico ? <AvatarAsistente size={28} /> : <AvatarAgente agente={agenteDe(m.created_at)} size={28} />)}
                   <div style={{ background: mio ? '#1a73e8' : '#fff', color: mio ? '#fff' : '#202124', border: mio ? 'none' : '1px solid #e8eaed', borderRadius: mio ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '9px 12px', fontSize: '.86rem', lineHeight: 1.45, opacity: m.local ? .7 : 1, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-                    {!mio && <div style={{ fontSize: '.66rem', fontWeight: '800', color: m.automatico ? '#0f9d8a' : '#6c35de', marginBottom: '2px' }}>{m.automatico ? 'Asistente automático de Golmebol' : agenteDe(m.created_at).nombre}</div>}
+                    {!mio && <div style={{ fontSize: '.66rem', fontWeight: '800', color: m.automatico ? '#0f9d8a' : '#6c35de', marginBottom: '2px' }}>{m.automatico ? 'Golmebol' : agenteDe(m.created_at).nombre}</div>}
                     {(m.adjunto_path || m.previa) && <div style={{ margin: '2px 0 6px' }}><Adjunto m={m} alAbrir={setVisor} /></div>}
                     <TextoConEnlaces texto={m.texto} />
                     <div style={{ fontSize: '.62rem', marginTop: '3px', textAlign: 'right', color: mio ? 'rgba(255,255,255,.75)' : '#9aa0a6' }}>
@@ -470,12 +470,7 @@ function ChatInterno() {
                   </div>
                   </div>
                   {m.fallo && <button onClick={() => enviar(m)} style={{ alignSelf: 'flex-end', minHeight: '36px', background: 'none', border: 'none', color: '#d93025', fontSize: '.76rem', fontWeight: '700', cursor: 'pointer' }}>Reintentar</button>}
-                  {m.automatico && i === mensajes.length - 1 && (
-                    <button onClick={() => enviar({ texto: 'Quiero hablar con una persona' })} disabled={enviando}
-                      style={{ alignSelf: 'flex-start', marginLeft: '34px', minHeight: '40px', padding: '0 16px', borderRadius: '20px', border: '1px solid #1a73e8', background: '#fff', color: '#1a73e8', fontSize: '.8rem', fontWeight: '800', cursor: 'pointer' }}>
-                      Hablar con una persona
-                    </button>
-                  )}
+                  
                 </div>
               )
             })}
