@@ -41,7 +41,7 @@ async function cargarConfigs(partidos) {
 }
 
 // Qué hacer con la plata, dicho en una frase
-function Veredicto({ efectivo, leCorresponde, aEntregar, titulo }) {
+function Veredicto({ efectivo, leCorresponde, aEntregar, titulo, compartida }) {
   const entrega = aEntregar >= 0
   const color = entrega ? AZUL : VERDE
   return (
@@ -50,8 +50,8 @@ function Veredicto({ efectivo, leCorresponde, aEntregar, titulo }) {
       <div style={{ fontSize: '2.6rem', fontWeight: '900', margin: '4px 0 8px', color: TEXTO, lineHeight: 1.1 }}>{pesos(Math.abs(aEntregar))}</div>
       <div style={{ fontSize: '1rem', lineHeight: 1.5, color: TEXTO }}>
         {entrega
-          ? <>Debes tener <b>{pesos(efectivo)}</b> en efectivo. Quédate con tu pago (<b>{pesos(leCorresponde)}</b>) y entrega el resto.</>
-          : <>Debes tener <b>{pesos(efectivo)}</b> en efectivo y es tuyo. Golmebol te paga la diferencia hasta completar tu pago de <b>{pesos(leCorresponde)}</b>.</>}
+          ? <>Debes tener <b>{pesos(efectivo)}</b> en efectivo. {compartida ? <>Saca el pago de los árbitros (<b>{pesos(leCorresponde)}</b>)</> : <>Quédate con tu pago (<b>{pesos(leCorresponde)}</b>)</>} y entrega el resto.</>
+          : <>Debes tener <b>{pesos(efectivo)}</b> en efectivo y es {compartida ? 'de los árbitros' : 'tuyo'}. Golmebol paga la diferencia hasta completar {compartida ? 'el pago de los árbitros' : 'tu pago'} de <b>{pesos(leCorresponde)}</b>.</>}
       </div>
     </div>
   )
@@ -72,7 +72,7 @@ function Paso({ n, titulo, valor, nota, fuerte, color, signo }) {
   )
 }
 
-function Cuenta({ t }) {
+function Cuenta({ t, compartida }) {
   return (
     <div style={{ background: PANEL, border: `1px solid ${BORDE}`, borderRadius: '18px', padding: '8px 16px 10px' }}>
       <Paso n={1} titulo="Se recogió en total" valor={pesos(t.recogido)}
@@ -81,13 +81,13 @@ function Cuenta({ t }) {
         nota="Esa plata ya llegó a la cuenta de Golmebol. Tú no la tienes."/>
       <Paso n={3} titulo="Efectivo que debes tener" valor={pesos(t.efectivo)} fuerte
         nota="Es la plata que debes tener en la mano."/>
-      <Paso n={4} titulo="Tu pago por arbitrar" valor={pesos(t.leCorresponde)} signo="−" color={ORO}
-        nota="Según los partidos que pitaste. Te lo quedas tú."/>
+      <Paso n={4} titulo={compartida ? 'Pago de los árbitros' : 'Tu pago por arbitrar'} valor={pesos(t.leCorresponde)} signo="−" color={ORO}
+        nota={compartida ? 'Por todos los partidos de la cancha. Si se turnaron, repártanlo según los partidos de cada uno.' : 'Según los partidos que pitaste. Te lo quedas tú.'}/>
     </div>
   )
 }
 
-function LineaPartido({ l }) {
+function LineaPartido({ l, compartida }) {
   const p = l.partido
   const nombre = `${p.home?.name || '?'} vs ${p.away?.name || '?'}`
   let estado = ''
@@ -109,14 +109,14 @@ function LineaPartido({ l }) {
         <div style={{ fontSize: '.92rem', color: TENUE, marginTop: '4px', lineHeight: 1.55 }}>
           Arbitraje: <b style={{ color: TEXTO }}>{pesos(l.arbitraje)}</b> {l.tipo === 'w' ? '(en un W paga un solo equipo)' : `(${plural(l.equipos, 'equipo', 'equipos')})`}
           {l.tarjetas > 0 && <> · Tarjetas: <b style={{ color: TEXTO }}>{pesos(l.tarjetas)}</b></>}
-          <br/>Tu pago: <b style={{ color: ORO }}>{pesos(l.pago)}</b>
+          <br/>{compartida ? 'Pago árbitro' : 'Tu pago'}: <b style={{ color: ORO }}>{pesos(l.pago)}</b>{compartida && (p.arbitro1 || '').trim() ? <> · Planilló: <b style={{ color: TEXTO }}>{p.arbitro1}</b></> : null}
         </div>
       )}
     </div>
   )
 }
 
-function TarjetaCancha({ g, abiertaInicial }) {
+function TarjetaCancha({ g, abiertaInicial, compartida }) {
   const [abierta, setAbierta] = useState(abiertaInicial)
   const dif = g.efectivo - g.leCorresponde
   return (
@@ -134,13 +134,13 @@ function TarjetaCancha({ g, abiertaInicial }) {
       {abierta && (
         <div style={{ padding: '0 16px 16px' }}>
           <div style={{ fontSize: '.8rem', fontWeight: 800, color: TENUE, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: '2px' }}>Partido por partido</div>
-          {g.detalle.map(l => <LineaPartido key={l.partido.id} l={l}/>)}
+          {g.detalle.map(l => <LineaPartido key={l.partido.id} l={l} compartida={compartida}/>)}
 
           <div style={{ marginTop: '12px', background: '#0b1220', borderRadius: '14px', padding: '12px 14px' }}>
             <FilaSimple a="Recogido en esta cancha" b={pesos(g.recogido)}/>
             <FilaSimple a="Por transferencia (ya en Golmebol)" b={'−' + pesos(g.transferencia)} color={AZUL}/>
             <FilaSimple a="Efectivo que debes tener" b={pesos(g.efectivo)} fuerte/>
-            <FilaSimple a="Tu pago" b={'−' + pesos(g.leCorresponde)} color={ORO}/>
+            <FilaSimple a={compartida ? 'Pago de los árbitros' : 'Tu pago'} b={'−' + pesos(g.leCorresponde)} color={ORO}/>
             <div style={{ borderTop: `1px solid ${BORDE}`, marginTop: '6px', paddingTop: '8px' }}>
               <FilaSimple a={dif >= 0 ? 'Entregas de esta cancha' : 'Golmebol te debe (esta cancha)'} b={pesos(Math.abs(dif))} fuerte color={dif >= 0 ? AZUL : VERDE}/>
             </div>
@@ -172,23 +172,49 @@ export function CajaDelDia({ partidos, configs, onClose, diaInicial }) {
   const [dia, setDia] = useState(diaInicial || diaBogota())
   const [cobros, setCobros] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [deLaCancha, setDeLaCancha] = useState({ partidos: [], configs: {} }) // partidos de esas canchas ese día que planilló OTRA cuenta
 
   const delDia = useMemo(
     () => (partidos || []).filter(p => p.played_at && diaBogota(p.played_at) === dia && cobraEnCancha({ finanzas_config: configs[p.tournament_id] })),
     [partidos, configs, dia])
 
+  // Si los árbitros se turnan las cuentas para planillar, la cuenta igual sale COMPLETA por cancha: se suman todos los
+  // partidos de las canchas donde trabajó ese día, aunque los haya planillado otra cuenta (migracion_cuadre_cancha_compartido.sql
+  // le da permiso de ver sus tarjetas y transferencias). Si algo de esto falla, queda la cuenta de siempre (solo los suyos).
   useEffect(() => {
     let vivo = true
     ;(async () => {
       setCargando(true)
-      if (!delDia.length) { setCobros([]); setCargando(false); return }
-      const { data } = await supabase.from('cobros_cancha').select('*').in('match_id', delDia.map(p => p.id)).eq('anulado', false)
-      if (vivo) { setCobros(data || []); setCargando(false) }
+      if (!delDia.length) { setCobros([]); setDeLaCancha({ partidos: [], configs: {} }); setCargando(false); return }
+      let otros = [], configsOtros = {}
+      try {
+        const canchas = [...new Set(delDia.map(p => p.location).filter(l => (l || '').trim()))]
+        if (canchas.length) {
+          const { data, error } = await supabase.from('matches')
+            .select('id, tournament_id, played_at, location, status, tipo_resultado, home_score, away_score, home_team_id, away_team_id, arbitro1, home:home_team_id(name), away:away_team_id(name)')
+            .in('location', canchas)
+            .gte('played_at', new Date(`${dia}T00:00:00-05:00`).toISOString())
+            .lt('played_at', new Date(`${sumarDias(dia, 1)}T00:00:00-05:00`).toISOString())
+          if (!error && data) {
+            const mios = new Set(delDia.map(p => p.id))
+            otros = data.filter(p => !mios.has(p.id))
+            const faltan = otros.filter(p => !(p.tournament_id in configs))
+            if (faltan.length) configsOtros = await cargarConfigs(faltan)
+            otros = otros.filter(p => cobraEnCancha({ finanzas_config: configs[p.tournament_id] || configsOtros[p.tournament_id] }))
+          }
+        }
+      } catch { otros = [] }
+      const ids = [...delDia, ...otros].map(p => p.id)
+      const { data } = await supabase.from('cobros_cancha').select('*').in('match_id', ids).eq('anulado', false)
+      if (vivo) { setDeLaCancha({ partidos: otros, configs: configsOtros }); setCobros(data || []); setCargando(false) }
     })()
     return () => { vivo = false }
-  }, [delDia])
+  }, [delDia, dia]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const r = useMemo(() => resumenCaja(delDia, configs, cobros), [delDia, configs, cobros])
+  const compartida = deLaCancha.partidos.length > 0
+  const r = useMemo(
+    () => resumenCaja([...delDia, ...deLaCancha.partidos].sort((a, b) => new Date(a.played_at) - new Date(b.played_at)), { ...deLaCancha.configs, ...configs }, cobros),
+    [delDia, deLaCancha, configs, cobros])
   const t = r.totales
   const hoy = diaBogota()
 
@@ -220,15 +246,20 @@ export function CajaDelDia({ partidos, configs, onClose, diaInicial }) {
               </div>
             )}
 
-            <Veredicto efectivo={t.efectivo} leCorresponde={t.leCorresponde} aEntregar={t.aEntregar}/>
+            {compartida && (
+              <div style={{ fontSize: '.92rem', color: TENUE, lineHeight: 1.5, marginBottom: '12px', textAlign: 'center' }}>
+                Incluye <b style={{ color: TEXTO }}>todos los partidos de la cancha</b>, también los que se planillaron con otra cuenta.
+              </div>
+            )}
+            <Veredicto efectivo={t.efectivo} leCorresponde={t.leCorresponde} aEntregar={t.aEntregar} compartida={compartida}/>
 
             <div style={{ fontSize: '.8rem', fontWeight: 800, color: TENUE, letterSpacing: '.06em', textTransform: 'uppercase', margin: '22px 2px 8px' }}>¿Cómo salió la cuenta?</div>
-            <Cuenta t={t}/>
+            <Cuenta t={t} compartida={compartida}/>
 
             <div style={{ fontSize: '.8rem', fontWeight: 800, color: TENUE, letterSpacing: '.06em', textTransform: 'uppercase', margin: '22px 2px 8px' }}>
               {r.canchas.length === 1 ? 'Detalle de la cancha' : 'Detalle por cancha'}
             </div>
-            {r.canchas.map(g => <TarjetaCancha key={g.cancha} g={g} abiertaInicial={r.canchas.length === 1}/>)}
+            {r.canchas.map(g => <TarjetaCancha key={g.cancha} g={g} abiertaInicial={r.canchas.length === 1} compartida={compartida}/>)}
 
             {cargando && <div style={{ textAlign: 'center', color: TENUE, fontSize: '.9rem' }}>Actualizando…</div>}
             <div style={{ fontSize: '.85rem', color: TENUE, textAlign: 'center', lineHeight: 1.55, marginTop: '10px' }}>
