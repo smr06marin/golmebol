@@ -277,7 +277,7 @@ function RosterModal({ rosterModal, onClose, torneoNombre, onVerEquipo, onVerJug
                   background: tieneTag ? 'linear-gradient(45deg, #f9ce34, #ee2a7b, #6228d7)' : 'transparent' }}>
                   <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#f1f3f4', border: tieneTag ? '3px solid #fff' : '2px solid #e8eaed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {(j.photo_face_url || j.photo_url)
-                      ? <img src={j.photo_face_url || j.photo_url} alt={j.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                      ? <img src={urlMini(j.photo_face_url || j.photo_url, 140)} onError={alFallarMini} alt={j.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
                       : <span style={{ fontSize: '2rem' }}>👤</span>}
                   </div>
                 </div>
@@ -335,7 +335,7 @@ function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
             {top3.map((g, i) => (
               <div key={`${g.player_id}-${g.team_id}`} style={{ width: '104px', textAlign: 'center' }}>
                 <div style={{ width: '74px', height: '74px', borderRadius: '50%', margin: '0 auto', border: `3px solid ${MEDALLA[i]}`, overflow: 'hidden', background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 16px ${MEDALLA[i]}55` }}>
-                  {g.photo_url ? <img src={g.photo_url} alt={g.player_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.6rem' }}>👤</span>}
+                  {g.photo_url ? <img src={urlMini(g.photo_url, 112)} onError={alFallarMini} alt={g.player_name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.6rem' }}>👤</span>}
                 </div>
                 <div style={{ marginTop: '-13px', display: 'flex', justifyContent: 'center' }}>
                   <div style={{ background: MEDALLA[i], color: '#000', fontWeight: '900', fontSize: '.7rem', borderRadius: '10px', padding: '2px 9px', border: '2px solid #0a0a12', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -368,7 +368,7 @@ function TopGoleadoresBanner({ goleadores, vallaRow, vallaArqueros }) {
               {vallaArqueros.map(a => (
                 <div key={a.id} style={{ textAlign: 'center', width: '68px' }}>
                   <div style={{ width: '50px', height: '50px', borderRadius: '50%', margin: '0 auto', border: '2px solid #00ddd0', overflow: 'hidden', background: '#1a1a24', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {a.photo_url || a.photo_face_url ? <img src={a.photo_face_url || a.photo_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.1rem' }}>🧤</span>}
+                    {a.photo_url || a.photo_face_url ? <img src={urlMini(a.photo_face_url || a.photo_url, 80)} onError={alFallarMini} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : <span style={{ fontSize: '1.1rem' }}>🧤</span>}
                   </div>
                   <div style={{ marginTop: '5px', color: '#fff', fontWeight: '700', fontSize: '.6rem', lineHeight: 1.2 }}>{a.name}</div>
                 </div>
@@ -1327,7 +1327,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                   }}>
                     <div style={{ width: '100%', height: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {sp.logo_url
-                        ? <img src={sp.logo_url} alt={sp.nombre || 'Patrocinador'} style={{ maxWidth: '100%', maxHeight: '56px', objectFit: 'contain' }}/>
+                        ? <img src={urlMini(sp.logo_url, 140)} onError={alFallarMini} alt={sp.nombre || 'Patrocinador'} loading="lazy" decoding="async" style={{ maxWidth: '100%', maxHeight: '56px', objectFit: 'contain' }}/>
                         : <span style={{ fontSize: '.75rem', color: '#9aa0a6', fontWeight: '600' }}>{sp.nombre || 'Sin logo'}</span>}
                     </div>
                     {sp.nombre && (

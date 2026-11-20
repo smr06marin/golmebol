@@ -9,6 +9,7 @@ import BotonEstrella from './BotonEstrella'
 import SeguirEquipos from './SeguirEquipos'
 import SeguirTorneos from './SeguirTorneos'
 import { useFavoritosTorneos } from '../lib/favoritosTorneos'
+import { urlMini, alFallarMini } from '../lib/imagenMini'
 
 // ── "Partidos de hoy" ───────────────────────────────────────────────────────
 // Lista de partidos del día de TODOS los torneos, agrupada por torneo, como
@@ -48,7 +49,7 @@ function EscudoMini({ logo_url, name, size = 24 }) {
   return (
     <div style={{ width: size, height: size, borderRadius: 7, background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {logo_url
-        ? <img src={logo_url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 2 }}/>
+        ? <img src={urlMini(logo_url, Math.max(size, 32))} onError={alFallarMini} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 2 }}/>
         : <span style={{ fontSize: size * .36, fontWeight: 800, color: '#1a3a8a' }}>{iniciales}</span>}
     </div>
   )

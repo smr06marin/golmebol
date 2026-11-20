@@ -7,6 +7,7 @@ import {
   COLOR_TARJETA, FASE_LABEL, TIPOS_TARJETA, agruparGoles, construirResumen, ordenarEventos, penalesDe,
 } from '../lib/resumenPartido'
 import FlyerResultadoPartido from './FlyerResultadoPartido'
+import { urlMini, alFallarMini } from '../lib/imagenMini'
 
 // Resumen de un partido YA JUGADO (se abre al tocar un resultado en la página
 // pública del torneo): marcador, pestaña "Resumen" (quién anotó y las
@@ -22,7 +23,7 @@ function EscudoMini({ url, nombre, size = 42 }) {
   return (
     <div style={{ width: size, height: size, borderRadius: 10, overflow: 'hidden', margin: '0 auto' }}>
       {url
-        ? <img src={url} alt={nombre} style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
+        ? <img src={urlMini(url, size)} onError={alFallarMini} alt={nombre} decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
         : (
           <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #1a73e8, #6c35de)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span style={{ fontSize: size * 0.32, fontWeight: 800, color: '#fff', fontFamily: 'system-ui' }}>{iniciales}</span>

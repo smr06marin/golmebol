@@ -18,6 +18,15 @@ export function urlMini(url, px = 48) {
   return `${m[1]}/storage/v1/render/image/public/${m[2]}?width=${ancho}&height=${ancho}&resize=contain&quality=75`
 }
 
+// Imagen grande de fondo (portada, fotos de escenarios): cabe entera dentro de ancho×alto, sin deformarse.
+// Una portada subida a 3000–4000 px pesa 1–3 MB; a 1600 px y calidad 70 baja a ~150–250 KB.
+export function urlImagenReducida(url, ancho, alto = ancho) {
+  if (!url || reduccionApagada) return url
+  const m = RE.exec(url)
+  if (!m) return url
+  return `${m[1]}/storage/v1/render/image/public/${m[2]}?width=${Math.round(ancho)}&height=${Math.round(alto)}&resize=contain&quality=70`
+}
+
 // onError de la <img>: pasa al original una sola vez
 export function alFallarMini(e) {
   const img = e.currentTarget

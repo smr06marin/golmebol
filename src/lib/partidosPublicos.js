@@ -5,12 +5,20 @@ import { cargarAliasTorneo, aplicarAlias } from './nombresTorneo'
 // lista en vez de '*' porque `matches` también guarda las FIRMAS de la planilla
 // (imágenes en base64) y otros datos internos: con '*' cada visitante se
 // descargaba esas firmas de TODOS los partidos del torneo, varias veces.
-export const COLUMNAS_PARTIDO_PUBLICO = [
+//
+// RENDIMIENTO: el "en vivo" (live_state / live_state_rapida) es la planilla
+// COMPLETA de cada partido (lista de jugadores, firmas en imagen, etc.) y se
+// queda guardada también en los partidos ya jugados: en un torneo de 47
+// partidos eran ~900 KB por visita, solo para no usarlos (un partido terminado
+// nunca sale "en vivo"). Ahora se piden aparte y SOLO de los partidos que no
+// han terminado.
+export const COLUMNAS_PARTIDO_BASE = [
   'id', 'tournament_id', 'home_team_id', 'away_team_id', 'home_score', 'away_score',
   'status', 'fase', 'ronda', 'slot_index', 'matchday', 'played_at', 'location',
   'tipo_resultado', 'penales_local', 'penales_visitante', 'penales_ganador', 'foto_w_url',
-  'live_state', 'live_state_updated_at', 'live_state_rapida', 'live_state_rapida_updated_at',
 ].join(', ')
+export const COLUMNAS_PARTIDO_VIVO = 'id, live_state, live_state_updated_at, live_state_rapida, live_state_rapida_updated_at'
+export const COLUMNAS_PARTIDO_PUBLICO = `${COLUMNAS_PARTIDO_BASE}, ${COLUMNAS_PARTIDO_VIVO.replace(/^id, /, '')}`
 
 const EMBED_EQUIPOS = 'home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
 
@@ -19,8 +27,15 @@ const EMBED_EQUIPOS = 'home:home_team_id(name,logo_url), away:away_team_id(name,
 // en la base, `resolver` reintenta con '*' para que la página NUNCA se quede
 // sin partidos por esto.
 export function consultaPartidosTorneo(torneoId) {
-  return supabase.from('matches').select(`${COLUMNAS_PARTIDO_PUBLICO}, ${EMBED_EQUIPOS}`)
+  const base = supabase.from('matches').select(`${COLUMNAS_PARTIDO_BASE}, ${EMBED_EQUIPOS}`)
     .eq('tournament_id', torneoId).order('played_at', { ascending: true })
+  const vivo = supabase.from('matches').select(COLUMNAS_PARTIDO_VIVO)
+    .eq('tournament_id', torneoId).neq('status', 'finished')
+  return Promise.all([base, vivo]).then(([rb, rv]) => {
+    if (rb.error || !Array.isArray(rb.data)) return rb
+    const enVivo = new Map((rv.error ? [] : (rv.data || [])).map(v => [v.id, v]))
+    return { ...rb, data: rb.data.map(p => (enVivo.has(p.id) ? { ...p, ...enVivo.get(p.id) } : p)) }
+  })
 }
 
 // `alias`: nombres de los equipos SOLO en este torneo (Map team_id → nombre). Si no se pasa, se piden.

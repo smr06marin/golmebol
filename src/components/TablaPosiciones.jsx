@@ -16,11 +16,12 @@ import { Fragment } from 'react'
 const NOMBRE_FASE_RESCATE = { octavos: 'OCTAVOS', cuartos: 'CUARTOS', semifinal: 'SEMIFINAL' }
 import { useFavoritos } from '../lib/favoritos'
 import BotonEstrella from './BotonEstrella'
+import { urlMini, alFallarMini } from '../lib/imagenMini'
 
 function LogoCircular({ logo, name, size = 30 }) {
   if (logo) return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: '#fff', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,.4)' }}>
-      <img src={logo} alt={name || ''} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/>
+      <img src={urlMini(logo, Math.max(size, 40))} onError={alFallarMini} alt={name || ''} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '2px' }}/>
     </div>
   )
   const iniciales = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()

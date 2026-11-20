@@ -1,5 +1,6 @@
 import { FaWhatsapp } from 'react-icons/fa'
 import { digitosWhatsapp, telefonoBonito } from '../lib/telefonoCo'
+import { urlMini, alFallarMini } from '../lib/imagenMini'
 
 // Franja "Con el apoyo de" de la página de inicio: solo logos, ordenados y discretos, y debajo de
 // cada uno su número de contacto (toca el número y abre WhatsApp). Al tocar el logo se abre el
@@ -33,7 +34,7 @@ export default function PatrocinadoresFranja({ patrocinadores, onSelect, S }) {
               <button type="button" onClick={() => onSelect?.(p)} aria-label={`Ver detalle de ${p.nombre}`} className="gm-fr-logo"
                 style={{ width: '100%', aspectRatio: '3 / 2', borderRadius: '12px', background: '#fff', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 1px 0 rgba(255,255,255,.06) inset, 0 6px 18px rgba(0,0,0,.35)' }}>
                 {p.logo_url
-                  ? <img src={p.logo_url} alt={p.nombre} loading="lazy" style={{ maxWidth: '82%', maxHeight: '78%', objectFit: 'contain', filter: 'grayscale(1)', opacity: .9, transition: 'filter .25s ease, opacity .25s ease' }}/>
+                  ? <img src={urlMini(p.logo_url, 132)} onError={alFallarMini} alt={p.nombre} loading="lazy" decoding="async" style={{ maxWidth: '82%', maxHeight: '78%', objectFit: 'contain', filter: 'grayscale(1)', opacity: .9, transition: 'filter .25s ease, opacity .25s ease' }}/>
                   : <span style={{ fontSize: '.72rem', fontWeight: 800, color: '#333', padding: '0 8px' }}>{p.nombre}</span>}
               </button>
               <div style={{ fontSize: '.7rem', fontWeight: 700, color: S.text2, lineHeight: 1.2, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nombre}</div>

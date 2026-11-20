@@ -29,8 +29,10 @@ export function cargarTorneoPublico(id) {
     const qTe = supabase.from('tournament_teams_publico').select('*').eq('tournament_id', id)
     const qP  = consultaPartidosTorneo(id)
     const qGr = supabase.from('tournament_grupos').select('*').eq('tournament_id', id).order('orden')
-    const qG  = supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).gt('total_goals', 0).order('total_goals', { ascending: false })
-    const qSp = supabase.from('tournament_sponsors').select('*').eq('tournament_id', id).order('orden', { ascending: true })
+    // Goleadores y patrocinadores también salen YA (antes la consulta quedaba armada pero no se enviaba
+    // hasta que llegaba la tabla, y se veían 1–2 s después). Igual llegan aparte y no frenan la tabla.
+    const qG  = Promise.resolve(supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).gt('total_goals', 0).order('total_goals', { ascending: false }))
+    const qSp = Promise.resolve(supabase.from('tournament_sponsors').select('*').eq('tournament_id', id).order('orden', { ascending: true }))
 
     const qAl = cargarAliasTorneo(id, { publico: true }) // nombres de equipos SOLO en este torneo
     let [rT, rTe, rP, rGr, alias] = await Promise.all([qT, qTe, qP, qGr, qAl])

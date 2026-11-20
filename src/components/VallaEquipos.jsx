@@ -9,11 +9,12 @@
 // rows: [{ equipo: { id, name, logo_url }, gc, pj, arqueros: [{ name, foto }] }]
 
 import { useState } from 'react'
+import { urlMini, alFallarMini } from '../lib/imagenMini'
 
 const TEAL = '#00ddd0'
 
 function LogoEquipo({ logo, name, size = 40 }) {
-  if (logo) return <img src={logo} alt={name || ''} style={{ width: size, height: size, objectFit: 'contain', borderRadius: '50%', background: 'rgba(255,255,255,.08)', padding: '3px', flexShrink: 0 }}/>
+  if (logo) return <img src={urlMini(logo, Math.max(size, 40))} onError={alFallarMini} alt={name || ''} loading="lazy" decoding="async" style={{ width: size, height: size, objectFit: 'contain', borderRadius: '50%', background: 'rgba(255,255,255,.08)', padding: '3px', flexShrink: 0 }}/>
   const ini = (name || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 3).toUpperCase()
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#aeb6c6', fontWeight: 800, fontSize: size * .3, flexShrink: 0 }}>{ini}</div>
@@ -26,7 +27,7 @@ function Arquero({ a, grande }) {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', width: grande ? '84px' : '64px' }}>
       <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', background: '#16202e', border: `2px solid ${TEAL}`, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', boxShadow: grande ? `0 0 14px ${TEAL}44` : 'none' }}>
         {a.foto
-          ? <img src={a.foto} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}/>
+          ? <img src={urlMini(a.foto, size * 1.6)} onError={alFallarMini} alt={a.name} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}/>
           : <svg viewBox="0 0 24 24" width={size * .62} height={size * .62} fill="#3d4659"><circle cx="12" cy="7.5" r="4.2"/><path d="M3.5 21.5c0-4.7 3.8-8.5 8.5-8.5s8.5 3.8 8.5 8.5z"/></svg>}
       </div>
       <div style={{ color: '#dfe6f2', fontSize: grande ? '.68rem' : '.6rem', fontWeight: 700, textAlign: 'center', lineHeight: 1.15 }}>{a.name}</div>

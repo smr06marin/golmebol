@@ -11,12 +11,13 @@ import { registrarVisita } from '../lib/visitas'
 import { usePresenciaSitio } from '../lib/presenciaSitio'
 import { useIntervaloVisible } from '../lib/useIntervaloVisible'
 import { guardarCacheRapido, leerCacheRapido } from '../lib/cacheRapido'
+import { pedirInicio } from '../lib/inicioDatos'
 const SIN_STREAMS = [] // referencia fija: así el hook de canales no se reinicia en cada render
 import BotonAvisos from '../components/BotonAvisos'
 import { useCanalesEnVivo, resolverStreams, useVideosYoutubeVivos } from '../lib/enVivoCanal'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
-import { urlMini, alFallarMini } from '../lib/imagenMini'
+import { urlMini, alFallarMini, urlImagenReducida } from '../lib/imagenMini'
 import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '../lib/ubicaciones'
 
 // Paleta inspirada en el mockup que pidió Sebas: header claro, cuerpo oscuro,
@@ -86,6 +87,19 @@ function precargarEscudos(urls) {
     img.decoding = 'async'
     img.src = urlMini(u, 64) // el mismo tamaño que después pide el escudo: queda en caché
   }
+}
+
+// Fondo grande (portada): se pide reducido para que no pese megas; si la reducción falla, se usa el original.
+function useFondoReducido(url, ancho, alto) {
+  const reducida = url ? urlImagenReducida(url, ancho, alto) : null
+  const [fallo, setFallo] = useState(null) // url reducida que no cargó
+  useEffect(() => {
+    if (!reducida || reducida === url) return
+    const im = new Image()
+    im.onerror = () => setFallo(reducida)
+    im.src = reducida
+  }, [reducida, url])
+  return !reducida || fallo === reducida ? url : reducida
 }
 
 function Escudo({ logo_url, name, size = 40, radius = 10, urgente = false }) {
@@ -303,7 +317,7 @@ function PatrocinadorDetalleModal({ p, onClose }) {
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: '20px' }}>
           <div style={{ width: '100px', height: '100px', borderRadius: '18px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: '12px' }}>
-            {p.logo_url ? <img src={p.logo_url} alt={p.nombre} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '8px' }}/> : <Megaphone size={30} color="#1a3a8a"/>}
+            {p.logo_url ? <img src={urlMini(p.logo_url, 120)} onError={alFallarMini} alt={p.nombre} decoding="async" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '8px' }}/> : <Megaphone size={30} color="#1a3a8a"/>}
           </div>
           <div style={{ fontWeight: 900, fontSize: '1.15rem' }}>{p.nombre}</div>
           {p.direccion && (
@@ -389,6 +403,8 @@ export default function LandingPage({ modo = 'inicio' }) {
   const [siteConfig, setSiteConfig] = useState(null)
   const [patrocinadores, setPatrocinadores] = useState(() => leerCacheRapido('landing_patrocinadores') || [])
   const [portadaInicio, setPortadaInicio] = useState(() => leerCacheRapido('landing_portada') || null) // { url } — imagen de fondo del inicio (se sube en /admin/patrocinadores)
+  const fondoPc = useFondoReducido(portadaInicio?.pc || portadaInicio?.url, 1920, 1080)
+  const fondoMovil = useFondoReducido(portadaInicio?.movil || portadaInicio?.url, 900, 1600)
   const [patroDetalle, setPatroDetalle] = useState(null) // patrocinador abierto en el modal de detalle
 
   const torneosRef = useRef(null)
@@ -588,55 +604,75 @@ export default function LandingPage({ modo = 'inicio' }) {
   // por torneo activo, se cae a la consulta de antes.
   async function fetchTorneosActivosInterno() {
     const COLS_PARTIDO = 'tournament_id, matchday, fase, status, ronda, home_team_id, away_team_id, home_score, away_score, penales_local, penales_visitante, penales_ganador, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)'
-    // Los torneos con su escudo salen apenas llega la primera consulta (liviana); partidos y equipos llegan detrás y completan las tarjetas.
-    const pTors = Promise.resolve(supabase.from('tournaments').select('id, name, logo_url, modalidad, city, pais, departamento, municipio_codigo, vereda, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active'))
+    // Los torneos con su escudo salen apenas llega la primera consulta (liviana); el resumen llega detrás y completa las tarjetas.
+    // (Las dos pudieron haber salido ya desde main.jsx, antes de que cargara esta página.)
+    const pTors = pedirInicio('torneos')
+    const pResumen = pedirInicio('resumen')
     pTors.then(r => {
       if (r.error || !r.data) return
       const provisional = r.data.filter(t => !t.archivado).map(t => ({ ...t, equipos: 0, estado: '', finalizado: false, campeon: null, pendiente: true }))
       setTorneos(prev => (prev.length ? prev : provisional))
     })
-    const [torsRes00, ttsF, msF] = await Promise.all([
-      pTors,
-      supabase.from('tournament_teams').select('tournament_id, tournaments!inner(status)').eq('tournaments.status', 'active'),
-      supabase.from('matches').select(`${COLS_PARTIDO}, tournaments!inner(status)`).eq('tournaments.status', 'active'),
-    ])
+    const [torsRes00, resumenRes] = await Promise.all([pTors, pResumen])
     let torsRes = torsRes00
     // Si todavía no se corrió migracion_ubicacion_torneos.sql faltan las columnas de ubicación: se pide sin ellas
     // (la ciudad escrita sí llega y se interpreta sola). Y si falla también, se cae a la consulta mínima de antes.
     if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, city, categoria, genero, season, created_at, archivado, torneo_padre_id, edicion').eq('status', 'active')
     if (torsRes.error) torsRes = await supabase.from('tournaments').select('id, name, logo_url, modalidad, season, torneo_padre_id, edicion').eq('status', 'active')
     const torsRaw = torsRes.data || []
-    let tts = ttsF.data, ms = msF.data
-    if (ttsF.error || msF.error || !tts || !ms) {
-      ;[{ data: tts }, { data: ms }] = await Promise.all([
-        supabase.from('tournament_teams').select('tournament_id'),
-        supabase.from('matches').select(COLS_PARTIDO),
-      ])
-    }
     // Una edición archivada (porque ya se creó la siguiente) no se muestra
     // en el feed principal — solo se ve la edición vigente de cada torneo.
     const tors = torsRaw.filter(t => !t.archivado)
-    const cuentaEq = {}
-    ;(tts || []).forEach(t => { cuentaEq[t.tournament_id] = (cuentaEq[t.tournament_id] || 0) + 1 })
     const FASES = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinales', final: 'Gran final' }
     const PESO  = { octavos: 1, cuartos: 2, semifinal: 3, final: 4 }
-    const base = tors.map(t => {
-      const mts = (ms || []).filter(m => m.tournament_id === t.id)
-      const elim = mts.filter(m => m.fase && m.fase !== 'grupo').sort((a, b) => (PESO[b.fase] || 0) - (PESO[a.fase] || 0))[0]
-      const maxFecha = Math.max(0, ...mts.filter(m => m.matchday).map(m => m.matchday))
-      const estado = elim ? (FASES[elim.fase] || 'Eliminatorias') : maxFecha > 0 ? `Fecha ${maxFecha}` : 'Por comenzar'
-      // El torneo no tiene un status "finalizado" en la base (nunca se marca
-      // así desde el admin) — se deduce de si ya se jugó la gran final. OJO:
-      // NO se puede usar "todos los partidos que existen están finalizados"
-      // como señal de torneo terminado — eso daba falsos positivos: cuando
-      // se juega toda una fecha (jornada) y el admin todavía no ha creado la
-      // siguiente, momentáneamente TODOS los partidos existentes quedan en
-      // 'finished' aunque el torneo siga en curso y no haya campeón todavía
-      // (pasó con el Torneo Relámpago Municipal Córdoba).
-      const finalizado = mts.some(m => m.fase === 'final' && m.status === 'finished')
-      const campeon = finalizado ? calcularCampeon(mts) : null
-      return { ...t, equipos: cuentaEq[t.id] || 0, estado, finalizado, campeon }
-    })
+    let base
+    if (!resumenRes.error && Array.isArray(resumenRes.data)) {
+      // RÁPIDO (migracion_rendimiento_inicio.sql): la base manda una fila por torneo con lo que va.
+      // Solo se bajan los partidos de la final de los torneos que ya la jugaron, para saber el campeón.
+      const resumen = Object.fromEntries(resumenRes.data.map(r => [r.tournament_id, r]))
+      const conFinal = tors.filter(t => resumen[t.id]?.final_jugada).map(t => t.id)
+      let finales = []
+      if (conFinal.length > 0) {
+        const rf = await supabase.from('matches').select(COLS_PARTIDO).in('tournament_id', conFinal).eq('fase', 'final')
+        finales = rf.data || []
+      }
+      base = tors.map(t => {
+        const r = resumen[t.id] || {}
+        const estado = r.fase_top ? (FASES[r.fase_top] || 'Eliminatorias') : (r.max_jornada || 0) > 0 ? `Fecha ${r.max_jornada}` : 'Por comenzar'
+        const finalizado = !!r.final_jugada
+        const campeon = finalizado ? calcularCampeon(finales.filter(m => m.tournament_id === t.id)) : null
+        return { ...t, equipos: r.equipos || 0, estado, finalizado, campeon }
+      })
+    } else {
+      // Forma de antes (sin la función en la base): todos los partidos y equipos de los torneos activos.
+      const [ttsF, msF] = await Promise.all([
+        supabase.from('tournament_teams').select('tournament_id, tournaments!inner(status)').eq('tournaments.status', 'active'),
+        supabase.from('matches').select(`${COLS_PARTIDO}, tournaments!inner(status)`).eq('tournaments.status', 'active'),
+      ])
+      let tts = ttsF.data, ms = msF.data
+      if (ttsF.error || msF.error || !tts || !ms) {
+        ;[{ data: tts }, { data: ms }] = await Promise.all([
+          supabase.from('tournament_teams').select('tournament_id'),
+          supabase.from('matches').select(COLS_PARTIDO),
+        ])
+      }
+      const cuentaEq = {}
+      ;(tts || []).forEach(t => { cuentaEq[t.tournament_id] = (cuentaEq[t.tournament_id] || 0) + 1 })
+      base = tors.map(t => {
+        const mts = (ms || []).filter(m => m.tournament_id === t.id)
+        const elim = mts.filter(m => m.fase && m.fase !== 'grupo').sort((a, b) => (PESO[b.fase] || 0) - (PESO[a.fase] || 0))[0]
+        const maxFecha = Math.max(0, ...mts.filter(m => m.matchday).map(m => m.matchday))
+        const estado = elim ? (FASES[elim.fase] || 'Eliminatorias') : maxFecha > 0 ? `Fecha ${maxFecha}` : 'Por comenzar'
+        // El torneo no tiene un status "finalizado" en la base (nunca se marca
+        // así desde el admin) — se deduce de si ya se jugó la gran final. OJO:
+        // NO se puede usar "todos los partidos que existen están finalizados"
+        // como señal de torneo terminado — eso daba falsos positivos cuando se
+        // juega toda una fecha y todavía no se crea la siguiente.
+        const finalizado = mts.some(m => m.fase === 'final' && m.status === 'finished')
+        const campeon = finalizado ? calcularCampeon(mts) : null
+        return { ...t, equipos: cuentaEq[t.id] || 0, estado, finalizado, campeon }
+      })
+    }
 
     // Campeón vigente: la edición que se está jugando ahora todavía no tiene
     // campeón propio (recién empieza) — se muestra el de la edición anterior
@@ -935,8 +971,8 @@ export default function LandingPage({ modo = 'inicio' }) {
         {portadaInicio?.url ? (
           <>
             {/* Portada: la foto de fondo y un degradado oscuro que la funde con el resto de la página (sin borde duro abajo) */}
-            <div className="gm-portada-pc" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${portadaInicio.pc || portadaInicio.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
-            <div className="gm-portada-movil" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${portadaInicio.movil || portadaInicio.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
+            <div className="gm-portada-pc" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${fondoPc})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
+            <div className="gm-portada-movil" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url(${fondoMovil})`, backgroundSize: 'cover', backgroundPosition: 'center' }}/>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: `linear-gradient(180deg, rgba(10,10,10,.12) 0%, rgba(10,10,10,.12) 45%, rgba(10,10,10,.7) 80%, ${S.bg} 100%)` }}/>
           </>
         ) : (
@@ -1201,7 +1237,7 @@ export default function LandingPage({ modo = 'inicio' }) {
               <div style={{ position: 'relative', borderRadius: '20px', overflow: 'hidden', border: `1px solid ${S.border}`, minHeight: '230px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '22px 20px 20px' }}>
                 <div key={actual?.id || 'sin-foto'} className="gm-fade"
                   style={{ position: 'absolute', inset: 0, zIndex: 0,
-                    backgroundImage: actual ? `linear-gradient(180deg, rgba(10,10,10,.5) 0%, rgba(10,10,10,.82) 55%, rgba(10,10,10,.96) 100%), url(${actual.imagen_fondo_url})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
+                    backgroundImage: actual ? `linear-gradient(180deg, rgba(10,10,10,.5) 0%, rgba(10,10,10,.82) 55%, rgba(10,10,10,.96) 100%), url(${urlImagenReducida(actual.imagen_fondo_url, 1200, 900)})` : `linear-gradient(160deg, ${S.card}, ${S.bg2})`,
                     backgroundSize: 'cover', backgroundPosition: 'center' }}/>
                 <div style={{ position: 'relative', zIndex: 1 }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.16)', color: S.green, fontSize: '.64rem', fontWeight: 800, letterSpacing: '.14em', padding: '6px 12px', borderRadius: '999px', marginBottom: '12px' }}>
