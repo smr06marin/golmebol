@@ -260,7 +260,11 @@ const FASES = [
 ]
 // Fases al CREAR un partido a mano: las de siempre + tercer puesto (que por dentro
 // se guarda como fase 'final' con ronda "Tercer puesto", igual que el que arma el sistema).
-const FASES_CREAR = [...FASES, { value: 'tercer_puesto', label: '🥉 Tercer puesto' }, { value: 'otro', label: '✨ Otra fase (repechaje, sétette, amistoso…)' }]
+// "Mejor perdedor" se guarda como fase 'otra' con ronda "Mejor perdedor": el que gana sigue en el torneo y el que pierde queda eliminado.
+const FASES_CREAR = [...FASES, { value: 'tercer_puesto', label: '🥉 Tercer puesto' }, { value: 'mejor_perdedor', label: '🔁 Mejor perdedor' }, { value: 'otro', label: '✨ Otra fase (repechaje, sétette, amistoso…)' }]
+const RONDA_MEJOR_PERDEDOR = 'Mejor perdedor'
+// Nombre de una fase 'otra' sin el "(ida)" / "(vuelta)" del final, para agrupar los dos partidos juntos
+const nombreFaseOtra = r => (r || 'Otra fase').replace(/\s*\((ida|vuelta)\)\s*$/i, '') || 'Otra fase'
 const ESTILOS_FORM_PARTIDO = `
 .gpf{background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .gpf-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -343,7 +347,7 @@ const ESTILOS_CAL_TORNEO = `
 .gcz-mini.azul{background:#1a73e8;border-color:#1a73e8;color:#fff}
 @media (max-width:600px){.gcz-opts{grid-template-columns:minmax(0,1fr)}.gcz-canchas-grid{grid-template-columns:minmax(0,1fr)}}
 `
-const NOMBRE_FASE_CHIP = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final', tercer_puesto: '3.er puesto', otro: 'Otra fase' }
+const NOMBRE_FASE_CHIP = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos', semifinal: 'Semifinal', final: 'Final', tercer_puesto: '3.er puesto', mejor_perdedor: 'Mejor perdedor', otro: 'Otra fase' }
 const FASES_CON_LLAVE = ['octavos', 'cuartos', 'semifinal', 'final', 'tercer_puesto']
 const FASE_LABEL = { grupo:'🏟️ Grupo', octavos:'⚔️ Octavos', cuartos:'🔥 Cuartos', semifinal:'⚡ Semifinal', final:'🏆 Final', otra:'✨ Otra fase' }
 
@@ -4112,7 +4116,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
   }
 
   // ── ¿CUÁNTOS CLASIFICARON? ─────────────────────────
-  const FASES_PIDEN_CLASIF = ['octavos', 'cuartos', 'semifinal', 'final', 'tercer_puesto']
+  const FASES_PIDEN_CLASIF = ['octavos', 'cuartos', 'semifinal', 'final', 'tercer_puesto', 'mejor_perdedor']
   const clasificacionElim = leerClasificacionElim(torneo)
   const hayLlavesElim = bracket.some(m => FASE_ORDEN.includes(m.fase))
 
@@ -4157,8 +4161,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (!formPartido.played_at) return showMsg('La fecha es obligatoria', 'error')
     if (canchas.length > 0 && !formPartido.cancha_id) return showMsg('Elige la cancha donde se juega: así los equipos saben a dónde llegar', 'error')
     const esTercero = formPartido.fase === 'tercer_puesto'
-    const esOtro = formPartido.fase === 'otro'
-    const nombreOtro = (formPartido.nombre_otro ?? '').trim()
+    const esMejorPerdedor = formPartido.fase === 'mejor_perdedor'
+    const esOtro = formPartido.fase === 'otro' || esMejorPerdedor
+    const nombreOtro = esMejorPerdedor ? RONDA_MEJOR_PERDEDOR : (formPartido.nombre_otro ?? '').trim()
     if (esOtro && !nombreOtro) return showMsg('Escribe cómo se llama esta fase (ej: Repechaje, Sétette, Amistoso)', 'error')
     const llaveIdaVuelta = !!formPartido.ida_vuelta && formPartido.fase !== 'grupo'
     if (llaveIdaVuelta && formPartido.vuelta_modo === 'con_fecha' && !formPartido.vuelta_fecha) return showMsg('Pon la fecha del partido de vuelta, o elige "Sin fecha todavía"', 'error')
@@ -4193,10 +4198,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     const inserts = [{
       ...base, home_team_id: formPartido.home_team_id, away_team_id: formPartido.away_team_id,
       played_at: formPartido.played_at + (formPartido.hora ? 'T' + formPartido.hora : 'T00:00') + ':00-05:00',
-      ronda: conVuelta ? (esTercero ? 'Tercer puesto (ida)' : 'Ida') : nombreRonda,
+      ronda: conVuelta ? (esTercero ? 'Tercer puesto (ida)' : esOtro ? `${nombreOtro} (ida)` : 'Ida') : nombreRonda,
     }]
     if (conVuelta) {
-      inserts.push({ ...base, home_team_id: formPartido.away_team_id, away_team_id: formPartido.home_team_id, played_at: fechaVuelta, ronda: esTercero ? 'Tercer puesto (vuelta)' : 'Vuelta' })
+      inserts.push({ ...base, home_team_id: formPartido.away_team_id, away_team_id: formPartido.home_team_id, played_at: fechaVuelta, ronda: esTercero ? 'Tercer puesto (vuelta)' : esOtro ? `${nombreOtro} (vuelta)` : 'Vuelta' })
     }
     let { error } = await supabase.from('matches').insert(inserts)
     if (error && (error.message || '').includes('cancha_id')) ({ error } = await supabase.from('matches').insert(inserts.map(({ cancha_id, ...resto }) => resto)))
@@ -5021,7 +5026,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       let key, label, esFase = false, faseOrden = 0
       if (p.fase === 'otra') {
         // Fase con nombre propio (repechaje, sétette, amistoso…): un bloque por nombre
-        const nombre = p.ronda || 'Otra fase'
+        const nombre = nombreFaseOtra(p.ronda)
         key = `otro_${nombre}`; label = nombre
         esFase = true; faseOrden = 0
       } else if (p.fase && p.fase !== 'grupo') {
@@ -6375,6 +6380,27 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                     <button type="button" className="gpf-x" onClick={() => setShowFormPartido(false)} aria-label="Cerrar"><X size={16}/></button>
                   </div>
                   <div className="gpf-body">
+                    <div className="gpf-titulo">¿Qué partido es?</div>
+                    <div className="gpf-chips" role="group" aria-label="Fase del partido">
+                      {FASES_CREAR.map(f => (
+                        <button key={f.value} type="button" className={`gpf-chip ${formPartido.fase === f.value ? 'on' : ''}`}
+                          onClick={() => setFormPartido(fp => ({ ...fp, fase: f.value }))}>{NOMBRE_FASE_CHIP[f.value] || f.label}</button>
+                      ))}
+                    </div>
+                    {formPartido.fase === 'mejor_perdedor' && (
+                      <div style={{ fontSize: '.8rem', color: '#5f6368', lineHeight: 1.4, background: '#f3f8ff', border: '1px solid #d2e3fc', borderRadius: '10px', padding: '10px 12px' }}>
+                        Partido entre equipos que <b>perdieron su llave</b>: el que gana <b>sigue en el torneo</b> y el que pierde queda <b>eliminado</b>.
+                      </div>
+                    )}
+                    {formPartido.fase === 'otro' && (
+                      <div>
+                        <label style={labelStyle}>¿Cómo se llama esta fase? *</label>
+                        <input value={formPartido.nombre_otro ?? ''} onChange={e => setFormPartido(f => ({ ...f, nombre_otro: e.target.value }))} maxLength={40} style={inputStyle} placeholder="Ej: Repechaje, Sétette, Amistoso"/>
+                        <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.4 }}>
+                          Se agrupa en el calendario con este nombre y no suma en la tabla de los grupos. Abajo eliges si es eliminación directa o ida y vuelta.
+                        </div>
+                      </div>
+                    )}
                     <div className="gpf-titulo">Equipos</div>
                     {filtraPorGrupo && (
                       <div>
@@ -6440,22 +6466,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       <div><label style={labelStyle}>Cancha (obligatoria)</label><select value={formPartido.cancha_id || ''} onChange={e => { const c = canchas.find(x => String(x.id) === e.target.value); setFormPartido(f => ({ ...f, cancha_id: c ? String(c.id) : '', location: c ? c.nombre : '' })) }} style={inputStyle}><option value="">Seleccionar...</option>{canchas.map(c => <option key={c.id} value={String(c.id)}>{etiquetaCancha(c)}</option>)}</select></div>
                       <div><label style={labelStyle}>Jornada #</label><input type="number" value={formPartido.matchday} onChange={e => setFormPartido(f => ({ ...f, matchday: e.target.value }))} style={inputStyle} placeholder="1"/></div>
                     </div>
-                    <div className="gpf-titulo">Tipo de partido</div>
-                    <div className="gpf-chips" role="group" aria-label="Fase del partido">
-                      {FASES_CREAR.map(f => (
-                        <button key={f.value} type="button" className={`gpf-chip ${formPartido.fase === f.value ? 'on' : ''}`}
-                          onClick={() => setFormPartido(fp => ({ ...fp, fase: f.value }))}>{NOMBRE_FASE_CHIP[f.value] || f.label}</button>
-                      ))}
-                    </div>
-                    {formPartido.fase === 'otro' && (
-                      <div>
-                        <label style={labelStyle}>¿Cómo se llama esta fase? *</label>
-                        <input value={formPartido.nombre_otro ?? ''} onChange={e => setFormPartido(f => ({ ...f, nombre_otro: e.target.value }))} maxLength={40} style={inputStyle} placeholder="Ej: Repechaje, Sétette, Amistoso"/>
-                        <div style={{ fontSize: '.72rem', color: '#5f6368', marginTop: '6px', lineHeight: 1.4 }}>
-                          Se agrupa en el calendario con este nombre y no suma en la tabla de los grupos. Abajo eliges si es eliminación directa o ida y vuelta.
-                        </div>
-                      </div>
-                    )}
                     {formPartido.home_team_id && formPartido.away_team_id && formPartido.home_team_id !== formPartido.away_team_id && (() => {
                       const opts = { fecha: formPartido.played_at, hora: formPartido.hora, canchaId: formPartido.cancha_id }
                       const eqL = equipos.find(e => e.id === formPartido.home_team_id), eqV = equipos.find(e => e.id === formPartido.away_team_id)

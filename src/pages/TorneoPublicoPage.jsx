@@ -43,6 +43,9 @@ function TeamLogo({ logo_url, name, size = 28 }) {
 }
 
 const FASE_LABEL = { grupo: 'Grupo', octavos: 'Octavos', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final', otra: 'Otra fase' }
+// Fase con nombre propio (repechaje, mejor perdedor…): se muestra su nombre, sin "(ida)"/"(vuelta)"
+const etiquetaFase = p => p?.fase === 'otra' ? ((p.ronda || '').replace(/\s*\((ida|vuelta)\)\s*$/i, '') || FASE_LABEL.otra) : FASE_LABEL[p?.fase]
+const esPartidoMejorPerdedor = p => p?.fase === 'otra' && /mejor\s+perdedor/i.test(p.ronda || '')
 
 // Tamaño de letra del nombre del equipo según su largo — así un nombre
 // largo se ve completo (más chiquito) en vez de cortarse con "..." o
@@ -423,7 +426,7 @@ function ProximosPartidos({ partidos, abrirRoster, esIntergrupo = () => false })
             </div>
             <div style={{ padding: '16px 12px 4px' }}>
               {g.partidos.map(p => {
-                const detalle = [p.location, p.matchday ? `Jornada ${p.matchday}` : null, p.fase && p.fase !== 'grupo' ? FASE_LABEL[p.fase] : null].filter(Boolean).join(' · ')
+                const detalle = [p.location, p.matchday ? `Jornada ${p.matchday}` : null, p.fase && p.fase !== 'grupo' ? etiquetaFase(p) : null].filter(Boolean).join(' · ')
                 return (
                   <div key={p.id} style={{ marginBottom: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -589,45 +592,50 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     setBracket(derivarBracket(data))
   }
 
+  // Agrupa partidos en llaves (ida y vuelta juntas), con marcador global y ganador
+  function armarLlaves(ms) {
+    const map = {}
+    ms.forEach(m => {
+      const key = [m.home_team_id, m.away_team_id].sort().join('|')
+      if (!map[key]) map[key] = []
+      map[key].push(m)
+    })
+    return Object.values(map).map(matches => {
+      const primero = matches[0]
+      const teamA = { id: primero.home_team_id, name: primero.home?.name, logo_url: primero.home?.logo_url }
+      const teamB = { id: primero.away_team_id, name: primero.away?.name, logo_url: primero.away?.logo_url }
+      const terminada = matches.every(m => m.status === 'finished')
+      let golesA = 0, golesB = 0
+      matches.forEach(m => {
+        if (m.status !== 'finished') return
+        if (m.home_team_id === teamA.id) { golesA += m.home_score || 0; golesB += m.away_score || 0 }
+        else                             { golesA += m.away_score || 0; golesB += m.home_score || 0 }
+      })
+      let ganador = null, porPenales = false
+      if (terminada) {
+        if (golesA > golesB) ganador = teamA
+        else if (golesB > golesA) ganador = teamB
+        else {
+          const conPenales = [...matches].reverse().find(m => m.penales_ganador || (m.penales_local != null && m.penales_visitante != null && m.penales_local !== m.penales_visitante))
+          if (conPenales) {
+            porPenales = true
+            const ganaHome = conPenales.penales_ganador ? conPenales.penales_ganador === 'home' : conPenales.penales_local > conPenales.penales_visitante
+            const idGanador = ganaHome ? conPenales.home_team_id : conPenales.away_team_id
+            ganador = idGanador === teamA.id ? teamA : teamB
+          }
+        }
+      }
+      return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales, slotIndex: primero.slot_index }
+    })
+  }
+
   // Agrupa los partidos del bracket en llaves por fase, con marcador global y ganador
   function getLlavesPorFaseElim() {
     const porFase = {}
     FASE_ORDEN_ELIM.forEach(f => {
       const ms = bracket.filter(p => p.fase === f)
       if (ms.length === 0) return
-      const map = {}
-      ms.forEach(m => {
-        const key = [m.home_team_id, m.away_team_id].sort().join('|')
-        if (!map[key]) map[key] = []
-        map[key].push(m)
-      })
-      porFase[f] = Object.values(map).map(matches => {
-        const primero = matches[0]
-        const teamA = { id: primero.home_team_id, name: primero.home?.name, logo_url: primero.home?.logo_url }
-        const teamB = { id: primero.away_team_id, name: primero.away?.name, logo_url: primero.away?.logo_url }
-        const terminada = matches.every(m => m.status === 'finished')
-        let golesA = 0, golesB = 0
-        matches.forEach(m => {
-          if (m.status !== 'finished') return
-          if (m.home_team_id === teamA.id) { golesA += m.home_score || 0; golesB += m.away_score || 0 }
-          else                             { golesA += m.away_score || 0; golesB += m.home_score || 0 }
-        })
-        let ganador = null, porPenales = false
-        if (terminada) {
-          if (golesA > golesB) ganador = teamA
-          else if (golesB > golesA) ganador = teamB
-          else {
-            const conPenales = [...matches].reverse().find(m => m.penales_ganador || (m.penales_local != null && m.penales_visitante != null && m.penales_local !== m.penales_visitante))
-            if (conPenales) {
-              porPenales = true
-              const ganaHome = conPenales.penales_ganador ? conPenales.penales_ganador === 'home' : conPenales.penales_local > conPenales.penales_visitante
-              const idGanador = ganaHome ? conPenales.home_team_id : conPenales.away_team_id
-              ganador = idGanador === teamA.id ? teamA : teamB
-            }
-          }
-        }
-        return { matches, teamA, teamB, golesA, golesB, terminada, ganador, porPenales, slotIndex: primero.slot_index }
-      })
+      porFase[f] = armarLlaves(ms)
       // Mismo orden de casillas que usa el admin (0, 1, 2...) — la llave i
       // de esta fase corresponde a ganador(2i) vs ganador(2i+1) de la fase
       // anterior. Partidos viejos sin slot_index quedan al final.
@@ -963,6 +971,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       enBracket.add(ll.teamA.id); enBracket.add(ll.teamB.id)
       if (esTercer(ll)) { enTercer.add(ll.teamA.id); enTercer.add(ll.teamB.id) }
     }))
+    bracket.filter(esPartidoMejorPerdedor).forEach(m => { enBracket.add(m.home_team_id); enBracket.add(m.away_team_id) })
     // 1) Los que no clasificaron (quien ya tiene partido de eliminación directa sí clasificó)
     const clasificacion = leerClasificacionElim(torneo)
     if (clasificacion) {
@@ -971,16 +980,35 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     }
     // 2) Los que perdieron su llave
     const perdedoresPorFase = {}
+    const cuandoLlave = ll => Math.max(0, ...ll.matches.map(m => (m.played_at ? new Date(m.played_at).getTime() : 0)))
+    const ultimaDerrota = {}
+    const anotarDerrota = (teamId, ll) => { ultimaDerrota[teamId] = Math.max(ultimaDerrota[teamId] || 0, cuandoLlave(ll)) }
     FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
       if (f === 'final' || esTercer(ll) || !ll.terminada || !ll.ganador) return
       const gano = ll.ganador.id === ll.teamA.id
       const perdedor = gano ? ll.teamB : ll.teamA
       if (enTercer.has(perdedor.id)) return
       elim.add(perdedor.id)
+      anotarDerrota(perdedor.id, ll)
       const gfP = gano ? ll.golesB : ll.golesA
       const gfG = gano ? ll.golesA : ll.golesB
       ;(perdedoresPorFase[f] = perdedoresPorFase[f] || []).push({ id: perdedor.id, dif: Math.max(0, gfG - gfP), gf: gfP })
     }))
+    // 3) Partido de mejor perdedor: el que pierde queda eliminado; el que gana sigue
+    //    en el torneo (salvo que después haya perdido otra llave).
+    const llavesMejorPerdedor = armarLlaves(bracket.filter(esPartidoMejorPerdedor))
+    const yaJugoMejorPerdedor = new Set()
+    llavesMejorPerdedor.forEach(ll => { if (ll.terminada) { yaJugoMejorPerdedor.add(ll.teamA.id); yaJugoMejorPerdedor.add(ll.teamB.id) } })
+    llavesMejorPerdedor.forEach(ll => {
+      if (!ll.terminada || !ll.ganador) return
+      const perdedor = ll.ganador.id === ll.teamA.id ? ll.teamB : ll.teamA
+      elim.add(perdedor.id)
+      anotarDerrota(perdedor.id, ll)
+    })
+    llavesMejorPerdedor.forEach(ll => {
+      if (!ll.terminada || !ll.ganador) return
+      if (cuandoLlave(ll) >= (ultimaDerrota[ll.ganador.id] || 0)) elim.delete(ll.ganador.id)
+    })
     bracket.forEach(m => {
       if (m.status === 'finished' || !m.home_team_id || !m.away_team_id) return
       elim.delete(m.home_team_id); elim.delete(m.away_team_id)
@@ -995,7 +1023,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       const puestoGeneral = {}
       tablaOrdenada.forEach((r, i) => { puestoGeneral[r.equipo.id] = i })
       perdedoresPorFase[ultimaFase]
-        .filter(x => elim.has(x.id))
+        .filter(x => elim.has(x.id) && !yaJugoMejorPerdedor.has(x.id))
         .sort((a, b) => a.dif - b.dif || b.gf - a.gf || (puestoGeneral[a.id] ?? 999) - (puestoGeneral[b.id] ?? 999))
         .slice(0, MEJORES_PERDEDORES)
         .forEach((x, i) => { mejores[x.id] = { puesto: i + 1, dif: x.dif, gf: x.gf } })
@@ -1128,7 +1156,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                   <span style={{ fontSize: '.65rem', fontWeight: '900', padding: '4px 9px', borderRadius: '999px', background: '#fce8e6', color: '#d93025', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#d93025', display: 'inline-block' }}/> EN VIVO
                   </span>
-                  <span style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '700' }}>{esIntergrupo(m) ? 'Intergrupo · ' : ''}{m.matchday ? `Fecha ${m.matchday}` : m.fase && m.fase !== 'grupo' ? FASE_LABEL[m.fase] : ''}</span>
+                  <span style={{ fontSize: '.68rem', color: '#9aa0a6', fontWeight: '700' }}>{esIntergrupo(m) ? 'Intergrupo · ' : ''}{m.matchday ? `Fecha ${m.matchday}` : m.fase && m.fase !== 'grupo' ? etiquetaFase(m) : ''}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
@@ -1200,7 +1228,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                     <div style={{ textAlign: 'center', fontSize: '.66rem', fontWeight: '800', color: 'rgba(255,255,255,.85)', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏆 {torneo.name}</div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
                       {p.matchday && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>J{p.matchday}</span>}
-                      {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>{FASE_LABEL[p.fase]}</span>}
+                      {p.fase && p.fase !== 'grupo' && <span style={{ fontSize: '.68rem', background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.28)', color: '#fff', borderRadius: '10px', padding: '2px 9px', fontWeight: '700' }}>{etiquetaFase(p)}</span>}
                       {esIntergrupo(p) && <span title="Partido entre equipos de grupos distintos" style={{ fontSize: '.62rem', background: '#f9c400', color: '#1a1a1a', borderRadius: '10px', padding: '2px 9px', fontWeight: '900', letterSpacing: '.05em' }}>INTERGRUPO</span>}
                       {p.played_at && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)' }}>{new Date(p.played_at).toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</span>}
                       {p.location && <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.8)', display: 'flex', alignItems: 'center', gap: '3px' }}><MapPin size={10} color="rgba(255,255,255,.8)"/>{p.location}</span>}

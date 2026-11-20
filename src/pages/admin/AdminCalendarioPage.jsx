@@ -108,7 +108,7 @@ function agruparPorJornada(partidos, prefijo) {
     let key, label, esFase = false, faseOrden = 0
     if (p.fase === 'otra') {
       // Fase con nombre propio (repechaje, sétette, amistoso…): un bloque por nombre
-      const nombre = p.ronda || 'Otra fase'
+      const nombre = (p.ronda || 'Otra fase').replace(/\s*\((ida|vuelta)\)\s*$/i, '') || 'Otra fase'
       key = `otro_${nombre}`
       label = nombre
       esFase = true
