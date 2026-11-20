@@ -10,6 +10,7 @@
 // renderInicioEquipo(row) / renderAccionesEquipo(row) (opcionales, solo admin): contenido extra al inicio y al final de la fila
 // del equipo (por ejemplo el asa para arrastrar a otro grupo y el botón de mover).
 
+import { Fragment } from 'react'
 import { useFavoritos } from '../lib/favoritos'
 import BotonEstrella from './BotonEstrella'
 
@@ -86,6 +87,15 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
   // opacar a quien todavía no ha jugado.
   const hayJuego = rows.some(r => r.pj > 0)
   const nZona = hayJuego && clasifican > 0 && clasifican < rows.length ? clasifican : 0
+  // Los eliminados van siempre abajo, pero conservan su número de posición:
+  // arriba los que siguen en el torneo (en su orden) y abajo los eliminados.
+  // Los "mejores perdedores" todavía pueden seguir, así que quedan arriba.
+  const esElim = row => !row.enVivo && !!eliminados && eliminados.has(row.equipo.id) && !(mejoresPerdedores && mejoresPerdedores[row.equipo.id])
+  const conPos = rows.map((row, pos) => ({ row, pos }))
+  const vivos = conPos.filter(x => !esElim(x.row))
+  const fuera = conPos.filter(x => esElim(x.row))
+  const filas = vivos.length > 0 && fuera.length > 0 ? [...vivos, ...fuera] : conPos
+  const primerElim = vivos.length > 0 && fuera.length > 0 ? fuera[0].row.equipo.id : null
 
   return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '12px 10px 14px', boxShadow: '0 3px 14px rgba(0,0,0,.3)' }}>
@@ -118,7 +128,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
       </div>
       {/* Filas */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {rows.map((row, i) => {
+        {filas.map(({ row, pos: i }) => {
           const dif = (row.gf || 0) - (row.gc || 0)
           const esMio = miEquipoId && row.equipo.id === miEquipoId
           const enZona = nZona > 0 && i < nZona
@@ -127,7 +137,15 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           const mejor = elim && mejoresPerdedores ? mejoresPerdedores[row.equipo.id] : null
           const rival = !elim && rivales ? rivales[row.equipo.id] : null
           return (
-            <div key={row.equipo.id} onClick={onClickEquipo ? () => onClickEquipo(row) : undefined}
+            <Fragment key={row.equipo.id}>
+            {row.equipo.id === primerElim && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 2px 2px' }}>
+                <span style={{ flex: 1, height: 1, background: 'rgba(255,90,82,.45)' }}/>
+                <span style={{ color: '#ff9d9d', fontWeight: 900, fontSize: '.62rem', letterSpacing: '.1em' }}>ELIMINADOS</span>
+                <span style={{ flex: 1, height: 1, background: 'rgba(255,90,82,.45)' }}/>
+              </div>
+            )}
+            <div onClick={onClickEquipo ? () => onClickEquipo(row) : undefined}
               className="gm-tp-grid gm-tp-fila"
               style={{ padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default', opacity: sinJugar ? .6 : 1,
                 background: row.enVivo ? 'rgba(255,90,82,.10)' : mejor ? 'rgba(245,166,35,.16)' : elim ? 'rgba(255,90,82,.16)' : esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
@@ -187,6 +205,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
               {/* Puntos */}
               <div className="gm-tp-pts" style={{ background: row.enVivo ? ROJO : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.85rem', textAlign: 'center', padding: '4px 0' }}>{row.pts}</div>
             </div>
+            </Fragment>
           )
         })}
       </div>
