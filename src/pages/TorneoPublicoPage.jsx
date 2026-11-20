@@ -5,6 +5,7 @@ import { Trophy, MapPin, Calendar, ChevronDown, Shield, X, Radio, ArrowLeft } fr
 import { GiSoccerBall } from 'react-icons/gi'
 import RankingPoster from '../components/RankingPoster'
 import TablaPosiciones from '../components/TablaPosiciones'
+import { leerClasificacionElim, idsClasificados } from '../lib/clasificacionElim'
 import VallaEquipos from '../components/VallaEquipos'
 import { registrarVisita } from '../lib/visitas'
 import { getPuntosTorneo, puntosVictoria, cargarDescuentos } from '../lib/puntosTorneo'
@@ -948,19 +949,27 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
 
   // Equipos eliminados (para marcarlos en rojo en las tablas) y contra quién juegan
   // ahora. NO se muestra árbol: solo los partidos creados (Resultados / Próximos).
-  // Eliminado = perdió su llave ya terminada, o no entró al primer cruce de eliminatorias
-  // (solo si ese cruce ya está completo). Los que juegan final o tercer puesto no se marcan.
+  // Eliminado = 1) no clasificó (según cuántos clasificaron, lo que respondió el
+  // organizador antes de las eliminaciones directas), o 2) perdió su llave ya
+  // terminada. Mientras su partido no se juegue, nadie más sale eliminado.
+  // Los que juegan final o tercer puesto no se marcan.
   const MEJORES_PERDEDORES = 2 // cuántos "mejores perdedores" se marcan cuando termina una fase
   const { eliminadosIds, rivalDe, mejoresPerdedores } = (() => {
     const elim = new Set(), rival = {}, mejores = {}
-    if (bracket.length === 0) return { eliminadosIds: elim, rivalDe: rival, mejoresPerdedores: mejores }
-    const porFase = getLlavesPorFaseElim()
+    const porFase = bracket.length > 0 ? getLlavesPorFaseElim() : {}
     const esTercer = ll => (ll.matches[0].ronda || '').toLowerCase().includes('tercer')
     const enTercer = new Set(), enBracket = new Set()
     FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
       enBracket.add(ll.teamA.id); enBracket.add(ll.teamB.id)
       if (esTercer(ll)) { enTercer.add(ll.teamA.id); enTercer.add(ll.teamB.id) }
     }))
+    // 1) Los que no clasificaron (quien ya tiene partido de eliminación directa sí clasificó)
+    const clasificacion = leerClasificacionElim(torneo)
+    if (clasificacion) {
+      const clasificados = idsClasificados(clasificacion, { grupos, tablaDeGrupo: getTablaGrupo, tablaGeneral: tablaOrdenada })
+      if (clasificados.size > 0) equipos.forEach(eq => { if (!clasificados.has(eq.id) && !enBracket.has(eq.id)) elim.add(eq.id) })
+    }
+    // 2) Los que perdieron su llave
     const perdedoresPorFase = {}
     FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
       if (f === 'final' || esTercer(ll) || !ll.terminada || !ll.ganador) return
@@ -972,11 +981,6 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       const gfG = gano ? ll.golesA : ll.golesB
       ;(perdedoresPorFase[f] = perdedoresPorFase[f] || []).push({ id: perdedor.id, dif: Math.max(0, gfG - gfP), gf: gfP })
     }))
-    const primera = FASE_ORDEN_ELIM.find(f => porFase[f])
-    const esperadas = { octavos: 8, cuartos: 4, semifinal: 2, final: 1 }
-    if (primera && porFase[primera].filter(ll => !esTercer(ll)).length >= esperadas[primera]) {
-      equipos.forEach(eq => { if (!enBracket.has(eq.id)) elim.add(eq.id) })
-    }
     bracket.forEach(m => {
       if (m.status === 'finished' || !m.home_team_id || !m.away_team_id) return
       elim.delete(m.home_team_id); elim.delete(m.away_team_id)

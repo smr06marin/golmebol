@@ -37,6 +37,8 @@ import { useFormDraft, limpiarBorrador } from '../../hooks/useFormDraft'
 import { useEstadoUI, useRestaurarScroll } from '../../hooks/useEstadoUI'
 import { apiUrl } from '../../lib/apiBase'
 import AyudaTermino from '../../components/AyudaTermino'
+import PreguntaClasificados from '../../components/PreguntaClasificados'
+import { leerClasificacionElim, idsClasificados, textoClasificacion } from '../../lib/clasificacionElim'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { confirmar } from '../../lib/confirmar'
 import { armarLiquidaciones, descargarLiquidacionCancha, descargarLiquidacionArbitros } from '../../lib/liquidacionesPdf'
@@ -975,8 +977,10 @@ export default function AdminTorneoDetallePage() {
   // automático de rondas nunca dispare dos generaciones al mismo tiempo por
   // una re-ejecución rápida del efecto antes de que el estado se actualice.
   const generandoRondaRef = useRef(false)
-  // Traba equivalente para el avance por casilla fija (ver intentarAvanzarSlots).
-  const avanzandoSlotsRef = useRef(false)
+  // Antes de las eliminaciones directas se pregunta cuántos equipos clasificaron
+  // (así la tabla pública marca en rojo a los que no). { luego: 'crearPartido' | null }
+  const [preguntaClasif,  setPreguntaClasif]  = useState(null)
+  const [guardandoClasif, setGuardandoClasif] = useState(false)
   const [modoImpar,        setModoImpar]        = useState('mejor_perdedor') // 'mejor_perdedor' | 'bye'
   const [equipoByeId,      setEquipoByeId]      = useState(null) // a quién se le da el pase directo cuando modoImpar==='bye' (null = el último de la reclasificación)
   const [crearTercerPuesto, setCrearTercerPuesto] = useState(false)
@@ -2307,7 +2311,7 @@ export default function AdminTorneoDetallePage() {
   const ELIM_CHAT_INSTRUCCION = `Sos el asistente de GOLMEBOL que arma, junto con el organizador, cómo se van a jugar las eliminaciones directas de su torneo. Muchos organizadores no conocen los términos del fútbol organizado ("bye", "mejor perdedor", "ida y vuelta", "cruzado", etc.) y si les pedís que describan TODO el formato de una, terminan describiendo cosas a medias, ambiguas o contradictorias. Por eso NO esperes una descripción completa: vos lo guiás con preguntas concretas, de opción múltiple, en palabras simples (explicando qué pasa de verdad con los equipos, nunca solo el nombre técnico de la regla). Lo único que le pedís de entrada es cuántos equipos van a clasificar a esta fase. Con ese número ya sabés qué decisiones hacen falta tomar (ver la lista más abajo) y se las planteás TODAS JUNTAS en un solo mensaje de seguimiento corto, cada una con sus opciones. El organizador puede contestarlas todas juntas, sueltas, o de a una, en el orden que quiera — vos vas registrando lo que ya te dijo (en esta conversación o en cualquier mensaje, incluido el primero) y en cada mensaje siguiente solo volvés a preguntar lo que todavía falte, nunca lo que ya quedó claro.
 
 CÓMO FUNCIONA GOLMEBOL (entendelo vos para armar bien la config — nunca hace falta explicarle este mecanismo al organizador salvo que pregunte):
-Configurás la PRIMERA ronda (cuántos clasifican, cómo se arman esas llaves, y qué pasa si queda número impar) y, si hace falta, EXCEPCIONES puntuales de ida/vuelta para alguna fase más adelante. Las fases posibles, en orden, son: octavos, cuartos, semifinal, final (el sistema usa la que corresponda según cuántos equipos van quedando). Las rondas SIGUIENTES a la primera el sistema las arma SOLAS, repitiendo automáticamente la misma regla de impar que elegiste, con estos dos comportamientos que son siempre automáticos (nunca hay que pedirlos ni configurarlos aparte):
+Configurás la PRIMERA ronda (cuántos clasifican, cómo se arman esas llaves, y qué pasa si queda número impar) y, si hace falta, EXCEPCIONES puntuales de ida/vuelta para alguna fase más adelante. Las fases posibles, en orden, son: octavos, cuartos, semifinal, final (el sistema usa la que corresponda según cuántos equipos van quedando). Las rondas SIGUIENTES a la primera NO se crean solas: el organizador las programa cuando quiera (partido por partido o con el botón "Generar siguiente ronda"), y ahí se repite automáticamente la misma regla de impar que elegiste, con estos dos comportamientos que son siempre automáticos (nunca hay que pedirlos ni configurarlos aparte):
 - Si en cualquier ronda (no solo la primera) sobran equipos por quedar en número impar, se repite la misma solución que elegiste: pasa directo el mejor ubicado (si eligió "bye"), o entra un mejor perdedor para completar par (si eligió "mejor_perdedor").
 - Si en algún momento quedan EXACTAMENTE 3 equipos vivos, se arma solo una "semifinal de 3": 1° contra 2° de la reclasificación, y el perdedor juega un repechaje contra el 3°, cuyo ganador pasa a la final.
 Formato de ida y vuelta por ronda: por defecto cada ronda COPIA el formato de la anterior. Si el organizador quiere que SOLO una fase puntual sea distinta (ej. solo semifinal a ida y vuelta mientras el resto es partido único, o al revés), eso se guarda como una EXCEPCIÓN para esa fase en la clave "idaVueltaPorFase" — que además puede llevar un "margen": una diferencia de gol en el partido de ida a partir de la cual ya no hace falta jugar la vuelta de esa fase (el que ganó la ida pasa directo).
@@ -2624,6 +2628,16 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       const { error } = await supabase.from('matches').insert(inserts)
       if (error) { showMsg(errorAmigable(error, 'Error al crear el bracket'), 'error'); return }
       await supabase.from('tournaments').update({ fase_actual: 'eliminatorias', bye_inicial_team_id: byeTeam?.id || null }).eq('id', id)
+      // Cuántos clasificaron (para marcar en rojo a los que no): si todavía no
+      // se había respondido, sale de este mismo armado.
+      if (!leerClasificacionElim(torneo)) {
+        const totalElim = parejas.length * 2 + (byeTeam ? 1 : 0)
+        const porGrupoElim = Number(torneo?.equipos_clasifican || clasificanPorGrupo) || 0
+        const cfgElim = grupos.length > 0 && porGrupoElim > 0
+          ? { modo: 'grupo', n: porGrupoElim, extra: Math.max(0, totalElim - porGrupoElim * grupos.length) }
+          : { modo: 'tabla', n: totalElim, extra: 0 }
+        await supabase.from('tournaments').update({ clasificacion_elim: cfgElim }).eq('id', id) // si falta la migración, no pasa nada
+      }
       showMsg(`${ronda} creada con ${parejas.length} llave${parejas.length !== 1 ? 's' : ''}${byeTeam ? ` — 🎟️ ${byeTeam.name} pasa directo` : ''} ✓`)
       setShowWizardElim(false)
       fetchPartidos(); fetchBracket(); fetchTorneo()
@@ -4002,124 +4016,6 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     fetchPartidos(); fetchBracket()
   }
 
-  // Avance por CASILLA FIJA: el ganador de la casilla 0 y el de la casilla 1
-  // arman la casilla 0 de la ronda siguiente, el de la 2 y la 3 arman la
-  // casilla 1, etc. — apenas se conocen los DOS ganadores de esa pareja de
-  // casillas, se crea el partido siguiente ya mismo, sin esperar a que
-  // termine el resto de la ronda (así se ve avanzar de una, en vivo).
-  //
-  // Solo actúa en el caso "limpio": cantidad PAR de llaves en la ronda
-  // actual y nadie con pase directo (bye) pendiente de una ronda anterior
-  // sin haber entrado todavía. Si hay algo raro (bye, cantidad impar) no
-  // toca nada — eso lo sigue resolviendo el flujo manual de siempre (ver el
-  // otro efecto más abajo), que usa reclasificación por tabla de grupos.
-  async function intentarAvanzarSlots() {
-    if (avanzandoSlotsRef.current) return
-    avanzandoSlotsRef.current = true
-    try {
-      const porFase = getLlavesPorFase()
-      const fasesExist = FASE_ORDEN.filter(f => porFase[f])
-      if (fasesExist.length === 0) return
-
-      const inserts = []
-      const resumen = []
-
-      // Antes esto solo miraba la ÚLTIMA fase que ya existiera — si esa fase
-      // (ej. semifinal) ya tenía una sola llave creada por otra pareja de
-      // cuartos, se dejaba de revisar cuartos por completo y una llave que
-      // terminaba después nunca generaba su casilla siguiente. Ahora se
-      // revisan TODAS las fases existentes en cada pasada.
-      for (const actual of fasesExist) {
-        if (actual === 'final') continue
-        const llaves = porFase[actual]
-        if (llaves.length < 2 || llaves.length % 2 !== 0) continue // impar/bye — a mano
-
-        // Si en la primera fase de eliminatorias falta por entrar el equipo
-        // que tenía pase directo (bye inicial), no es el caso limpio todavía.
-        if (actual === fasesExist[0] && torneo?.bye_inicial_team_id) {
-          const enFase = new Set(llaves.flatMap(l => [l.teamA.id, l.teamB.id]))
-          if (!enFase.has(torneo.bye_inicial_team_id)) continue
-        }
-
-        const proximaFase = getFaseValue(llaves.length)
-        // La Final también se crea sola por casilla, igual que el resto de
-        // rondas — antes se dejaba siempre para el flujo manual para que el
-        // admin decidiera si se jugaba el 3°/4° puesto, pero esa decisión
-        // ahora se toma de antemano en la vista previa en vivo (botón "Abrir
-        // espacio para el 3° y 4° puesto", guardado en crearTercerPuesto) y
-        // ya no hace falta esperar a que el admin la tome acá.
-        const rondaNombre = getRondaNombre(llaves.length)
-        // Copia el formato de la ronda actual salvo que haya una excepción
-        // puntual configurada para la fase que se va a crear ahora (ver
-        // idaVueltaPorFase, ej. "solo semifinal es ida y vuelta").
-        const overrideProxima = idaVueltaPorFase?.[proximaFase]
-        const conVuelta = overrideProxima ? !!overrideProxima.activo : llaves.some(l => l.matches.length > 1)
-
-        for (let i = 0; i * 2 + 1 < llaves.length; i++) {
-          const A = llaves[i * 2], B = llaves[i * 2 + 1]
-          if (!A.terminada || !B.terminada) continue
-          if (!A.ganador || !B.ganador) continue // empate sin penales resueltos todavía
-          const yaExiste = bracket.some(m => m.fase === proximaFase && m.slot_index === i)
-          if (!yaExiste) {
-            const c = previewCalendario?.[proximaFase]?.[i]
-            const fecha = c?.fecha || fechaRonda
-            const hora  = c?.hora  || horaRonda || '08:00'
-            if (fecha) {
-              const playedAt = `${fecha}T${hora}:00-05:00`
-              inserts.push({ tournament_id: id, home_team_id: A.ganador.id, away_team_id: B.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: rondaNombre, matchday: null, slot_index: i })
-              if (conVuelta) inserts.push({ tournament_id: id, home_team_id: B.ganador.id, away_team_id: A.ganador.id, played_at: playedAt, status: 'scheduled', fase: proximaFase, ronda: `${rondaNombre} (vuelta)`, matchday: null, slot_index: i })
-              resumen.push(`${A.ganador.name} vs ${B.ganador.name}`)
-            }
-          }
-
-          // Junto con la Final, si se activó "3°/4° puesto" en la vista
-          // previa, se arma también ese partido con los dos perdedores de
-          // semifinal — usa la casilla 1 de la fase 'final' (la 0 es la
-          // final) para no chocar con ella.
-          if (proximaFase === 'final' && crearTercerPuesto) {
-            const perdedorA = A.ganador.id === A.teamA.id ? A.teamB : A.teamA
-            const perdedorB = B.ganador.id === B.teamA.id ? B.teamB : B.teamA
-            const yaExisteTercer = bracket.some(m => m.fase === 'final' && m.slot_index === 1)
-            if (!yaExisteTercer) {
-              const cTercer = previewCalendario?.final?.[1]
-              const fechaTercer = cTercer?.fecha || fechaRonda
-              const horaTercer  = cTercer?.hora  || horaRonda || '08:00'
-              if (fechaTercer) {
-                const playedAtTercer = `${fechaTercer}T${horaTercer}:00-05:00`
-                inserts.push({ tournament_id: id, home_team_id: perdedorA.id, away_team_id: perdedorB.id, played_at: playedAtTercer, status: 'scheduled', fase: 'final', ronda: 'Tercer puesto', matchday: null, slot_index: 1 })
-                resumen.push(`🥉 ${perdedorA.name} vs ${perdedorB.name}`)
-              }
-            }
-          }
-        }
-      }
-
-      if (inserts.length === 0) return
-
-      // Antes de insertar, se vuelve a preguntar a la base (no solo el estado
-      // local, que puede estar un poco desactualizado) si esas casillas ya
-      // existen — así, si esta función corre dos veces casi al mismo tiempo
-      // (ej. el árbol se refresca desde dos lados justo cuando termina el
-      // último partido de la ronda), no se crea el mismo partido dos veces.
-      const fasesAInsertar = [...new Set(inserts.map(m => m.fase))]
-      const { data: yaEnBase } = await supabase
-        .from('matches')
-        .select('fase, slot_index')
-        .eq('tournament_id', id)
-        .in('fase', fasesAInsertar)
-      const existentes = new Set((yaEnBase || []).map(m => `${m.fase}|${m.slot_index}`))
-      const insertsFiltrados = inserts.filter(m => !existentes.has(`${m.fase}|${m.slot_index}`))
-      if (insertsFiltrados.length === 0) return
-
-      const { error } = await supabase.from('matches').insert(insertsFiltrados)
-      if (error) { console.error('Avance automático de casillas:', error); return }
-      showMsg(`⚡ Avanzan: ${resumen.join(', ')} ✓`)
-      await Promise.all([fetchPartidos(), fetchBracket()])
-    } finally {
-      avanzandoSlotsRef.current = false
-    }
-  }
-
   // Salto automático de la vuelta por diferencia de gol: si una fase tiene
   // configurado un "margen" en idaVueltaPorFase (ej. semifinal con margen=2),
   // apenas se juega la PRIMERA de las dos vueltas de una llave de esa fase
@@ -4165,35 +4061,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
 
   useEffect(() => {
     if (bracket.length === 0) return
-    ;(async () => {
-      const salto = await intentarSaltarVueltaPorMargen()
-      // Si se borró una vuelta, fetchBracket ya va a disparar este mismo
-      // efecto de nuevo con el estado actualizado — ahí sí corresponde
-      // intentar avanzar de casilla con la llave ya "terminada".
-      if (!salto) intentarAvanzarSlots()
-    })()
+    // Ya NO se arman partidos solos después de una llave de eliminación
+    // directa: la ronda siguiente la programa el organizador (un partido a la
+    // vez, o con "Generar siguiente ronda"). Solo queda el salto de la vuelta
+    // por diferencia de gol, que se configura a propósito.
+    intentarSaltarVueltaPorMargen()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bracket])
 
-  // Casos especiales que el avance por casilla fija de arriba NO resuelve
-  // (porque no son una ronda con cantidad par de llaves): el repechaje de la
-  // semifinal-de-3 y la semifinal-de-3 misma se resuelven solos (son
-  // deterministas, no hay ninguna decisión real que tomar ahí) usando el
-  // flujo de reclasificación de siempre. El resto de casos con número IMPAR
-  // de equipos, o la final con candidatos a tercer puesto, se dejan con el
-  // aviso de siempre para que el admin decida.
-  useEffect(() => {
-    if (bracket.length === 0) return
-    if (!datosPreviewListos) return
-    if (generandoRonda || generandoRondaRef.current) return
-    const est = getEstadoEliminatorias()
-    if (!est) return
-    if (est.actual === 'final') return
-    if (!est.completa || est.hayEmpates) return
-    if (est.repechajePendiente) { handleGenerarSiguienteRonda(); return }
-    if (est.vivos.length === 3) { handleGenerarSiguienteRonda(); return }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bracket, generandoRonda, datosPreviewListos])
   // ── TABLA GENERAL ───────────────────────────────────
 
   function calcTablaGeneral() {
@@ -4236,7 +4111,42 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     return equipos.filter(e => grupoDeEquipo(e.id) === tipoPartidoForm)
   }
 
-  async function handleCrearPartido() {
+  // ── ¿CUÁNTOS CLASIFICARON? ─────────────────────────
+  const FASES_PIDEN_CLASIF = ['octavos', 'cuartos', 'semifinal', 'final', 'tercer_puesto']
+  const clasificacionElim = leerClasificacionElim(torneo)
+  const hayLlavesElim = bracket.some(m => FASE_ORDEN.includes(m.fase))
+
+  function vistaPreviaClasif(cfg) {
+    const ids = idsClasificados(cfg, { grupos, tablaDeGrupo: getTablaGrupo, tablaGeneral: calcTablaGeneral() })
+    const enLlaves = new Set(bracket.filter(m => FASE_ORDEN.includes(m.fase)).flatMap(m => [m.home_team_id, m.away_team_id]))
+    const pasa = e => ids.has(e.id) || enLlaves.has(e.id)
+    return { clasifican: equipos.filter(pasa).length, eliminados: equipos.filter(e => !pasa(e)).map(e => e.name) }
+  }
+
+  async function guardarClasificacion(cfg) {
+    if (guardandoClasif) return
+    setGuardandoClasif(true)
+    const cambios = { clasificacion_elim: cfg, ...(cfg.modo === 'grupo' ? { equipos_clasifican: cfg.n } : {}) }
+    const { error } = await supabase.from('tournaments').update(cambios).eq('id', id)
+    setGuardandoClasif(false)
+    const luego = preguntaClasif?.luego
+    if (error) {
+      const falta = /clasificacion_elim/.test(error.message || '')
+      showMsg(falta ? avisoMigracion('migracion_clasificados_eliminatoria.sql') : 'No se pudo guardar. Intenta de nuevo.', 'error')
+      if (!falta) return
+      // Sin la migración igual se deja crear el partido
+      setPreguntaClasif(null)
+      if (luego === 'crearPartido') handleCrearPartido({ yaPregunto: true })
+      return
+    }
+    setTorneo(t => ({ ...t, ...cambios }))
+    if (cfg.modo === 'grupo') setClasificanPorGrupo(cfg.n)
+    setPreguntaClasif(null)
+    if (luego === 'crearPartido') handleCrearPartido({ yaPregunto: true })
+    else showMsg('Listo ✓ — los que no clasificaron ya salen como eliminados')
+  }
+
+  async function handleCrearPartido(opciones) {
     if (!formPartido.home_team_id || !formPartido.away_team_id) return showMsg('Selecciona los dos equipos', 'error')
     if (formPartido.home_team_id === formPartido.away_team_id) return showMsg('Los equipos no pueden ser iguales', 'error')
     if (filtraPorGrupo && tipoPartidoForm) {
@@ -4252,6 +4162,11 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     if (esOtro && !nombreOtro) return showMsg('Escribe cómo se llama esta fase (ej: Repechaje, Sétette, Amistoso)', 'error')
     const llaveIdaVuelta = !!formPartido.ida_vuelta && formPartido.fase !== 'grupo'
     if (llaveIdaVuelta && formPartido.vuelta_modo === 'con_fecha' && !formPartido.vuelta_fecha) return showMsg('Pon la fecha del partido de vuelta, o elige "Sin fecha todavía"', 'error')
+    // Primer partido de eliminación directa: antes, preguntar cuántos clasificaron
+    if (!opciones?.yaPregunto && FASES_PIDEN_CLASIF.includes(formPartido.fase) && !clasificacionElim) {
+      setPreguntaClasif({ luego: 'crearPartido' })
+      return
+    }
     setLoadingPartido(true)
     // Reglas de la llave (opcionales, "avanzado"): solo se guardan si cambian lo normal
     // (global por goles + el que pierde queda eliminado), así lo de siempre no toca la base.
@@ -6219,6 +6134,36 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       {tab === 'calendario' && (
         <div>
           <style>{ESTILOS_CAL_TORNEO}</style>
+          {preguntaClasif && (
+            <PreguntaClasificados
+              numGrupos={grupos.length}
+              maxPorGrupo={grupos.length > 0 ? Math.max(1, ...grupos.map(g => getTablaGrupo(g.id).length)) : 0}
+              totalEquipos={equipos.length}
+              inicial={clasificacionElim}
+              sugeridoN={grupos.length > 0 ? (Number(torneo?.equipos_clasifican || clasificanPorGrupo) || 2) : Math.min(equipos.length, Number(numClasifElim) || 8)}
+              vistaPrevia={vistaPreviaClasif}
+              guardando={guardandoClasif}
+              onGuardar={guardarClasificacion}
+              onCerrar={() => { if (!guardandoClasif) setPreguntaClasif(null) }}
+            />
+          )}
+          {!enFlujoCal && (hayLlavesElim || clasificacionElim) && (
+            clasificacionElim ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '12px 14px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '1.3rem' }} aria-hidden="true">🏁</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: '.9rem', color: '#3c4043', lineHeight: 1.35 }}>Clasificaron <b>{textoClasificacion(clasificacionElim)}</b>. Los demás salen como eliminados.</span>
+                <button type="button" onClick={() => setPreguntaClasif({ luego: null })}
+                  style={{ flexShrink: 0, minHeight: '44px', padding: '0 14px', borderRadius: '10px', border: '1.5px solid #dadce0', background: '#fff', color: '#1a73e8', fontWeight: 700, fontSize: '.88rem', cursor: 'pointer' }}>Cambiar</button>
+              </div>
+            ) : (
+              <div style={{ background: '#fef7e0', border: '1.5px solid #f9ab00', borderRadius: '12px', padding: '14px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '.98rem', fontWeight: 800, color: '#202124' }}>⚠️ Falta un dato: ¿cuántos equipos clasificaron?</div>
+                <div style={{ fontSize: '.88rem', color: '#5f6368', marginTop: '4px', lineHeight: 1.4 }}>Así los que no clasificaron salen en rojo como eliminados en la tabla.</div>
+                <button type="button" onClick={() => setPreguntaClasif({ luego: null })}
+                  style={{ marginTop: '10px', width: '100%', minHeight: '48px', borderRadius: '12px', border: 'none', background: '#1a73e8', color: '#fff', fontWeight: 800, fontSize: '.95rem', cursor: 'pointer' }}>Responder</button>
+              </div>
+            )
+          )}
           {enFlujoCal ? (
             <div className="gcz-flujo">
               <button type="button" className="gcz-back" onClick={() => { setShowFormPartido(false); setSubTab('partidos') }}>
@@ -6272,10 +6217,17 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                         <span className="gcz-ico"><Plus size={20}/></span>
                         <span className="gcz-fila-c"><b>Un solo partido</b><span>Tú escoges los equipos, el día, la hora y la cancha.</span></span>
                       </button>
-                      <button type="button" className="gcz-fila" onClick={() => { setElegirCrear(false); if (canchas.length === 0) { setCanchasAbiertas(true); showMsg('Primero agrega las canchas', 'error') } else setSubTab('jornada') }}>
-                        <span className="gcz-ico"><Shuffle size={20}/></span>
-                        <span className="gcz-fila-c"><b>Una jornada completa</b><span>El sistema sortea los cruces y los reparte en tus días y canchas.</span></span>
-                      </button>
+                      {hayLlavesElim ? (
+                        <button type="button" className="gcz-fila" style={{ opacity: .55 }} onClick={() => showMsg('Ya empezaron las eliminaciones directas: programa cada partido con "Un solo partido"', 'error')}>
+                          <span className="gcz-ico"><Shuffle size={20}/></span>
+                          <span className="gcz-fila-c"><b>Una jornada completa</b><span>Ya empezaron las eliminaciones directas: ahora cada partido se programa uno por uno.</span></span>
+                        </button>
+                      ) : (
+                        <button type="button" className="gcz-fila" onClick={() => { setElegirCrear(false); if (canchas.length === 0) { setCanchasAbiertas(true); showMsg('Primero agrega las canchas', 'error') } else setSubTab('jornada') }}>
+                          <span className="gcz-ico"><Shuffle size={20}/></span>
+                          <span className="gcz-fila-c"><b>Una jornada completa</b><span>El sistema sortea los cruces y los reparte en tus días y canchas.</span></span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </>
@@ -6809,9 +6761,9 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
               </div>
               {jornadaGenerada.length > 0 && (
                 <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
                     <div style={{ fontWeight: '600', color: '#202124', fontSize: '.9rem' }}>{new Set(jornadaGenerada.map(p => p.jn ?? 0)).size > 1 ? `${new Set(jornadaGenerada.map(p => p.jn ?? 0)).size} jornadas` : `Jornada ${jornadaGenerada[0]?.jn ?? (configJornada.numero || fechas.length + 1)}`}</div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <button onClick={salirJornada} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #fad2cf', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#d93025', fontSize: '.8rem' }}><X size={14}/> Salir</button>
                       <button onClick={generarJornada} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #dadce0', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#5f6368', fontSize: '.8rem' }}><Shuffle size={14}/> Regenerar</button>
                       <button onClick={handleGuardarJornada} disabled={loadingPartido} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1e8e3e', border: 'none', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', color: '#fff', fontSize: '.8rem', fontWeight: '500', opacity: loadingPartido ? .7 : 1 }}><Check size={14}/> {loadingPartido ? 'Guardando...' : 'Guardar jornada'}</button>
