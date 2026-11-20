@@ -983,11 +983,23 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     const cuandoLlave = ll => Math.max(0, ...ll.matches.map(m => (m.played_at ? new Date(m.played_at).getTime() : 0)))
     const ultimaDerrota = {}
     const anotarDerrota = (teamId, ll) => { ultimaDerrota[teamId] = Math.max(ultimaDerrota[teamId] || 0, cuandoLlave(ll)) }
-    FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
+    // Hasta qué fase llegó cada equipo (sin contar el partido por el 3.er puesto):
+    // si perdió una llave pero igual juega una fase más adelante, pasó como MEJOR PERDEDOR
+    // y conserva esa etiqueta hasta el final del torneo.
+    const faseMax = {}
+    FASE_ORDEN_ELIM.forEach((f, idx) => (porFase[f] || []).forEach(ll => {
+      if (esTercer(ll)) return
+      ;[ll.teamA.id, ll.teamB.id].forEach(t => { faseMax[t] = Math.max(faseMax[t] ?? -1, idx) })
+    }))
+    const perdioEn = {}
+    const marcarRescatado = (teamId, fase) => { mejores[teamId] = { ...(mejores[teamId] || {}), rescatado: true, faseRescate: fase || mejores[teamId]?.faseRescate || null } }
+    FASE_ORDEN_ELIM.forEach((f, idx) => (porFase[f] || []).forEach(ll => {
       if (f === 'final' || esTercer(ll) || !ll.terminada || !ll.ganador) return
       const gano = ll.ganador.id === ll.teamA.id
       const perdedor = gano ? ll.teamB : ll.teamA
       if (enTercer.has(perdedor.id)) return
+      perdioEn[perdedor.id] = f
+      if ((faseMax[perdedor.id] ?? -1) > idx) { marcarRescatado(perdedor.id, f); return } // perdió pero siguió: mejor perdedor
       elim.add(perdedor.id)
       anotarDerrota(perdedor.id, ll)
       const gfP = gano ? ll.golesB : ll.golesA
@@ -1008,6 +1020,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     llavesMejorPerdedor.forEach(ll => {
       if (!ll.terminada || !ll.ganador) return
       if (cuandoLlave(ll) >= (ultimaDerrota[ll.ganador.id] || 0)) elim.delete(ll.ganador.id)
+      marcarRescatado(ll.ganador.id, perdioEn[ll.ganador.id]) // ganó el partido de mejor perdedor
     })
     bracket.forEach(m => {
       if (m.status === 'finished' || !m.home_team_id || !m.away_team_id) return
@@ -1026,7 +1039,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         .filter(x => elim.has(x.id) && !yaJugoMejorPerdedor.has(x.id))
         .sort((a, b) => a.dif - b.dif || b.gf - a.gf || (puestoGeneral[a.id] ?? 999) - (puestoGeneral[b.id] ?? 999))
         .slice(0, MEJORES_PERDEDORES)
-        .forEach((x, i) => { mejores[x.id] = { puesto: i + 1, dif: x.dif, gf: x.gf } })
+        .forEach((x, i) => { mejores[x.id] = { ...(mejores[x.id] || {}), puesto: i + 1, dif: x.dif, gf: x.gf } })
     }
     return { eliminadosIds: elim, rivalDe: rival, mejoresPerdedores: mejores }
   })()

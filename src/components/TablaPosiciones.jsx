@@ -11,6 +11,9 @@
 // del equipo (por ejemplo el asa para arrastrar a otro grupo y el botón de mover).
 
 import { Fragment } from 'react'
+
+// En qué fase perdió el equipo que siguió como mejor perdedor
+const NOMBRE_FASE_RESCATE = { octavos: 'OCTAVOS', cuartos: 'CUARTOS', semifinal: 'SEMIFINAL' }
 import { useFavoritos } from '../lib/favoritos'
 import BotonEstrella from './BotonEstrella'
 
@@ -90,7 +93,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
   // Los eliminados van siempre abajo, pero conservan su número de posición:
   // arriba los que siguen en el torneo (en su orden) y abajo los eliminados.
   // Los "mejores perdedores" todavía pueden seguir, así que quedan arriba.
-  const esElim = row => !row.enVivo && !!eliminados && eliminados.has(row.equipo.id) && !(mejoresPerdedores && mejoresPerdedores[row.equipo.id])
+  const esElim = row => !row.enVivo && !!eliminados && eliminados.has(row.equipo.id) && !(mejoresPerdedores && mejoresPerdedores[row.equipo.id]?.puesto)
   const conPos = rows.map((row, pos) => ({ row, pos }))
   const vivos = conPos.filter(x => !esElim(x.row))
   const fuera = conPos.filter(x => esElim(x.row))
@@ -113,7 +116,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           </span>
         </div>
       )}
-      {mejoresPerdedores && rows.some(r => mejoresPerdedores[r.equipo.id]) && (
+      {mejoresPerdedores && rows.some(r => mejoresPerdedores[r.equipo.id]?.puesto && eliminados?.has(r.equipo.id)) && (
         <div style={{ background: 'rgba(245,166,35,.12)', border: '1px solid rgba(245,166,35,.45)', borderRadius: '9px', padding: '7px 10px', margin: '0 2px 10px', color: '#ffd78a', fontSize: '.66rem', lineHeight: 1.4 }}>
           <b>Mejores perdedores:</b> el que perdió con menos diferencia de gol. Si empatan, el que más goles hizo. Si siguen empatados, el que esté más arriba en la tabla general.
         </div>
@@ -134,7 +137,11 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           const enZona = nZona > 0 && i < nZona
           const sinJugar = hayJuego && row.pj === 0
           const elim = !row.enVivo && !!eliminados && eliminados.has(row.equipo.id)
-          const mejor = elim && mejoresPerdedores ? mejoresPerdedores[row.equipo.id] : null
+          const mp = mejoresPerdedores ? mejoresPerdedores[row.equipo.id] : null
+          // mejor: todavía en espera de saber si pasa como mejor perdedor (fila naranja)
+          const mejor = elim && mp?.puesto ? mp : null
+          // rescatado: ya pasó como mejor perdedor — la etiqueta se queda hasta el final
+          const rescatado = !mejor && mp?.rescatado ? mp : null
           const rival = !elim && rivales ? rivales[row.equipo.id] : null
           return (
             <Fragment key={row.equipo.id}>
@@ -170,6 +177,11 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
                         {mejor.dif === 0 ? 'Perdió sin diferencia (por penales)' : `Perdió por ${mejor.dif} gol${mejor.dif === 1 ? '' : 'es'}`} · hizo {mejor.gf} gol{mejor.gf === 1 ? '' : 'es'}
                       </span>
                     </>
+                  )}
+                  {rescatado && (
+                    <span style={{ alignSelf: 'flex-start', marginTop: '2px', background: '#d98a00', color: '#fff', fontWeight: 900, fontSize: '.58rem', letterSpacing: '.06em', borderRadius: 4, padding: '1px 6px' }}>
+                      MEJOR PERDEDOR{rescatado.faseRescate ? ` · ${NOMBRE_FASE_RESCATE[rescatado.faseRescate] || rescatado.faseRescate}` : ''}
+                    </span>
                   )}
                   {elim && !mejor && (
                     <span style={{ alignSelf: 'flex-start', marginTop: '2px', background: '#c9362f', color: '#fff', fontWeight: 900, fontSize: '.58rem', letterSpacing: '.06em', borderRadius: 4, padding: '1px 6px' }}>ELIMINADO</span>
