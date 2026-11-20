@@ -10,6 +10,8 @@ import PantallaPartido from './PantallaPartido'
 import ModalFotoNumero from './ModalFotoNumero'
 import AlertaNumeroDesconocido from './AlertaNumeroDesconocido'
 import AlertaFaltasEquipo from './AlertaFaltasEquipo'
+import AlertaDosAmarillas from './AlertaDosAmarillas'
+import { timbreConVoz } from '../../lib/timbreTarjetas'
 import ModalCierrePartido from './ModalCierrePartido'
 import ModalPartidoEspecialRapida from './ModalPartidoEspecialRapida'
 import { FONDO, CIAN, formatTiempo } from './estilosRapida'
@@ -162,6 +164,7 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
   const [modalFoto, setModalFoto] = useState(null) // { team, index, jugador }
   const [alertaNumero, setAlertaNumero] = useState(null) // { team, numero, tipo }
   const [alertaFaltas, setAlertaFaltas] = useState(null) // { team }
+  const [alertaDosAmarillas, setAlertaDosAmarillas] = useState(null) // { team, numero, nombre, textoVoz }
   const [mostrarCierre, setMostrarCierre] = useState(false)
   const [mostrarEspecial, setMostrarEspecial] = useState(false)
   const [golesW, setGolesW] = useState(3) // goles del ganador por W, configurable por torneo
@@ -1242,6 +1245,17 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         try { navigator.vibrate && navigator.vibrate([300, 100, 300, 100, 300]) } catch (e) {}
       }
     }
+    // Segunda amarilla del mismo jugador en este partido: timbre + voz + aviso grande
+    if (tipo === 'yellow_card') {
+      const esEl = e => e.tipo === 'yellow_card' && e.team === team && (jugador.id ? e.jugadorId === jugador.id : (!e.jugadorId && (e.numero || '').trim() === (jugador.numero || '').trim()))
+      const yaTenia = eventos.filter(esEl).length
+      if (yaTenia + 1 === 2) {
+        const numero = (jugador.numero || '').trim()
+        const textoVoz = `${numero ? `Número ${numero}, ` : ''}ya acumuló dos amarillas`
+        setAlertaDosAmarillas({ team, numero, nombre: jugador.nombre || '', textoVoz })
+        timbreConVoz(textoVoz) // dentro del toque del árbitro: así el celular deja sonar
+      }
+    }
   }
   function registrarEvento(team, numero, tipo) {
     const arr = team === 'local' ? jugadoresLocal : jugadoresVisitante
@@ -1920,6 +1934,15 @@ export default function PlanillaRapida({ partido, onClose, onGuardarResultado, v
         <AlertaFaltasEquipo
           equipoNombre={alertaFaltas.team === 'local' ? nombreLocal : nombreVis}
           onCerrar={() => setAlertaFaltas(null)}
+        />
+      )}
+      {alertaDosAmarillas && (
+        <AlertaDosAmarillas
+          numero={alertaDosAmarillas.numero}
+          nombre={alertaDosAmarillas.nombre}
+          equipoNombre={alertaDosAmarillas.team === 'local' ? nombreLocal : nombreVis}
+          textoVoz={alertaDosAmarillas.textoVoz}
+          onCerrar={() => setAlertaDosAmarillas(null)}
         />
       )}
       {toastReloj}
