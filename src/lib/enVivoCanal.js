@@ -81,7 +81,8 @@ export function resolverStreams(streams, estados) {
   return (streams || []).flatMap(s => {
     if (!esCanalYoutube(s.url)) return [s]
     const url = estados[s.id]?.url
-    return url ? [{ ...s, url }] : []
+    // deCanal: ya lo confirmó /api/yt-en-vivo (que descarta salas de espera y directos terminados)
+    return url ? [{ ...s, url, deCanal: true }] : []
   })
 }
 

@@ -16,10 +16,14 @@ const ORIGENES_APP = ['https://localhost', 'http://localhost', 'capacitor://loca
 
 export function estadoDeVideo(html, id) {
   if (!html || (!html.includes('ytInitialPlayerResponse') && !html.includes('ytInitialData'))) return null
-  if (/"liveBroadcastDetails":\{[^}]*"isLiveNow":true/.test(html)) return 'vivo'
-  const desde = '"videoDetails":\\{"videoId":"' + id + '"[^]{0,4000}?'
+  const ficha = html.match(/"liveBroadcastDetails":\{[^}]*?"isLiveNow":(true|false)/)
+  if (ficha && ficha[1] === 'true') return 'vivo'
+  const desde = '"videoDetails":\\{"videoId":"' + id + '"[^]{0,20000}?'
   if (new RegExp(desde + '"isUpcoming":true').test(html)) return 'programado'
+  if (ficha && ficha[1] === 'false') return 'otro'
   if (new RegExp(desde + '"isLive":true').test(html)) return 'vivo'
+  // Contador «N personas mirando ahora» (YouTube a veces manda al servidor la página sin la ficha del directo)
+  if (/"videoViewCountRenderer":\{[^]{0,600}?"isLive":true/.test(html)) return 'vivo'
   return 'otro'
 }
 

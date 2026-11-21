@@ -529,13 +529,15 @@ export default function LandingPage({ modo = 'inicio' }) {
   //  · Facebook/Instagram: no hay forma de saber si siguen transmitiendo, así que salen únicamente mientras el partido ligado
   //    a esa transmisión (o el torneo en "torneo_auto") se está jugando.
   const esYouTube = u => /(^|\/\/|\.)(youtube\.com|youtu\.be)/i.test(String(u || ''))
-  // También los que vienen de un canal: se confirma con YouTube que ese video transmite AHORA (no una sala de espera)
-  const videosYT = useMemo(() => (streamsMontar ? streamsResueltos.filter(s => esYouTube(s.url)) : SIN_STREAMS), [streamsMontar, streamsResueltos])
+  // Los que vienen de un CANAL ya los confirmó /api/yt-en-vivo (descarta la sala de espera y los directos terminados):
+  // se muestran de una. Antes se volvían a revisar con /api/yt-video-estado, y cuando YouTube le mandaba al servidor la
+  // página recortada decía «no está en vivo» y el EN VIVO no salía aunque el canal estuviera transmitiendo.
+  const videosYT = useMemo(() => (streamsMontar ? streamsResueltos.filter(s => esYouTube(s.url) && !s.deCanal) : SIN_STREAMS), [streamsMontar, streamsResueltos])
   const videosYTVivos = useVideosYoutubeVivos(videosYT)
   const clavePartidoStream = streamsResueltos.filter(s => !esYouTube(s.url) && partidoActivoDeStream(s, partidosVivo)).map(s => s.id).join('|')
   const streamsVivos = useMemo(() => {
     const conPartido = clavePartidoStream ? clavePartidoStream.split('|') : []
-    return streamsResueltos.filter(s => esYouTube(s.url) ? videosYTVivos[s.id] === true : conPartido.includes(s.id))
+    return streamsResueltos.filter(s => esYouTube(s.url) ? (s.deCanal || videosYTVivos[s.id] === true) : conPartido.includes(s.id))
   }, [streamsResueltos, clavePartidoStream, videosYTVivos])
   const streamsVisibles = streamsVivos
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
