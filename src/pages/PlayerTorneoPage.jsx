@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { completarFotosGoleadores } from '../lib/playersPublico'
 import { useAuthStore } from '../store/authStore'
 import { ArrowLeft, Shield, X, ChevronDown } from 'lucide-react'
 import RankingPoster from '../components/RankingPoster'
@@ -625,7 +626,7 @@ export default function PlayerTorneoPage() {
       // Arqueros REGISTRADOS de cada equipo del torneo (para la valla por equipo)
       supabase.from('tournament_teams').select('team_id').eq('tournament_id', id),
     ])
-    { const al = await cargarAliasTorneo(id); setGoleadores(al.size ? (data || []).map(g => (g.team_id && al.has(g.team_id)) ? { ...g, team_name: al.get(g.team_id) } : g) : (data || [])) }
+    { const [al, conFotos] = await Promise.all([cargarAliasTorneo(id), completarFotosGoleadores(data || [])]); setGoleadores(al.size ? conFotos.map(g => (g.team_id && al.has(g.team_id)) ? { ...g, team_name: al.get(g.team_id) } : g) : conFotos) }
 
     // Agrupar por jugador
     const mapPorteros = {}

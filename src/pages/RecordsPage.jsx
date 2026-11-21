@@ -11,6 +11,7 @@ import {
 // que sí trae específicos de deporte, minimalistas y de un solo color.
 import { GiSoccerBall, GiGoalKeeper, GiTShirt } from 'react-icons/gi'
 import { supabase } from '../lib/supabase'
+import { completarFotosGoleadores } from '../lib/playersPublico'
 import TablaPosiciones from '../components/TablaPosiciones'
 import { PantallaCargando } from '../components/PantallaCargando'
 import { registrarVisita } from '../lib/visitas'
@@ -704,7 +705,8 @@ export default function RecordsPage() {
       supabase.from('tournament_teams').select('*, teams(id, name, logo_url)').eq('tournament_id', t.id),
       supabase.from('matches').select('id, home_team_id, away_team_id, home_score, away_score, status, fase, ronda, played_at, tipo_resultado').eq('tournament_id', t.id),
       supabase.from('tournament_grupos').select('*').eq('tournament_id', t.id).order('orden'),
-      supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', t.id).gt('total_goals', 0).order('total_goals', { ascending: false }).limit(5),
+      Promise.resolve(supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', t.id).gt('total_goals', 0).order('total_goals', { ascending: false }).limit(5))
+        .then(async r => (r.error ? r : { ...r, data: await completarFotosGoleadores(r.data) })),
       cargarTorneoPuntos(t.id).catch(() => ({})),
     ])
     // Puntos del W + descuentos de este torneo (vienen de cargarTorneoPuntos)

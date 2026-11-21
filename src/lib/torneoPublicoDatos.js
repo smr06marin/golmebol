@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import { consultaPartidosTorneo, resolverPartidosConEstado } from './partidosPublicos'
 import { guardarCacheRapido } from './cacheRapido'
 import { cargarAliasTorneo, aplicarAlias } from './nombresTorneo'
+import { completarFotosGoleadores } from './playersPublico'
 
 // Datos de la página pública de un torneo, en un solo lugar para poder
 // ADELANTARLOS: cuando alguien pasa el dedo/mouse por la tarjeta de un torneo
@@ -32,6 +33,7 @@ export function cargarTorneoPublico(id) {
     // Goleadores y patrocinadores también salen YA (antes la consulta quedaba armada pero no se enviaba
     // hasta que llegaba la tabla, y se veían 1–2 s después). Igual llegan aparte y no frenan la tabla.
     const qG  = Promise.resolve(supabase.from('goleadores_por_torneo').select('*').eq('tournament_id', id).gt('total_goals', 0).order('total_goals', { ascending: false }))
+      .then(async r => (r.error ? r : { ...r, data: await completarFotosGoleadores(r.data) }))
     const qSp = Promise.resolve(supabase.from('tournament_sponsors').select('*').eq('tournament_id', id).order('orden', { ascending: true }))
 
     const qAl = cargarAliasTorneo(id, { publico: true }) // nombres de equipos SOLO en este torneo
