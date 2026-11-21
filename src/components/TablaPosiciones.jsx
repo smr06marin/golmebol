@@ -57,16 +57,18 @@ const ESTILO_TABLA = `
 }
 `
 
-// Últimos resultados del equipo (hasta 5): verde = ganó, gris = empató, rojo = perdió.
+// Últimos resultados del equipo (hasta 5): verde = ganó, gris = empató, rojo = perdió. Los partidos por W salen con
+// una "W": verde si ganó por W, roja si perdió por W (no se presentó).
 // Se lee de izquierda (más viejo) a derecha (más reciente).
-const COLOR_FORMA = { G: '#34c47c', E: '#8a97b3', P: '#ff5a52' }
-const TEXTO_FORMA = { G: 'Ganó', E: 'Empató', P: 'Perdió' }
+const COLOR_FORMA = { G: '#34c47c', E: '#8a97b3', P: '#ff5a52', W: '#34c47c', WP: '#ff5a52' }
+const TEXTO_FORMA = { G: 'Ganó', E: 'Empató', P: 'Perdió', W: 'Ganó por W', WP: 'Perdió por W' }
+const LETRA_FORMA = { G: 'G', E: 'E', P: 'P', W: 'W', WP: 'W' }
 function FormaReciente({ forma }) {
   if (!forma || forma.length === 0) return null
   return (
     <span aria-label={'Últimos resultados: ' + forma.map(f => TEXTO_FORMA[f]).join(', ')} style={{ display: 'flex', gap: '3px', marginTop: '3px' }}>
       {forma.map((f, i) => (
-        <span key={i} title={TEXTO_FORMA[f]} style={{ width: 13, height: 13, borderRadius: '50%', background: COLOR_FORMA[f], color: '#fff', fontSize: '.5rem', fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, opacity: i === forma.length - 1 ? 1 : .85, boxShadow: i === forma.length - 1 ? '0 0 0 1.5px rgba(255,255,255,.55)' : 'none' }}>{f}</span>
+        <span key={i} title={TEXTO_FORMA[f]} style={{ width: 13, height: 13, borderRadius: '50%', background: COLOR_FORMA[f], color: '#fff', fontSize: '.5rem', fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, opacity: i === forma.length - 1 ? 1 : .85, boxShadow: i === forma.length - 1 ? '0 0 0 1.5px rgba(255,255,255,.55)' : 'none' }}>{LETRA_FORMA[f] || f}</span>
       ))}
     </span>
   )
@@ -234,6 +236,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
               <span style={{ color: COLOR_FORMA.G }}>G</span>
               <span style={{ color: COLOR_FORMA.E }}>E</span>
               <span style={{ color: COLOR_FORMA.P }}>P</span> últimos 5 partidos
+              {rows.some(r => (r.forma || []).some(f => f === 'W' || f === 'WP')) && <span style={{ marginLeft: '6px' }}>· W = partido por W</span>}
             </span>
           )}
         </div>

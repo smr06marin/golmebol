@@ -59,18 +59,25 @@ export function enVivoDe(p, esLocal, nombreRival) {
 }
 
 // Forma reciente de cada equipo: sus últimos 5 resultados ya jugados, del más
-// viejo al más nuevo, como 'G' (ganó), 'E' (empató) o 'P' (perdió). Los
-// partidos que vienen de la base ya llegan ordenados por played_at; acá solo
-// se descartan los que no han terminado. Un partido EN VIVO no cuenta (su
-// resultado todavía no es definitivo). Mutates y devuelve `filas`.
+// viejo al más nuevo, como 'G' (ganó), 'E' (empató), 'P' (perdió), 'W' (ganó
+// por W) o 'WP' (perdió por W — no se presentó). Los partidos que vienen de la
+// base ya llegan ordenados por played_at; acá solo se descartan los que no han
+// terminado. Un partido EN VIVO no cuenta (su resultado todavía no es
+// definitivo): conMarcadorEnVivo lo marca como 'finished' con `_enVivo`, por
+// eso se excluye aparte. Mutates y devuelve `filas`.
 export function agregarForma(filas, partidos) {
   const forma = {}
-  ;(partidos || []).filter(p => p.status === 'finished' && (!p.fase || p.fase === 'grupo')).forEach(p => {
-    const l = p.home_score || 0, v = p.away_score || 0
-    const letra = (a, b) => (a > b ? 'G' : a === b ? 'E' : 'P')
-    ;(forma[p.home_team_id] = forma[p.home_team_id] || []).push(letra(l, v))
-    ;(forma[p.away_team_id] = forma[p.away_team_id] || []).push(letra(v, l))
-  })
+  const fecha = p => (p.played_at ? new Date(p.played_at).getTime() : Infinity)
+  ;(partidos || [])
+    .filter(p => p.status === 'finished' && !p._enVivo && (!p.fase || p.fase === 'grupo'))
+    .slice().sort((a, b) => fecha(a) - fecha(b))
+    .forEach(p => {
+      const l = p.home_score || 0, v = p.away_score || 0
+      const esW = p.tipo_resultado === 'w'
+      const letra = (a, b) => (a > b ? (esW ? 'W' : 'G') : a === b ? 'E' : (esW ? 'WP' : 'P'))
+      ;(forma[p.home_team_id] = forma[p.home_team_id] || []).push(letra(l, v))
+      ;(forma[p.away_team_id] = forma[p.away_team_id] || []).push(letra(v, l))
+    })
   filas.forEach(f => { f.forma = (forma[f.equipo.id] || []).slice(-5) })
   return filas
 }
