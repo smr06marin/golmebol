@@ -760,6 +760,16 @@ function EquiposDesactivadosTorneo({ torneoId, onReactivar, showMsg }) {
 // de lugar cuando cambia lo que deben — así cada equipo siempre está en el mismo sitio de la lista.
 const porNombreEquipo = (a, b) => ((a.equipo?.name || a.name || '')).localeCompare((b.equipo?.name || b.name || ''), 'es', { sensitivity: 'base' })
 
+// Nombre de la cuenta "multas" de un equipo según lo que de verdad debe: si solo tiene deudas anotadas a mano NO es una
+// multa ni un W, así que sale "Deuda anotada"; si tiene W/multa sale "Multa / W"; si tiene las dos, ambas.
+function etiquetaCuentaMultas(r) {
+  const hayW = ((r?.w || 0) + (r?.multas || 0)) > 0
+  const nDeudas = (r?.deudasDetalle || []).length || ((r?.deudas || 0) > 0 ? 1 : 0)
+  if (hayW && nDeudas > 0) return '⛔ Multa / W y deuda anotada'
+  if (nDeudas > 0) return nDeudas > 1 ? '➖ Deudas anotadas' : '➖ Deuda anotada'
+  return '⛔ Multa / W'
+}
+
 export default function AdminTorneoDetallePage() {
   const { id } = useParams()
   const { rol } = useAuthStore()
@@ -2974,7 +2984,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
     equipos.forEach(e => {
       const inscritos = modoJugador ? jugadores.filter(j => j.team_id === e.id && j.activo !== false).length : 0
       const pagadosJug = modoJugador ? jugadores.filter(j => j.team_id === e.id && j.activo !== false && j.inscripcion_pagada === true).length : 0
-      porEquipo[e.id] = { equipo: e, modoJugador, tarifaJug, inscritos, pagadosJug, inscripcion: modoJugador ? inscritos * tarifaJug : (fc.inscripcion || 0), arbitrajes: 0, w: 0, multas: 0, deudas: 0, tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosMultas: 0, pagosInscripcion: 0 }
+      porEquipo[e.id] = { equipo: e, modoJugador, tarifaJug, inscritos, pagadosJug, inscripcion: modoJugador ? inscritos * tarifaJug : (fc.inscripcion || 0), arbitrajes: 0, w: 0, multas: 0, deudas: 0, deudasDetalle: [], tarjetas: 0, tarjetasDetalle: [], pagosTarjetas: 0, pagosMultas: 0, pagosInscripcion: 0 }
     })
 
     jugados.forEach(m => {
@@ -3036,7 +3046,10 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
       if (mv.tipo === 'pago_tarjetas')     porEquipo[mv.team_id].pagosTarjetas    += mv.monto || 0
       if (mv.tipo === 'pago_cargos')       porEquipo[mv.team_id].pagosMultas      += mv.monto || 0
       if (mv.tipo === 'abono_inscripcion') porEquipo[mv.team_id].pagosInscripcion += mv.monto || 0
-      if (mv.tipo === 'cargo_manual' && !mv.pagado) porEquipo[mv.team_id].deudas += mv.monto || 0 // deuda anotada a mano, sin marcar pagada todavía
+      if (mv.tipo === 'cargo_manual' && !mv.pagado) { // deuda anotada a mano, sin marcar pagada todavía
+        porEquipo[mv.team_id].deudas += mv.monto || 0
+        porEquipo[mv.team_id].deudasDetalle.push({ concepto: (mv.concepto || '').trim(), monto: mv.monto || 0 })
+      }
     })
 
     // DEUDA DE TARJETAS = igual que el link de deudores (ver_deudores_por_link): tarjetas que siguen SIN marcar como
@@ -8425,10 +8438,14 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 }
                 if (llevar && r.saldoMultas > 0) {
                   lineas.push({
-                    clave: 'multa', etiqueta: '⛔ Multa / W', ayuda: 'W es cuando un equipo no se presenta al partido. Aquí van esas multas y las deudas que tú anotaste a mano (daños, arbitrajes sin pagar).', valor: r.saldoMultas,
+                    clave: 'multa', etiqueta: etiquetaCuentaMultas(r),
+                    ayuda: (r.w + r.multas) > 0
+                      ? 'W es cuando un equipo no se presenta al partido. Aquí van esas multas y las deudas que tú anotaste a mano (daños, arbitrajes sin pagar).'
+                      : 'Deuda que tú le anotaste a mano a este equipo, con el motivo que escribiste.',
+                    valor: r.saldoMultas,
                     detalle: [
-                      r.multas > 0 ? `Multa por no presentarse: ${fmt(r.multas)}` : null,
-                      r.deudas > 0 ? `Deudas anotadas: ${fmt(r.deudas)}` : null,
+                      (r.w + r.multas) > 0 ? `Multa por no presentarse (W): ${fmt(r.w + r.multas)}` : null,
+                      ...(r.deudasDetalle || []).map(d => `${d.concepto || 'Deuda sin descripción'}: ${fmt(d.monto)}`),
                       r.pagosMultas > 0 ? `ya pagó ${fmt(r.pagosMultas)}` : null,
                     ].filter(Boolean).join(' · '),
                   })
@@ -8585,7 +8602,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', minHeight: '56px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ fontSize: '.92rem', fontWeight: '700', color: '#202124', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.equipo.name}</div>
-                            <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{soloMultas ? 'Multa / W / deuda anotada' : (conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto')}</div>
+                            <div style={{ fontSize: '.74rem', color: '#5f6368' }}>{soloMultas ? etiquetaCuentaMultas(r).replace(/^\S+\s/, '') : (conceptos(r).length > 1 ? 'Debe por varios conceptos' : 'Debe por un concepto')}</div>
                           </div>
                           <b style={{ color: '#d93025', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>{fmt(soloMultas ? r.saldoMultas : pendiente(r))}</b>
                           <span style={{ color: '#5f6368', fontSize: '.9rem' }}>{abierto ? '▴' : '▾'}</span>
@@ -8884,7 +8901,7 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                       {debe > 0 && (
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', margin: '4px 0 8px 40px' }}>
                           {insc > 0 && <span style={{ fontSize: '.72rem', background: '#fce8e6', color: '#d93025', borderRadius: '999px', padding: '3px 10px', fontWeight: '600' }}>📝 Inscripción {fmt(insc)}</span>}
-                          {mult > 0 && <span style={{ fontSize: '.72rem', background: '#fef3c7', color: '#b45309', borderRadius: '999px', padding: '3px 10px', fontWeight: '600' }}>⛔ Multa / W {fmt(mult)}</span>}
+                          {mult > 0 && <span style={{ fontSize: '.72rem', background: '#fef3c7', color: '#b45309', borderRadius: '999px', padding: '3px 10px', fontWeight: '600' }}>{etiquetaCuentaMultas(r)} {fmt(mult)}</span>}
                           {tarj > 0 && <span style={{ fontSize: '.72rem', background: '#fce8e6', color: '#d93025', borderRadius: '999px', padding: '3px 10px', fontWeight: '600' }}>💳 Tarjetas {fmt(tarj)}</span>}
                         </div>
                       )}
