@@ -4,6 +4,27 @@ import { plataformaDeStream } from '../lib/liveMatch'
 // minuto). Pequeño y elegante, pero con área de toque cómoda en cualquier celular (Android o iPhone).
 const COLORES = { YouTube: '#ff0033', Facebook: '#1877f2', Instagram: '#e1306c' }
 
+// Tres flechitas que se van encendiendo una tras otra (›››), como diciendo "toca aquí y vas al video".
+const CSS_FLECHAS = `
+@keyframes gmTxFlecha { 0%, 100% { opacity: .18; transform: translateX(0) } 40% { opacity: 1; transform: translateX(2px) } }
+.gm-tx-flecha { display: block; animation: gmTxFlecha 1.2s ease-in-out infinite; }
+.gm-tx-flecha:nth-child(2) { animation-delay: .2s; }
+.gm-tx-flecha:nth-child(3) { animation-delay: .4s; }
+@media (prefers-reduced-motion: reduce) { .gm-tx-flecha { animation: none; opacity: .7; } }
+`
+
+function Flechas({ color, size }) {
+  return (
+    <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '2px', marginRight: '-4px' }}>
+      {[0, 1, 2].map(i => (
+        <svg key={i} className="gm-tx-flecha" width={size * 0.55} height={size} viewBox="0 0 7 12" style={{ marginLeft: i ? '-1px' : 0 }}>
+          <path d="M1.5 1.5 5.5 6l-4 4.5" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ))}
+    </span>
+  )
+}
+
 function Icono({ plataforma, size }) {
   const c = COLORES[plataforma] || COLORES.YouTube
   if (plataforma === 'Facebook') {
@@ -46,8 +67,10 @@ export default function BotonTransmision({ stream, grande = false, style }) {
         fontWeight: 700, fontSize: grande ? '.86rem' : '.76rem', letterSpacing: '.01em',
         textDecoration: 'none', whiteSpace: 'nowrap', WebkitTapHighlightColor: 'transparent', ...style,
       }}>
+      <style>{CSS_FLECHAS}</style>
       <Icono plataforma={plataforma} size={grande ? 20 : 17}/>
       Ver en {plataforma}
+      <Flechas color={c} size={grande ? 14 : 12}/>
     </a>
   )
 }
