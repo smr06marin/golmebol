@@ -6,7 +6,7 @@ import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp, FaYoutube } from 'react-
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
 import { digitosWhatsapp } from '../lib/telefonoCo'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream, emparejarStreamsPartidos, plataformaDeStream } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream, emparejarStreamsPartidos } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import { usePresenciaSitio } from '../lib/presenciaSitio'
 import { useIntervaloVisible } from '../lib/useIntervaloVisible'
@@ -17,6 +17,7 @@ import BotonAvisos from '../components/BotonAvisos'
 import { useCanalesEnVivo, resolverStreams, useVideosYoutubeVivos } from '../lib/enVivoCanal'
 import { precargarPaginaTorneo, prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import PartidosDelDia from '../components/PartidosDelDia'
+import BotonTransmision from '../components/BotonTransmision'
 import { urlMini, alFallarMini, urlImagenReducida } from '../lib/imagenMini'
 import { ubicacionDeTorneo, textoUbicacion, claveTexto, tituloSiGrita } from '../lib/ubicaciones'
 
@@ -113,44 +114,6 @@ function Escudo({ logo_url, name, size = 40, radius = 10, urgente = false }) {
   )
 }
 
-// Tarjeta de una transmisión en vivo: liviana (no descarga el video). Al tocarla se abre YouTube / Facebook / Instagram.
-function TarjetaEnVivo({ stream, partido }) {
-  const plataforma = plataformaDeStream(stream.url)
-  const v = partido?.vivo
-  const sigla = n => (n || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
-  return (
-    <a href={stream.url} target="_blank" rel="noopener noreferrer"
-      aria-label={`Ver la transmisión en vivo en ${plataforma}${stream.titulo ? ': ' + stream.titulo : ''}`}
-      style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px', borderRadius: '18px', textDecoration: 'none', color: S.text, background: 'linear-gradient(160deg,#17261a 0%,#0e1610 55%,#0a0a0a 100%)', border: '1px solid #2c3d2d' }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', alignSelf: 'flex-start', background: S.red, color: '#fff', fontWeight: 900, fontSize: '.74rem', letterSpacing: '.06em', padding: '5px 10px', borderRadius: '999px' }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#fff', display: 'block' }}/> EN VIVO AHORA
-      </span>
-      {partido && v ? (
-        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px' }}>
-          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '96px', textAlign: 'center', fontSize: '.84rem', fontWeight: 700, color: S.text2 }}>
-            <Escudo logo_url={partido.home?.logo_url} name={partido.home?.name} size={44} radius={12} urgente/>
-            {partido.home?.name || sigla('Local')}
-          </span>
-          <span style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '.04em', textAlign: 'center' }}>
-            {v.golesLocal ?? 0} - {v.golesVis ?? 0}
-            <span style={{ display: 'block', fontSize: '.74rem', color: v.descanso ? S.gold : S.green, letterSpacing: '.04em' }}>{labelTiempoVivo(v)}</span>
-          </span>
-          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', width: '96px', textAlign: 'center', fontSize: '.84rem', fontWeight: 700, color: S.text2 }}>
-            <Escudo logo_url={partido.away?.logo_url} name={partido.away?.name} size={44} radius={12} urgente/>
-            {partido.away?.name || sigla('Visitante')}
-          </span>
-        </span>
-      ) : (
-        <span style={{ fontSize: '1.15rem', fontWeight: 900, lineHeight: 1.25 }}>{stream.titulo || 'Transmisión en vivo'}</span>
-      )}
-      {partido && v && stream.titulo && <span style={{ textAlign: 'center', fontSize: '.86rem', color: S.muted }}>{stream.titulo}</span>}
-      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: S.green, color: '#0a1a05', fontWeight: 900, fontSize: '1.05rem', borderRadius: '14px', minHeight: '54px', padding: '0 18px' }}>
-        ▶&nbsp; Ver la transmisión en {plataforma}
-      </span>
-    </a>
-  )
-}
-
 // Etiqueta corta del momento del partido: "1T · 12:34" o "DESCANSO"
 function labelTiempoVivo(vivo) {
   if (vivo.descanso) return 'DESCANSO'
@@ -242,10 +205,9 @@ function LiveMatchDetalle({ m, onClose, onVerTorneo, stream }) {
         </div>
 
         {stream?.url && (
-          <a href={stream.url} target="_blank" rel="noopener noreferrer"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: plataformaDeStream(stream.url) === 'YouTube' ? '#ff0033' : '#1877f2', color: '#fff', fontWeight: 900, fontSize: '1.05rem', borderRadius: '14px', minHeight: '54px', padding: '0 18px', textDecoration: 'none', marginBottom: '16px' }}>
-            ▶&nbsp; Ver en {plataformaDeStream(stream.url)}
-          </a>
+          <div style={{ display: 'flex', justifyContent: 'center', margin: '-6px 0 18px' }}>
+            <BotonTransmision stream={stream} grande/>
+          </div>
         )}
 
         <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '16px' }}>
@@ -547,7 +509,8 @@ export default function LandingPage({ modo = 'inicio' }) {
     return streamsResueltos.filter(s => esYouTube(s.url) ? (s.deCanal || videosYTVivos[s.id] === true) : conPartido.includes(s.id))
   }, [streamsResueltos, clavePartidoStream, videosYTVivos])
   const streamsVisibles = streamsVivos
-  // Qué transmisión va con cada partido en vivo (botón "Ver en YouTube" dentro del partido y marcador en la tarjeta).
+  // Qué transmisión va con cada partido en vivo: el botón "Ver en YouTube / Facebook" sale DENTRO del partido (Partidos de
+  // hoy y minuto a minuto); ya no hay tarjeta EN VIVO aparte.
   const emparejados = useMemo(() => emparejarStreamsPartidos(streamsVivos, partidosVivo), [streamsVivos, partidosVivo])
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
   usePresenciaSitio(streamsVisibles.length > 0) // cuenta de personas en el sitio (semáforo del admin)
@@ -1066,19 +1029,6 @@ export default function LandingPage({ modo = 'inicio' }) {
           </div>
         </div>
       )}
-      {streamsMontar && streamsVivos.length > 0 && (
-        <div style={{ maxWidth: '860px', margin: '44px auto 0', padding: '0 16px' }}>
-          <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem', fontWeight: 900, margin: '0 0 14px' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: S.red }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: S.red, display: 'inline-block' }}/> EN VIVO
-            </span>
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {streamsVivos.map(s => <TarjetaEnVivo key={s.id} stream={s} partido={emparejados.porStream.get(s.id) || null}/>)}
-          </div>
-        </div>
-      )}
-
       </>)}
 
       {/* ── Torneos: buscador + cuadrícula de escudos ── */}

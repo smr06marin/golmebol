@@ -6,6 +6,7 @@ import { fmtHoraDate } from '../lib/horaHelpers'
 import { useFavoritos } from '../lib/favoritos'
 import { prefetchTorneoPublico, propsPrefetchTorneo } from '../lib/torneoPublicoDatos'
 import BotonEstrella from './BotonEstrella'
+import BotonTransmision from './BotonTransmision'
 import SeguirEquipos from './SeguirEquipos'
 import SeguirTorneos from './SeguirTorneos'
 import { useFavoritosTorneos } from '../lib/favoritosTorneos'
@@ -60,7 +61,6 @@ const ESTILO = `
 .gm-pd-fila { box-sizing: border-box; display: grid; grid-template-columns: 30px minmax(0,1fr) 70px minmax(0,1fr) 30px; align-items: center; column-gap: 4px; padding: 9px 8px; min-height: 58px; cursor: pointer; border-top: 1px solid #242424; background: transparent; width: 100%; border-left: none; border-right: none; border-bottom: none; color: inherit; font-family: inherit; text-align: left; }
 .gm-pd-fila:hover { background: #1c1c1c; }
 .gm-pd-lugar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; margin-top: 5px; font-size: .66rem; font-weight: 600; color: #8a8a8a; }
-.gm-pd-tx { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; min-height: 44px; border-radius: 12px; color: #fff; font-weight: 900; font-size: .92rem; text-decoration: none; }
 .gm-pd-lugar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .gm-pd-eq { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .gm-pd-local { justify-content: flex-end; text-align: right; }
@@ -462,17 +462,11 @@ export default function PartidosDelDia({ partidosVivo = [], onVerDetalleVivo, se
                     {lugarDe(m) && (
                       <div className="gm-pd-lugar"><MapPin size={11} style={{ flexShrink: 0 }}/><span>{lugarDe(m)}</span></div>
                     )}
-                    {e === 'vivo' && streamPorPartido?.get(m.id)?.url && (() => {
-                      const st = streamPorPartido.get(m.id)
-                      const pl = /facebook\.com|fb\.watch/i.test(st.url) ? 'Facebook' : /instagram\.com/i.test(st.url) ? 'Instagram' : 'YouTube'
-                      return (
-                        <a className="gm-pd-tx" href={st.url} target="_blank" rel="noopener noreferrer"
-                          onClick={ev => ev.stopPropagation()} onKeyDown={ev => ev.stopPropagation()}
-                          style={{ background: pl === 'YouTube' ? '#ff0033' : '#1877f2' }}>
-                          ▶&nbsp; Ver en {pl}
-                        </a>
-                      )
-                    })()}
+                    {e === 'vivo' && streamPorPartido?.get(m.id)?.url && (
+                      <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', marginTop: '8px' }}>
+                        <BotonTransmision stream={streamPorPartido.get(m.id)}/>
+                      </div>
+                    )}
                   </div>
                 )
               })}
