@@ -20,6 +20,7 @@ import PantallaCargaTorneo from '../components/PantallaCargaTorneo'
 import { urlMini, alFallarMini } from '../lib/imagenMini'
 import { BotonAvisosTorneo } from '../components/BotonAvisos'
 import PartidoDetalleModal from '../components/PartidoDetalleModal'
+import PodioCampeon, { FuegosAlEntrar } from '../components/PodioCampeon'
 import { aplicarMarcaPagina, esHostPropioGolmebol } from '../lib/marcaPagina'
 import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal } from '../lib/liveMatch'
 
@@ -165,7 +166,7 @@ const MEDALLA = ['#f9a825', '#c9cdd2', '#cd7f32']
 // Misma tabla azul de siempre, pero colapsable con un encabezado — para
 // mostrar un grupo a la vez sin saturar la pantalla cuando el torneo tiene
 // varios grupos.
-function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, clasifican, eliminados, rivales, mejoresPerdedores }) {
+function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, clasifican, eliminados, rivales, mejoresPerdedores, podio }) {
   const [abierto, setAbierto] = useState(defaultOpen)
   return (
     <div>
@@ -180,7 +181,7 @@ function TablaColapsable({ titulo, rows, defaultOpen = false, onClickEquipo, cla
       </button>
       {abierto && (
         <div style={{ marginTop: '8px' }}>
-          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo} clasifican={clasifican} eliminados={eliminados} rivales={rivales} mejoresPerdedores={mejoresPerdedores}/>
+          <TablaPosiciones rows={rows} onClickEquipo={onClickEquipo} clasifican={clasifican} eliminados={eliminados} rivales={rivales} mejoresPerdedores={mejoresPerdedores} podio={podio}/>
         </div>
       )}
     </div>
@@ -962,8 +963,8 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // terminada. Mientras su partido no se juegue, nadie más sale eliminado.
   // Los que juegan final o tercer puesto no se marcan.
   const MEJORES_PERDEDORES = 2 // cuántos "mejores perdedores" se marcan cuando termina una fase (si el torneo los usa)
-  const { eliminadosIds, rivalDe, mejoresPerdedores } = (() => {
-    const elim = new Set(), rival = {}, mejores = {}
+  const { eliminadosIds, rivalDe, mejoresPerdedores, podio, llaveFinalJugada, llaveTerceroJugada } = (() => {
+    const elim = new Set(), rival = {}, mejores = {}, podio = {}
     const porFase = bracket.length > 0 ? getLlavesPorFaseElim() : {}
     const esTercer = ll => (ll.matches[0].ronda || '').toLowerCase().includes('tercer')
     const enTercer = new Set(), enBracket = new Set()
@@ -1056,8 +1057,28 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         .slice(0, cuantosMejores)
         .forEach((x, i) => { mejores[x.id] = { ...(mejores[x.id] || {}), puesto: i + 1, dif: x.dif, gf: x.gf } })
     }
-    return { eliminadosIds: elim, rivalDe: rival, mejoresPerdedores: mejores }
+    // Méritos: con la FINAL jugada → campeón y subcampeón; con el partido por el 3.er puesto jugado → tercero y cuarto.
+    const llaveFinal = (porFase.final || []).filter(ll => !esTercer(ll))
+    if (llaveFinal.length === 1 && llaveFinal[0].terminada && llaveFinal[0].ganador) {
+      const ll = llaveFinal[0], g = ll.ganador.id
+      podio[g] = 1; podio[g === ll.teamA.id ? ll.teamB.id : ll.teamA.id] = 2
+    }
+    const llaveTercero = (porFase.final || []).filter(esTercer)
+    if (llaveTercero.length === 1 && llaveTercero[0].terminada && llaveTercero[0].ganador) {
+      const ll = llaveTercero[0], g = ll.ganador.id
+      podio[g] = 3; podio[g === ll.teamA.id ? ll.teamB.id : ll.teamA.id] = 4
+    }
+    const finalOk = llaveFinal.length === 1 && llaveFinal[0].terminada && llaveFinal[0].ganador ? llaveFinal[0] : null
+    const terceroOk = llaveTercero.length === 1 && llaveTercero[0].terminada && llaveTercero[0].ganador ? llaveTercero[0] : null
+    return { eliminadosIds: elim, rivalDe: rival, mejoresPerdedores: mejores, podio, llaveFinalJugada: finalOk, llaveTerceroJugada: terceroOk }
   })()
+
+  // Partidos de la final y del 3.er puesto: en Resultados salen como tarjetas especiales (dorada / bronce) con el
+  // global si fue ida y vuelta, y los penales si se definió así.
+  const llaveEspecialDe = {}
+  if (llaveFinalJugada) llaveFinalJugada.matches.forEach(m => { llaveEspecialDe[m.id] = { tipo: 'final', ll: llaveFinalJugada } })
+  if (llaveTerceroJugada) llaveTerceroJugada.matches.forEach(m => { llaveEspecialDe[m.id] = { tipo: 'tercero', ll: llaveTerceroJugada } })
+  const penalesDe = m => (m.penales_local != null && m.penales_visitante != null && (m.penales_local !== m.penales_visitante || m.penales_ganador)) ? { l: m.penales_local, v: m.penales_visitante } : null
 
   // Pestañas: ya no hay árbol de eliminatorias, solo los partidos creados.
   const tabs = [
@@ -1175,6 +1196,8 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       {/* BODY */}
       <div style={s.body}>
         <AvisoFrescura frescura={frescura} onReintentar={() => { reintentos.current = 0; setIntento(n => n + 1) }}/>
+        {/* CAMPEÓN — apenas se juega la final: confeti, fuegos artificiales y los partidos de la final / 3.er puesto */}
+        {llaveFinalJugada && <PodioCampeon torneoNombre={torneo.name} llaveFinal={llaveFinalJugada} llaveTercero={llaveTerceroJugada} onVerPartido={setPartidoDetalle}/>}
         {/* EN VIVO — partido(s) de este torneo que se están jugando ahora mismo */}
         {partidosVivo.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px', marginBottom: '18px' }}>
@@ -1221,12 +1244,12 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
           grupos.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {grupos.map(g => (
-                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo} clasifican={Number(torneo.equipos_clasifican) || 0} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores}/>
+                <TablaColapsable key={g.id} titulo={`Grupo ${g.nombre}`} rows={getTablaGrupo(g.id)} defaultOpen onClickEquipo={abrirEquipoInfo} clasifican={Number(torneo.equipos_clasifican) || 0} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores} podio={podio}/>
               ))}
-              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores}/>
+              <TablaColapsable titulo="Tabla general — todos los equipos" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores} podio={podio}/>
             </div>
           ) : (
-            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores}/>
+            <TablaPosiciones titulo="Tabla de posiciones" rows={tablaOrdenada} onClickEquipo={abrirEquipoInfo} eliminados={eliminadosIds} rivales={rivalDe} mejoresPerdedores={mejoresPerdedores} podio={podio}/>
           )
         )}
 
@@ -1236,18 +1259,36 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
         {tab === 'resultados' && (
           <div>
             <div style={{ fontWeight: '800', fontSize: '.85rem', color: '#3c4043', letterSpacing: '.04em', textTransform: 'uppercase', marginBottom: '12px', paddingLeft: '2px' }}>Resultados</div>
+            {llaveFinalJugada && <FuegosAlEntrar/>}
             {partidosJugados.length === 0 ? (
               <div style={{ ...s.card, padding: '40px', textAlign: 'center', color: '#9aa0a6' }}>No hay resultados aún</div>
             ) : partidosJugados.map((p) => {
               const homeWin = p.home_score > p.away_score
               const awayWin = p.away_score > p.home_score
+              const especial = llaveEspecialDe[p.id] || null
+              const colorEsp = especial?.tipo === 'final' ? '#f5c84b' : '#d08a4e'
+              const pen = penalesDe(p)
+              const llE = especial?.ll
+              const idaVueltaE = llE && llE.matches.length > 1
               return (
                 <div key={p.id} onClick={() => setPartidoDetalle(p)} style={{
                   position: 'relative', overflow: 'hidden', borderRadius: '16px', marginBottom: '14px',
                   padding: '16px 14px 14px', cursor: 'pointer',
-                  background: 'linear-gradient(135deg, var(--color-secundario) 0%, var(--color-primario) 65%, #00bcd4 130%)',
-                  boxShadow: '0 6px 16px rgba(0,0,0,.18)',
+                  background: especial
+                    ? (especial.tipo === 'final'
+                      ? 'radial-gradient(120% 90% at 50% 0%, rgba(245,200,75,.35) 0%, rgba(245,200,75,0) 60%), linear-gradient(160deg,#1b1606 0%,#0d0f1a 60%,#090b14 100%)'
+                      : 'radial-gradient(120% 90% at 50% 0%, rgba(208,138,78,.32) 0%, rgba(208,138,78,0) 60%), linear-gradient(160deg,#1a1008 0%,#0d0f1a 60%,#090b14 100%)')
+                    : 'linear-gradient(135deg, var(--color-secundario) 0%, var(--color-primario) 65%, #00bcd4 130%)',
+                  border: especial ? `1px solid ${colorEsp}aa` : 'none',
+                  boxShadow: especial ? `0 8px 24px rgba(0,0,0,.3), 0 0 0 1px ${colorEsp}33` : '0 6px 16px rgba(0,0,0,.18)',
                 }}>
+                  {especial && (
+                    <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: '8px' }}>
+                      <span style={{ display: 'inline-block', background: especial.tipo === 'final' ? 'linear-gradient(110deg,#c9971c,#f7d774 50%,#c9971c)' : 'linear-gradient(110deg,#9a5a26,#e8a96d 50%,#9a5a26)', color: especial.tipo === 'final' ? '#2a1d00' : '#2a1404', fontWeight: 900, fontSize: '.68rem', letterSpacing: '.14em', borderRadius: '999px', padding: '4px 12px' }}>
+                        {especial.tipo === 'final' ? '🏆 GRAN FINAL' : '🥉 TERCER PUESTO'}{idaVueltaE ? ` · ${llE.matches.slice().sort((a, b) => new Date(a.played_at || 0) - new Date(b.played_at || 0))[0].id === p.id ? 'IDA' : 'VUELTA'}` : ''}
+                      </span>
+                    </div>
+                  )}
                   {/* puntitos sutiles de fondo, igual que el encabezado del torneo */}
                   <div style={{ position: 'absolute', inset: 0, opacity: .08, backgroundImage: 'radial-gradient(circle at 15% 25%, #fff 1px, transparent 1px), radial-gradient(circle at 85% 75%, #fff 1px, transparent 1px)', backgroundSize: '32px 32px', pointerEvents: 'none' }}/>
                   <div style={{ position: 'relative', zIndex: 1 }}>
@@ -1289,6 +1330,27 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
                       <div style={{ width: '1px' }}/>
                       <div style={{ textAlign: 'center', fontWeight: awayWin ? '800' : '600', color: '#fff', opacity: awayWin ? 1 : .82, fontSize: tamNombreEquipo(p.away?.name), lineHeight: 1.25, wordBreak: 'break-word', padding: '0 2px' }}>{p.away?.name}</div>
                     </div>
+                    {(pen || (especial && (idaVueltaE || llE.porPenales))) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', marginTop: '10px', paddingTop: '8px', borderTop: `1px dashed ${especial ? colorEsp + '77' : 'rgba(255,255,255,.3)'}` }}>
+                        {especial && idaVueltaE && (
+                          <span style={{ fontSize: '.74rem', fontWeight: 800, color: '#fff', textAlign: 'center' }}>
+                            <span style={{ color: colorEsp, letterSpacing: '.08em', fontSize: '.6rem', marginRight: '6px' }}>GLOBAL</span>
+                            {llE.teamA.name} <b style={{ color: colorEsp, fontSize: '.95rem' }}>{llE.golesA} - {llE.golesB}</b> {llE.teamB.name}
+                          </span>
+                        )}
+                        {pen && (
+                          <span style={{ fontSize: '.74rem', fontWeight: 800, color: '#fff', textAlign: 'center' }}>
+                            <span style={{ color: especial ? colorEsp : '#ffd54a', letterSpacing: '.08em', fontSize: '.6rem', marginRight: '6px' }}>PENALES</span>
+                            {p.home?.name} <b style={{ color: especial ? colorEsp : '#ffd54a', fontSize: '.95rem' }}>{pen.l} - {pen.v}</b> {p.away?.name}
+                          </span>
+                        )}
+                        {especial && llE.ganador && (
+                          <span style={{ fontSize: '.66rem', color: 'rgba(255,255,255,.8)', fontWeight: 700 }}>
+                            {especial.tipo === 'final' ? '🏆 Campeón: ' : '🥉 Tercer puesto: '}<b style={{ color: colorEsp }}>{llE.ganador.name}</b>{llE.porPenales ? ' (por penales)' : idaVueltaE ? ' (en el global)' : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div style={{ textAlign: 'center', marginTop: '12px' }}>
                       <span style={{ fontSize: '.64rem', color: 'rgba(255,255,255,.7)' }}>👆 Toca el partido para ver el resumen (goles y tarjetas)</span>
                     </div>

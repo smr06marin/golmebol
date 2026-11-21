@@ -32,6 +32,20 @@ function LogoCircular({ logo, name, size = 30 }) {
   )
 }
 
+// Méritos del torneo cuando ya se jugó la final (y el partido por el 3.er puesto, si hubo): campeón en dorado,
+// subcampeón en plata, tercero en bronce y cuarto discreto. Se marcan en su fila sin moverlos de posición.
+const PODIO = {
+  1: { etiqueta: 'CAMPEÓN', icono: '🏆', chip: 'linear-gradient(110deg,#c9971c 0%,#f7d774 38%,#fff1b8 50%,#f7d774 62%,#c9971c 100%)', texto: '#2a1d00', nombre: '#ffe39a', borde: '#f5c84b', fondo: 'linear-gradient(90deg, rgba(245,200,75,.30), rgba(245,200,75,.07) 70%)', brillo: '0 0 0 1px rgba(245,200,75,.35), 0 6px 22px rgba(245,200,75,.22)' },
+  2: { etiqueta: 'SUBCAMPEÓN', icono: '🥈', chip: 'linear-gradient(110deg,#8d99ab,#e9eef5 50%,#8d99ab)', texto: '#1b2230', nombre: '#e9eef5', borde: '#c3ccd8', fondo: 'linear-gradient(90deg, rgba(210,220,232,.22), rgba(210,220,232,.05) 70%)', brillo: '0 4px 16px rgba(210,220,232,.12)' },
+  3: { etiqueta: 'TERCER PUESTO', icono: '🥉', chip: 'linear-gradient(110deg,#9a5a26,#e8a96d 50%,#9a5a26)', texto: '#2a1404', nombre: '#f3c69b', borde: '#d08a4e', fondo: 'linear-gradient(90deg, rgba(208,138,78,.22), rgba(208,138,78,.05) 70%)', brillo: 'none' },
+  4: { etiqueta: 'CUARTO PUESTO', icono: '4°', chip: 'rgba(127,179,255,.20)', texto: '#cfe0ff', nombre: '#fff', borde: 'rgba(127,179,255,.55)', fondo: 'rgba(127,179,255,.08)', brillo: 'none' },
+}
+const ESTILO_PODIO = `
+@keyframes gmBrilloCampeon { 0% { background-position: 120% 0 } 100% { background-position: -120% 0 } }
+.gm-tp-campeon { background-size: 220% 100% !important; animation: gmBrilloCampeon 3.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .gm-tp-campeon { animation: none; } }
+`
+
 const COLS = '30px minmax(0,1fr) 26px 26px 26px 26px 26px 26px 30px 38px'
 const ROJO = '#ff5a52'
 
@@ -78,7 +92,7 @@ function PuntoVivo({ size = 7 }) {
   return <span style={{ width: size, height: size, borderRadius: '50%', background: ROJO, display: 'inline-block', flexShrink: 0, animation: 'gmVivoPulso 1.2s ease-in-out infinite' }}/>
 }
 
-export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0, eliminados, rivales, mejoresPerdedores, onDescontar, renderInicioEquipo, renderAccionesEquipo }) {
+export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin resultados aún', onClickEquipo, clasifican = 0, eliminados, rivales, mejoresPerdedores, podio, onDescontar, renderInicioEquipo, renderAccionesEquipo }) {
   const { esFavorito, alternar } = useFavoritos()
   if (!rows || rows.length === 0) return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#8fa5cf', fontSize: '.85rem' }}>
@@ -102,13 +116,31 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
   const fuera = conPos.filter(x => esElim(x.row))
   const filas = vivos.length > 0 && fuera.length > 0 ? [...vivos, ...fuera] : conPos
   const primerElim = vivos.length > 0 && fuera.length > 0 ? fuera[0].row.equipo.id : null
+  // Podio del torneo (solo equipos que están en esta tabla), en orden 1°, 2°, 3°, 4°
+  const enPodio = podio ? rows.filter(r => podio[r.equipo.id]).sort((a, b) => podio[a.equipo.id] - podio[b.equipo.id]) : []
 
   return (
     <div style={{ background: 'linear-gradient(170deg,#0e2258,#08122e)', border: '1px solid #1e3a7a', borderRadius: '14px', padding: '12px 10px 14px', boxShadow: '0 3px 14px rgba(0,0,0,.3)' }}>
-      <style>{ESTILO_TABLA + (hayVivo ? ESTILO_VIVO : '')}</style>
+      <style>{ESTILO_TABLA + (hayVivo ? ESTILO_VIVO : '') + (enPodio.length ? ESTILO_PODIO : '')}</style>
       {titulo && (
         <div style={{ textAlign: 'center', color: '#fff', fontWeight: 900, fontSize: '1rem', letterSpacing: '.12em', textTransform: 'uppercase', padding: '6px 0 12px' }}>
           {titulo}
+        </div>
+      )}
+      {enPodio.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '6px 8px', margin: '0 2px 12px' }}>
+          {enPodio.filter(r => podio[r.equipo.id] <= 3).map(r => {
+            const m = PODIO[podio[r.equipo.id]]
+            return (
+              <span key={r.equipo.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: '100%', padding: '5px 11px 5px 5px', borderRadius: '999px', border: `1px solid ${m.borde}`, background: 'rgba(0,0,0,.25)' }}>
+                <LogoCircular logo={r.equipo.logo_url} name={r.equipo.name} size={22}/>
+                <span style={{ fontSize: '.66rem', lineHeight: 1.15, minWidth: 0 }}>
+                  <b style={{ display: 'block', color: m.borde, fontWeight: 900, letterSpacing: '.08em', fontSize: '.56rem' }}>{m.icono} {m.etiqueta}</b>
+                  <span style={{ display: 'block', color: '#fff', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>{r.equipo.name}</span>
+                </span>
+              </span>
+            )
+          })}
         </div>
       )}
       {hayVivo && (
@@ -146,6 +178,7 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
           // rescatado: ya pasó como mejor perdedor — la etiqueta se queda hasta el final
           const rescatado = !mejor && mp?.rescatado ? mp : null
           const rival = !elim && rivales ? rivales[row.equipo.id] : null
+          const merito = podio && podio[row.equipo.id] ? PODIO[podio[row.equipo.id]] : null
           return (
             <Fragment key={row.equipo.id}>
             {row.equipo.id === primerElim && (
@@ -158,16 +191,23 @@ export default function TablaPosiciones({ titulo, rows, miEquipoId, vacio = 'Sin
             <div onClick={onClickEquipo ? () => onClickEquipo(row) : undefined}
               className="gm-tp-grid gm-tp-fila"
               style={{ padding: '7px 4px', borderRadius: '9px', cursor: onClickEquipo ? 'pointer' : 'default', opacity: sinJugar ? .6 : 1,
-                background: row.enVivo ? 'rgba(255,90,82,.10)' : mejor ? 'rgba(245,166,35,.16)' : elim ? 'rgba(255,90,82,.16)' : esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
-                border: row.enVivo ? '1px solid rgba(255,90,82,.6)' : mejor ? '1px solid rgba(245,166,35,.75)' : elim ? '1px solid rgba(255,90,82,.7)' : esMio ? '1px solid #2e90fa' : '1px solid rgba(127,179,255,.16)' }}>
+                ...(merito ? { boxShadow: merito.brillo } : {}),
+                background: merito ? merito.fondo : row.enVivo ? 'rgba(255,90,82,.10)' : mejor ? 'rgba(245,166,35,.16)' : elim ? 'rgba(255,90,82,.16)' : esMio ? 'rgba(46,144,250,.22)' : 'rgba(255,255,255,.045)',
+                border: merito ? `1px solid ${merito.borde}` : row.enVivo ? '1px solid rgba(255,90,82,.6)' : mejor ? '1px solid rgba(245,166,35,.75)' : elim ? '1px solid rgba(255,90,82,.7)' : esMio ? '1px solid #2e90fa' : '1px solid rgba(127,179,255,.16)' }}>
               {/* Posición */}
-              <div className="gm-tp-pos" style={{ background: mejor ? '#d98a00' : elim ? '#c9362f' : enZona ? '#22b86a' : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0' }}>{i + 1}</div>
+              <div className="gm-tp-pos" style={{ background: merito ? merito.chip : mejor ? '#d98a00' : elim ? '#c9362f' : enZona ? '#22b86a' : '#2e90fa', borderRadius: '6px', color: '#fff', fontWeight: 900, fontSize: '.78rem', textAlign: 'center', padding: '5px 0', ...(merito && podio[row.equipo.id] <= 3 ? { color: merito.texto } : {}) }}>{i + 1}</div>
               {/* Equipo */}
               <div className="gm-tp-eq" style={{ display: 'flex', alignItems: 'center', gap: '7px', minWidth: 0, paddingLeft: '2px' }}>
                 {renderInicioEquipo && renderInicioEquipo(row)}
                 <LogoCircular logo={row.equipo.logo_url} name={row.equipo.name}/>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <span className="gm-tp-name" title={row.equipo.name} style={{ color: mejor ? '#ffd78a' : elim ? '#ffb4ae' : '#fff', fontWeight: esMio ? 800 : 700, fontSize: '.78rem' }}>{row.equipo.name}</span>
+                  <span className="gm-tp-name" title={row.equipo.name} style={{ color: merito ? merito.nombre : mejor ? '#ffd78a' : elim ? '#ffb4ae' : '#fff', fontWeight: esMio || merito ? 800 : 700, fontSize: '.78rem' }}>{row.equipo.name}</span>
+                  {merito && (
+                    <span className={podio[row.equipo.id] === 1 ? 'gm-tp-campeon' : undefined}
+                      style={{ alignSelf: 'flex-start', marginTop: '3px', background: merito.chip, color: merito.texto, fontWeight: 900, fontSize: '.58rem', letterSpacing: '.09em', borderRadius: 4, padding: '2px 7px', boxShadow: podio[row.equipo.id] === 1 ? '0 1px 6px rgba(245,200,75,.45)' : 'none' }}>
+                      {merito.icono} {merito.etiqueta}
+                    </span>
+                  )}
                   {row.enVivo && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '1px', color: ROJO, fontWeight: 800, fontSize: '.58rem', letterSpacing: '.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <PuntoVivo size={6}/> EN VIVO · {row.enVivo.gf}-{row.enVivo.gc}{row.enVivo.rival ? ` vs ${row.enVivo.rival}` : ''}
