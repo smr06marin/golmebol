@@ -84,10 +84,8 @@ function FilaPartido({ p, miId, onPlanillar }) {
 
 function Escenario({ e, abiertoInicial, miId, onPlanillar }) {
   const [abierto, setAbierto] = useState(abiertoInicial)
-  const [filtro, setFiltro] = useState(null) // clave de la cancha elegida, o null = todas
-  const visibles = filtro ? e.canchas.filter(c => c.clave === filtro) : e.canchas
-  const chip = on => ({ minHeight: '40px', padding: '0 14px', borderRadius: '999px', cursor: 'pointer', fontWeight: 800, fontSize: '.85rem', fontFamily: 'inherit',
-    border: `1.5px solid ${on ? G.green : G.border}`, background: on ? G.green : G.card, color: on ? G.greenDk : G.text2 })
+  // Se ven los NOMBRES de las canchas; al tocar una se abren sus partidos (una a la vez). Con una sola cancha, ya abierta.
+  const [canchaAbierta, setCanchaAbierta] = useState(e.canchas.length === 1 ? e.canchas[0].clave : null)
   const total = e.canchas.reduce((n, c) => n + c.partidos.length, 0)
   const sinArbitro = e.canchas.reduce((n, c) => n + c.partidos.filter(p => p.status !== 'finished' && !p.arbitro1_id && !(p.arbitro1 || '').trim()).length, 0)
   return (
@@ -106,25 +104,30 @@ function Escenario({ e, abiertoInicial, miId, onPlanillar }) {
       </button>
       {abierto && (
         <div style={{ padding: '0 14px 6px' }}>
-          {e.canchas.length > 1 && (
-            <div role="group" aria-label="Filtrar por cancha" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-              <button onClick={() => setFiltro(null)} style={chip(!filtro)}>Todas ({total})</button>
-              {e.canchas.map(c => (
-                <button key={c.clave} onClick={() => setFiltro(f => (f === c.clave ? null : c.clave))} style={chip(filtro === c.clave)}>
-                  {c.nombre} ({c.partidos.length})
+          {e.canchas.map(c => {
+            const abiertaC = canchaAbierta === c.clave
+            const sinArb = c.partidos.filter(p => p.status !== 'finished' && !p.arbitro1_id && !(p.arbitro1 || '').trim()).length
+            return (
+              <div key={c.clave} style={{ background: G.card, border: `1.5px solid ${abiertaC ? G.green : G.border}`, borderRadius: '14px', marginBottom: '10px', overflow: 'hidden' }}>
+                <button onClick={() => setCanchaAbierta(k => (k === c.clave ? null : c.clave))} aria-expanded={abiertaC}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', minHeight: '58px', background: 'transparent', border: 'none', color: G.text, cursor: 'pointer', textAlign: 'left' }}>
+                  <MapPin size={18} color={G.green} style={{ flexShrink: 0 }}/>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontWeight: 900, fontSize: '1rem', lineHeight: 1.25 }}>{c.nombre}</span>
+                    <span style={{ display: 'block', fontSize: '.8rem', color: G.muted, marginTop: '2px' }}>
+                      {plural(c.partidos.length, 'partido', 'partidos')}{sinArb > 0 && <> · <b style={{ color: G.gold }}>{sinArb} sin árbitro</b></>}
+                    </span>
+                  </span>
+                  <ChevronDown size={20} color={G.muted} style={{ flexShrink: 0, transition: 'transform .15s', transform: abiertaC ? 'rotate(180deg)' : 'none' }}/>
                 </button>
-              ))}
-            </div>
-          )}
-          {visibles.map(c => (
-            <div key={c.clave} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: '14px', padding: '10px 14px 2px', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', paddingBottom: '6px' }}>
-                <span style={{ fontWeight: 900, fontSize: '.98rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}><MapPin size={15} color={G.green}/> {c.nombre}</span>
-                <span style={{ fontSize: '.8rem', color: G.muted, whiteSpace: 'nowrap' }}>{plural(c.partidos.length, 'partido', 'partidos')}</span>
+                {abiertaC && (
+                  <div style={{ padding: '0 14px 2px' }}>
+                    {c.partidos.map(p => <FilaPartido key={p.id} p={p} miId={miId} onPlanillar={onPlanillar}/>)}
+                  </div>
+                )}
               </div>
-              {c.partidos.map(p => <FilaPartido key={p.id} p={p} miId={miId} onPlanillar={onPlanillar}/>)}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
