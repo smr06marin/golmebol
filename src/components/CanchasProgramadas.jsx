@@ -30,11 +30,24 @@ const COLUMNAS = 'id, tournament_id, played_at, location, cancha_id, status, tip
 // Escenario y cancha de un partido: de la tabla de canchas; si no tiene, del texto «Escenario · Cancha»
 function ubicar(p, canchas) {
   const c = p.cancha_id != null ? canchas[String(p.cancha_id)] : null
-  if (c) return { escenario: (c.escenario || '').trim() || 'Otras canchas', cancha: (c.nombre || '').trim() || 'Cancha' }
+  if (c) return { escenario: (c.escenario || '').trim(), cancha: (c.nombre || '').trim() || 'Cancha' }
   const txt = (p.location || '').trim()
-  if (!txt) return { escenario: 'Sin cancha asignada', cancha: 'Por definir' }
+  if (!txt) return { escenario: SIN_CANCHA, cancha: 'Por definir' }
   const partes = txt.split(/\s+·\s+/)
-  return partes.length > 1 ? { escenario: partes[0], cancha: partes.slice(1).join(' · ') } : { escenario: 'Otras canchas', cancha: txt }
+  return partes.length > 1 ? { escenario: partes[0], cancha: partes.slice(1).join(' · ') } : { escenario: '', cancha: txt }
+}
+
+const SIN_CANCHA = 'Sin cancha asignada'
+const OTRAS = 'Otras canchas'
+// Mismo escenario / misma cancha aunque cada torneo lo haya escrito distinto («GUADUALES» y «Guaduales», con o sin tilde)
+const claveTexto = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+// De las formas en que lo escribieron, la más bonita: la que no está toda en mayúsculas; si todas lo están, se pasa a «Tipo Título»
+function nombreBonito(formas) {
+  const lista = [...formas]
+  const conMinusculas = lista.filter(t => /[a-záéíóúñ]/.test(t))
+  if (conMinusculas.length) return conMinusculas.sort((a, b) => b.length - a.length)[0]
+  const t = lista[0] || ''
+  return t.toLowerCase().replace(/(^|\s)(\S)/g, (m, e, l) => e + l.toUpperCase())
 }
 
 function FilaPartido({ p, miId, onPlanillar }) {
@@ -46,30 +59,35 @@ function FilaPartido({ p, miId, onPlanillar }) {
   else if (mio) chip = { t: 'Tú', c: G.greenDk, bg: G.green }
   else if (arbitro || p.arbitro1_id) chip = { t: arbitro ? arbitro.split(/\s+/).slice(0, 2).join(' ') : 'Con árbitro', c: G.text2, bg: G.soft }
   else chip = { t: 'Sin árbitro', c: G.gold, bg: G.goldBg }
+  // Tres renglones para que los nombres se lean completos en el celular: hora y torneo · equipos · estado y botón
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderTop: `1px solid ${G.border}` }}>
-      <div style={{ width: '64px', flexShrink: 0, fontWeight: 900, fontSize: '.98rem', color: jugado ? G.muted : G.text, whiteSpace: 'nowrap' }}>{p.played_at ? fmtHoraDate(p.played_at) : '—'}</div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: '.95rem', lineHeight: 1.3, color: jugado ? G.text2 : G.text }}>
-          {p.home?.name || '?'} <span style={{ color: G.muted, fontWeight: 600 }}>vs</span> {p.away?.name || '?'}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-          <span style={{ fontSize: '.74rem', fontWeight: 800, color: chip.c, background: chip.bg, borderRadius: '6px', padding: '2px 8px' }}>{chip.t}</span>
-          <span style={{ fontSize: '.76rem', color: G.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{p.tournaments?.name}</span>
-        </div>
+    <div style={{ padding: '12px 0', borderTop: `1px solid ${G.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 }}>
+        <span style={{ fontWeight: 900, fontSize: '1rem', color: jugado ? G.muted : G.text, whiteSpace: 'nowrap' }}>{p.played_at ? fmtHoraDate(p.played_at) : '—'}</span>
+        <span style={{ fontSize: '.8rem', color: G.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>· {p.tournaments?.name}</span>
       </div>
-      {!jugado && (
-        <button onClick={() => onPlanillar(p)}
-          style={{ flexShrink: 0, minHeight: '44px', padding: '0 14px', borderRadius: '12px', border: 'none', background: G.green, color: G.greenDk, fontWeight: 900, fontSize: '.85rem', cursor: 'pointer' }}>
-          Planillar
-        </button>
-      )}
+      <div style={{ fontWeight: 800, fontSize: '1rem', lineHeight: 1.3, marginTop: '3px', color: jugado ? G.text2 : G.text }}>
+        {p.home?.name || '?'} <span style={{ color: G.muted, fontWeight: 600 }}>vs</span> {p.away?.name || '?'}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginTop: '8px' }}>
+        <span style={{ fontSize: '.78rem', fontWeight: 800, color: chip.c, background: chip.bg, borderRadius: '6px', padding: '3px 9px' }}>{chip.t}</span>
+        {!jugado && (
+          <button onClick={() => onPlanillar(p)}
+            style={{ flexShrink: 0, minHeight: '44px', padding: '0 18px', borderRadius: '12px', border: 'none', background: G.green, color: G.greenDk, fontWeight: 900, fontSize: '.88rem', cursor: 'pointer' }}>
+            Planillar
+          </button>
+        )}
+      </div>
     </div>
   )
 }
 
 function Escenario({ e, abiertoInicial, miId, onPlanillar }) {
   const [abierto, setAbierto] = useState(abiertoInicial)
+  const [filtro, setFiltro] = useState(null) // clave de la cancha elegida, o null = todas
+  const visibles = filtro ? e.canchas.filter(c => c.clave === filtro) : e.canchas
+  const chip = on => ({ minHeight: '40px', padding: '0 14px', borderRadius: '999px', cursor: 'pointer', fontWeight: 800, fontSize: '.85rem', fontFamily: 'inherit',
+    border: `1.5px solid ${on ? G.green : G.border}`, background: on ? G.green : G.card, color: on ? G.greenDk : G.text2 })
   const total = e.canchas.reduce((n, c) => n + c.partidos.length, 0)
   const sinArbitro = e.canchas.reduce((n, c) => n + c.partidos.filter(p => p.status !== 'finished' && !p.arbitro1_id && !(p.arbitro1 || '').trim()).length, 0)
   return (
@@ -88,8 +106,18 @@ function Escenario({ e, abiertoInicial, miId, onPlanillar }) {
       </button>
       {abierto && (
         <div style={{ padding: '0 14px 6px' }}>
-          {e.canchas.map(c => (
-            <div key={c.nombre} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: '14px', padding: '10px 14px 2px', marginBottom: '10px' }}>
+          {e.canchas.length > 1 && (
+            <div role="group" aria-label="Filtrar por cancha" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+              <button onClick={() => setFiltro(null)} style={chip(!filtro)}>Todas ({total})</button>
+              {e.canchas.map(c => (
+                <button key={c.clave} onClick={() => setFiltro(f => (f === c.clave ? null : c.clave))} style={chip(filtro === c.clave)}>
+                  {c.nombre} ({c.partidos.length})
+                </button>
+              ))}
+            </div>
+          )}
+          {visibles.map(c => (
+            <div key={c.clave} style={{ background: G.card, border: `1px solid ${G.border}`, borderRadius: '14px', padding: '10px 14px 2px', marginBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px', paddingBottom: '6px' }}>
                 <span style={{ fontWeight: 900, fontSize: '.98rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}><MapPin size={15} color={G.green}/> {c.nombre}</span>
                 <span style={{ fontSize: '.8rem', color: G.muted, whiteSpace: 'nowrap' }}>{plural(c.partidos.length, 'partido', 'partidos')}</span>
@@ -137,19 +165,44 @@ export default function CanchasProgramadas({ miId, onPlanillar }) {
     return () => { vivo = false }
   }, [dia]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Escenario → cancha → partidos (por hora)
+  // Escenario → cancha → partidos (por hora). Se agrupa sin importar mayúsculas ni tildes, así la misma cancha usada por
+  // dos torneos sale junta. Una cancha que un torneo dejó SIN escenario se pone en el escenario donde otro torneo tiene
+  // una cancha con ese mismo nombre (si hay uno solo); si no, va a «Otras canchas».
   const escenarios = useMemo(() => {
-    const mapa = new Map()
+    const esc = new Map() // claveEsc → { formas:Set, canchas: Map(claveCancha → { formas:Set, partidos:[] }) }
+    const sinEscenario = []
     ;(datos?.partidos || []).forEach(p => {
       const u = ubicar(p, datos.canchas || {})
-      if (!mapa.has(u.escenario)) mapa.set(u.escenario, new Map())
-      const cs = mapa.get(u.escenario)
-      if (!cs.has(u.cancha)) cs.set(u.cancha, [])
-      cs.get(u.cancha).push(p)
+      if (!u.escenario) { sinEscenario.push({ p, u }); return }
+      const ke = u.escenario === SIN_CANCHA ? '~sin' : claveTexto(u.escenario)
+      if (!esc.has(ke)) esc.set(ke, { formas: new Set(), canchas: new Map() })
+      const e = esc.get(ke); e.formas.add(u.escenario)
+      const kc = claveTexto(u.cancha)
+      if (!e.canchas.has(kc)) e.canchas.set(kc, { formas: new Set(), partidos: [] })
+      const c = e.canchas.get(kc); c.formas.add(u.cancha); c.partidos.push(p)
     })
-    return [...mapa.entries()]
-      .map(([nombre, cs]) => ({ nombre, canchas: [...cs.entries()].map(([n, ps]) => ({ nombre: n, partidos: ps.sort((a, b) => new Date(a.played_at) - new Date(b.played_at)) })).sort((a, b) => natural(a.nombre, b.nombre)) }))
-      .sort((a, b) => (a.nombre === 'Sin cancha asignada') - (b.nombre === 'Sin cancha asignada') || natural(a.nombre, b.nombre))
+    sinEscenario.forEach(({ p, u }) => {
+      const kc = claveTexto(u.cancha)
+      const donde = [...esc.entries()].filter(([ke, e]) => ke !== '~sin' && e.canchas.has(kc))
+      let e
+      if (donde.length === 1) e = donde[0][1]
+      else {
+        if (!esc.has('~otras')) esc.set('~otras', { formas: new Set([OTRAS]), canchas: new Map() })
+        e = esc.get('~otras')
+      }
+      if (!e.canchas.has(kc)) e.canchas.set(kc, { formas: new Set(), partidos: [] })
+      const c = e.canchas.get(kc); c.formas.add(u.cancha); c.partidos.push(p)
+    })
+    const orden = ke => (ke === '~sin' ? 2 : ke === '~otras' ? 1 : 0)
+    return [...esc.entries()]
+      .sort(([a, ea], [b, eb]) => orden(a) - orden(b) || natural(nombreBonito(ea.formas), nombreBonito(eb.formas)))
+      .map(([ke, e]) => ({
+        clave: ke,
+        nombre: nombreBonito(e.formas),
+        canchas: [...e.canchas.entries()]
+          .map(([kc, c]) => ({ clave: kc, nombre: nombreBonito(c.formas), partidos: c.partidos.sort((a, b) => new Date(a.played_at) - new Date(b.played_at)) }))
+          .sort((a, b) => natural(a.nombre, b.nombre)),
+      }))
   }, [datos])
 
   const totalCanchas = escenarios.reduce((n, e) => n + e.canchas.length, 0)
@@ -168,7 +221,7 @@ export default function CanchasProgramadas({ miId, onPlanillar }) {
         </div>
         <button onClick={() => setDia(d => sumarDias(d, 1))} aria-label="Día siguiente" style={flecha}>›</button>
       </div>
-      {escenarios.map((e, i) => <Escenario key={`${dia}_${e.nombre}`} e={e} abiertoInicial={escenarios.length <= 2 || i === 0} miId={miId} onPlanillar={onPlanillar}/>)}
+      {escenarios.map((e, i) => <Escenario key={`${dia}_${e.clave}`} e={e} abiertoInicial={escenarios.length <= 2 || i === 0} miId={miId} onPlanillar={onPlanillar}/>)}
       {datos && totalPartidos === 0 && (
         <div style={{ textAlign: 'center', color: G.muted, fontSize: '.92rem', padding: '18px 8px' }}>No hay partidos programados este día. Usa las flechas para ver otro día.</div>
       )}
