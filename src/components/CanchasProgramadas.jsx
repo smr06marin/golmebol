@@ -84,8 +84,8 @@ function FilaPartido({ p, miId, onPlanillar }) {
 
 function Escenario({ e, abiertoInicial, miId, onPlanillar }) {
   const [abierto, setAbierto] = useState(abiertoInicial)
-  // Se ven los NOMBRES de las canchas; al tocar una se abren sus partidos (una a la vez). Con una sola cancha, ya abierta.
-  const [canchaAbierta, setCanchaAbierta] = useState(e.canchas.length === 1 ? e.canchas[0].clave : null)
+  // Se ven los NOMBRES de las canchas; al tocar una se abren sus partidos (una a la vez). Todo arranca cerrado.
+  const [canchaAbierta, setCanchaAbierta] = useState(null)
   const total = e.canchas.reduce((n, c) => n + c.partidos.length, 0)
   const sinArbitro = e.canchas.reduce((n, c) => n + c.partidos.filter(p => p.status !== 'finished' && !p.arbitro1_id && !(p.arbitro1 || '').trim()).length, 0)
   return (
@@ -224,7 +224,7 @@ export default function CanchasProgramadas({ miId, onPlanillar }) {
         </div>
         <button onClick={() => setDia(d => sumarDias(d, 1))} aria-label="Día siguiente" style={flecha}>›</button>
       </div>
-      {escenarios.map((e, i) => <Escenario key={`${dia}_${e.clave}`} e={e} abiertoInicial={escenarios.length <= 2 || i === 0} miId={miId} onPlanillar={onPlanillar}/>)}
+      {escenarios.map(e => <Escenario key={`${dia}_${e.clave}`} e={e} abiertoInicial={false} miId={miId} onPlanillar={onPlanillar}/>)}
       {datos && totalPartidos === 0 && (
         <div style={{ textAlign: 'center', color: G.muted, fontSize: '.92rem', padding: '18px 8px' }}>No hay partidos programados este día. Usa las flechas para ver otro día.</div>
       )}
