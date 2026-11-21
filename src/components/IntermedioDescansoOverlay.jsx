@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import PatrocinadorEnVivoOverlay from './PatrocinadorEnVivoOverlay'
+import { useVideoEnLienzo, ESTILO_LIENZO } from '../lib/videoEnLienzo'
 
 // Pantalla automática del DESCANSO, después del marcador grande y la tabla:
 //   jugada (se repite 2 veces) → video de un patrocinador → otra jugada (2 veces) → otro patrocinador → …
@@ -32,6 +33,8 @@ function siguiente(s, nClips, nPatros) {
 
 function ClipJugada({ url, vez, onTerminar }) {
   const ref = useRef(null)
+  const lienzoRef = useRef(null)
+  useVideoEnLienzo(ref, lienzoRef) // si no, en la transmisión la jugada salía como un parche negro
   const alTerminar = useRef(onTerminar)
   useEffect(() => { alTerminar.current = onTerminar })
   useEffect(() => {
@@ -50,6 +53,7 @@ function ClipJugada({ url, vez, onTerminar }) {
         <video ref={ref} src={url} autoPlay playsInline preload="auto"
           onEnded={() => alTerminar.current?.()} onError={() => alTerminar.current?.()}
           style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', background: '#000', boxShadow: '0 8px 30px rgba(0,0,0,.6)' }}/>
+        <canvas ref={lienzoRef} aria-hidden="true" style={{ ...ESTILO_LIENZO, borderRadius: '12px' }}/>
         <div style={{
           position: 'absolute', top: '3%', left: '3%', display: 'flex', alignItems: 'center', gap: '8px', background: '#e5433d', color: '#fff',
           fontFamily: '"Segoe UI", Roboto, Arial, system-ui, sans-serif', fontWeight: 800, fontSize: '15px', letterSpacing: '.1em',

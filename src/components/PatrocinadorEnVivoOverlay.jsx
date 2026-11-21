@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useVideoEnLienzo, ESTILO_LIENZO } from '../lib/videoEnLienzo'
 import { tamanoVideoEfectivo, DURACION_LOGO_MS, DURACION_BANNER_MS, DURACION_MAXIMA_VIDEO_MS } from '../lib/patrocinadorDisparo'
 
 // Publicidad de un patrocinador, encima del video en vivo — disparada a
@@ -82,16 +83,14 @@ function Banners({ patrocinador, onTerminar: alTerminar }) {
     setCompleto(m => ({ ...m, [i]: razon > 1.6 && razon < 1.95 }))
   }
   const listo = completo[i] !== undefined
-  const pantallaCompleta = completo[i] === true
+  // Imagen 16:9 con fondo transparente (el banner ya viene dibujado dentro del cuadro): se muestra del
+  // mismo tamaño de siempre pero SIN sombra ni borde, porque la sombra de toda la imagen dibujaba un recuadro gris.
+  const marcoTransparente = completo[i] === true
   return (
-    <div style={pantallaCompleta
-      ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 3, pointerEvents: 'none' }
-      : { position: 'absolute', left: 0, right: 0, bottom: '3%', zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+    <div style={{ position: 'absolute', left: 0, right: 0, bottom: '3%', zIndex: 3, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
       <style>{'@keyframes gmBannerEntra{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}'}</style>
       <img key={i} src={lista[i]} alt={patrocinador.nombre || ''} onLoad={alCargar}
-        style={pantallaCompleta
-          ? { display: 'block', width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center bottom', animation: 'gmBannerEntra .35s ease-out both' }
-          : { display: 'block', width: 'min(96%, 640px)', maxHeight: '34vh', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.55))', animation: 'gmBannerEntra .35s ease-out both', opacity: listo ? 1 : 0 }}/>
+        style={{ display: 'block', width: 'min(96%, 640px)', maxHeight: '34vh', objectFit: 'contain', filter: marcoTransparente ? 'none' : 'drop-shadow(0 4px 12px rgba(0,0,0,.55))', animation: 'gmBannerEntra .35s ease-out both', opacity: listo ? 1 : 0 }}/>
     </div>
   )
 }
@@ -111,6 +110,9 @@ function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTermina
     const p = v.play()
     if (p && p.catch) p.catch(() => { v.muted = true; v.play().catch(() => onTerminar?.()) }) // sin permiso para sonido: se intenta mudo
   }, [onTerminar])
+  // El video se copia a un lienzo encima (ver videoEnLienzo.js): si no, en la transmisión salía un parche negro.
+  const lienzoRef = useRef(null)
+  useVideoEnLienzo(ref, lienzoRef)
   // Avisa a quien lo muestra cuando el video suena de verdad (para bajarle el volumen al en vivo) y cuando deja de sonar
   useEffect(() => {
     const v = ref.current
@@ -122,16 +124,20 @@ function Video({ patrocinador, tamano, descanso, silencio, onTerminar: alTermina
   }, [avisarSonido])
   if (!patrocinador.video_url) return null
   const video = (
-    <video ref={ref} src={patrocinador.video_url} autoPlay playsInline muted={!!silencio} preload="auto"
-      onEnded={() => onTerminar?.()} onError={() => onTerminar?.()}
-      style={grande
-        ? { display: 'block', maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', background: '#000', boxShadow: '0 8px 30px rgba(0,0,0,.6)' }
-        : { display: 'block', maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', background: '#000' }}/>
+    <>
+      <video ref={ref} src={patrocinador.video_url} autoPlay playsInline muted={!!silencio} preload="auto"
+        onEnded={() => onTerminar?.()} onError={() => onTerminar?.()}
+        style={grande
+          ? { display: 'block', maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', background: '#000', boxShadow: '0 8px 30px rgba(0,0,0,.6)' }
+          : { display: 'block', maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', background: '#000' }}/>
+      <canvas ref={lienzoRef} aria-hidden="true"
+        style={{ ...ESTILO_LIENZO, borderRadius: grande ? '12px' : '8px' }}/>
+    </>
   )
   if (grande) {
     return (
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)', pointerEvents: 'none', padding: '5%', boxSizing: 'border-box' }}>
-        <div style={{ width: 'min(100%, 760px)', maxHeight: '100%', display: 'flex', justifyContent: 'center' }}>{video}</div>
+        <div style={{ position: 'relative', width: 'min(100%, 760px)', maxHeight: '100%', display: 'flex', justifyContent: 'center' }}>{video}</div>
       </div>
     )
   }
