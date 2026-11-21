@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import FotoEncuadrada from './FotoEncuadrada'
 
 // ── Ranking estilo "poster" (como los flyers del torneo) ────────────────────
 // Los primeros 3 se ven en franjas oscuras grandes: nombre en mayúsculas a la
-// izquierda, la foto de la tarjeta del jugador al centro (si no tiene foto,
+// izquierda, la foto del jugador al centro encuadrada en su cara (si no tiene foto,
 // aparece un muñeco) y el escudo del equipo a la derecha. Del 4° en adelante
 // son filas compactas sin foto. Se muestran 10 y una flecha despliega el resto.
 //
@@ -68,7 +69,7 @@ function FilaTop({ r, pos, statColor, statLabel, onClick }) {
       {/* Foto de la tarjeta (o muñeco si no tiene) */}
       <div style={{ width: '104px', flexShrink: 0, background: '#1a2030', overflow: 'hidden', display: 'flex', alignItems: r.foto ? 'stretch' : 'flex-end', justifyContent: 'center' }}>
         {r.foto
-          ? <img src={r.foto} alt={r.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}/>
+          ? <FotoEncuadrada url={r.foto} alt={r.nombre} ancho={104} alto={92}/>
           : <Muneco size={62}/>}
       </div>
       {/* Escudo del equipo */}
