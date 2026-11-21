@@ -961,7 +961,7 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
   // organizador antes de las eliminaciones directas), o 2) perdió su llave ya
   // terminada. Mientras su partido no se juegue, nadie más sale eliminado.
   // Los que juegan final o tercer puesto no se marcan.
-  const MEJORES_PERDEDORES = 2 // cuántos "mejores perdedores" se marcan cuando termina una fase
+  const MEJORES_PERDEDORES = 2 // cuántos "mejores perdedores" se marcan cuando termina una fase (si el torneo los usa)
   const { eliminadosIds, rivalDe, mejoresPerdedores } = (() => {
     const elim = new Set(), rival = {}, mejores = {}
     const porFase = bracket.length > 0 ? getLlavesPorFaseElim() : {}
@@ -977,6 +977,15 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     if (clasificacion) {
       const clasificados = idsClasificados(clasificacion, { grupos, tablaDeGrupo: getTablaGrupo, tablaGeneral: tablaOrdenada })
       if (clasificados.size > 0) equipos.forEach(eq => { if (!clasificados.has(eq.id) && !enBracket.has(eq.id)) elim.add(eq.id) })
+    } else {
+      // El organizador no respondió cuántos clasificaron (torneos de antes de esa pregunta): se deduce de los partidos.
+      // Si la PRIMERA fase de eliminación ya tiene todas sus llaves creadas (octavos 8, cuartos 4, semifinal 2,
+      // final 1) o ya hay una fase siguiente, quien no tiene ningún partido de eliminación directa no clasificó.
+      const LLAVES_FASE = { octavos: 8, cuartos: 4, semifinal: 2, final: 1 }
+      const fasesConLlaves = FASE_ORDEN_ELIM.filter(f => (porFase[f] || []).some(ll => !esTercer(ll)))
+      const primera = fasesConLlaves[0]
+      const completa = primera && ((porFase[primera] || []).filter(ll => !esTercer(ll)).length >= (LLAVES_FASE[primera] || Infinity) || fasesConLlaves.length > 1)
+      if (completa) equipos.forEach(eq => { if (!enBracket.has(eq.id)) elim.add(eq.id) })
     }
     // 2) Los que perdieron su llave
     const perdedoresPorFase = {}
@@ -1032,13 +1041,19 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
     // 1) perdió con menos diferencia de gol, 2) hizo más goles, 3) está más arriba en la tabla general.
     const faseTerminada = f => (porFase[f] || []).filter(ll => !esTercer(ll)).every(ll => ll.terminada && ll.ganador)
     const ultimaFase = ['octavos', 'cuartos', 'semifinal'].filter(f => porFase[f] && faseTerminada(f)).pop()
-    if (ultimaFase && perdedoresPorFase[ultimaFase]) {
+    // Solo si el torneo USA mejores perdedores: ya tiene un partido de "mejor perdedor", o la fase terminó con un número
+    // IMPAR de ganadores (hace falta un perdedor más para armar la siguiente ronda). Si no, los perdedores quedan
+    // eliminados sin más.
+    const hayPartidoMejorPerdedor = bracket.some(esPartidoMejorPerdedor)
+    const ganadoresUltima = ultimaFase ? (porFase[ultimaFase] || []).filter(ll => !esTercer(ll)).length : 0
+    const cuantosMejores = hayPartidoMejorPerdedor ? MEJORES_PERDEDORES : (ganadoresUltima % 2 === 1 && ganadoresUltima > 1 ? 1 : 0)
+    if (ultimaFase && perdedoresPorFase[ultimaFase] && cuantosMejores > 0) {
       const puestoGeneral = {}
       tablaOrdenada.forEach((r, i) => { puestoGeneral[r.equipo.id] = i })
       perdedoresPorFase[ultimaFase]
         .filter(x => elim.has(x.id) && !yaJugoMejorPerdedor.has(x.id))
         .sort((a, b) => a.dif - b.dif || b.gf - a.gf || (puestoGeneral[a.id] ?? 999) - (puestoGeneral[b.id] ?? 999))
-        .slice(0, MEJORES_PERDEDORES)
+        .slice(0, cuantosMejores)
         .forEach((x, i) => { mejores[x.id] = { ...(mejores[x.id] || {}), puesto: i + 1, dif: x.dif, gf: x.gf } })
     }
     return { eliminadosIds: elim, rivalDe: rival, mejoresPerdedores: mejores }
