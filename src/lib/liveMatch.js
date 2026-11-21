@@ -453,6 +453,38 @@ export function partidoActivoDeStream(stream, partidosDisponibles) {
   return elegirPartidoActivo(candidatos)
 }
 
+// Qué transmisión (YouTube/Facebook) le corresponde a cada partido que se está jugando ahora — para poner el botón
+// "Ver en YouTube" dentro del partido (Partidos de hoy y minuto a minuto) y el marcador en la tarjeta EN VIVO.
+//  · Primero las transmisiones ligadas al partido (torneo_auto / cancha_auto / partidos escogidos).
+//  · Si queda UNA transmisión en vivo sin partido y UN partido en vivo sin transmisión, se emparejan (pasa cuando el
+//    organizador transmite desde un canal ligado a otro torneo o sin escoger partido).
+// `streams` deben ser solo las que están transmitiendo de verdad. Devuelve { porPartido: Map(matchId → stream),
+// porStream: Map(streamId → partido) }.
+export function emparejarStreamsPartidos(streams, partidosVivo) {
+  const porPartido = new Map(), porStream = new Map()
+  const vivos = (partidosVivo || []).filter(p => p?.id && (p.vivo || derivarEnVivo(p)))
+  const sueltos = []
+  for (const s of streams || []) {
+    if (!s?.url) continue
+    const p = partidoActivoDeStream(s, vivos)
+    if (p) {
+      porStream.set(s.id, p)
+      if (!porPartido.has(p.id)) porPartido.set(p.id, s)
+    } else sueltos.push(s)
+  }
+  const sinStream = vivos.filter(p => !porPartido.has(p.id))
+  if (sueltos.length === 1 && sinStream.length === 1) {
+    porPartido.set(sinStream[0].id, sueltos[0])
+    porStream.set(sueltos[0].id, sinStream[0])
+  }
+  return { porPartido, porStream }
+}
+
+// "YouTube" / "Facebook" / "Instagram" según el link de la transmisión.
+export function plataformaDeStream(url) {
+  return /facebook\.com|fb\.watch/i.test(url || '') ? 'Facebook' : /instagram\.com/i.test(url || '') ? 'Instagram' : 'YouTube'
+}
+
 // Lo que muestra el marcador del VIDEO de una transmisión, combinando la planilla del árbitro y lo que se suma desde el panel
 // de control — todo vive únicamente en site_config.en_vivo_control[streamId].marcador_ctrl y NO toca partidos, resultados,
 // goleadores ni tablas:

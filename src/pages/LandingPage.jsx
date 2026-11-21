@@ -6,7 +6,7 @@ import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp, FaYoutube } from 'react-
 import PatrocinadoresFranja from '../components/PatrocinadoresFranja'
 import { digitosWhatsapp } from '../lib/telefonoCo'
 import { supabase } from '../lib/supabase'
-import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream } from '../lib/liveMatch'
+import { derivarEnVivo, extraerGoles, extraerTarjetas, buscarPartidoHermano, marcadorGlobal, derivarColoresUniforme, derivarFaltasYTarjetas, streamTieneMarcador, partidoActivoDeStream, emparejarStreamsPartidos, plataformaDeStream } from '../lib/liveMatch'
 import { registrarVisita } from '../lib/visitas'
 import { usePresenciaSitio } from '../lib/presenciaSitio'
 import { useIntervaloVisible } from '../lib/useIntervaloVisible'
@@ -115,7 +115,7 @@ function Escudo({ logo_url, name, size = 40, radius = 10, urgente = false }) {
 
 // Tarjeta de una transmisión en vivo: liviana (no descarga el video). Al tocarla se abre YouTube / Facebook / Instagram.
 function TarjetaEnVivo({ stream, partido }) {
-  const plataforma = /facebook\.com|fb\.watch/i.test(stream.url) ? 'Facebook' : /instagram\.com/i.test(stream.url) ? 'Instagram' : 'YouTube'
+  const plataforma = plataformaDeStream(stream.url)
   const v = partido?.vivo
   const sigla = n => (n || '?').split(/\s+/).map(w => w[0]).join('').substring(0, 2).toUpperCase()
   return (
@@ -185,7 +185,7 @@ function eventosDelPartido(m) {
 // se lee del mismo snapshot que ya sube en tiempo real la planilla del
 // árbitro (matches.live_state / live_state_rapida), sin depender de que el
 // jugador quede registrado en el torneo.
-function LiveMatchDetalle({ m, onClose, onVerTorneo }) {
+function LiveMatchDetalle({ m, onClose, onVerTorneo, stream }) {
   // Bloquear el scroll del fondo mientras el modal está abierto: si no, en
   // Android el gesto de scroll dentro del modal se "escapa" hacia la página
   // de atrás apenas llega al borde (scroll chaining) y rebota, dando la
@@ -240,6 +240,13 @@ function LiveMatchDetalle({ m, onClose, onVerTorneo }) {
             <div style={{ color: S.text, fontWeight: 800, fontSize: '.82rem', marginTop: '8px' }}>{m.away?.name}</div>
           </div>
         </div>
+
+        {stream?.url && (
+          <a href={stream.url} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: plataformaDeStream(stream.url) === 'YouTube' ? '#ff0033' : '#1877f2', color: '#fff', fontWeight: 900, fontSize: '1.05rem', borderRadius: '14px', minHeight: '54px', padding: '0 18px', textDecoration: 'none', marginBottom: '16px' }}>
+            ▶&nbsp; Ver en {plataformaDeStream(stream.url)}
+          </a>
+        )}
 
         <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: '14px', padding: '16px' }}>
           <div style={{ fontSize: '.66rem', fontWeight: 800, color: S.muted, letterSpacing: '.08em', marginBottom: '10px', textAlign: 'center' }}>MINUTO A MINUTO</div>
@@ -540,6 +547,8 @@ export default function LandingPage({ modo = 'inicio' }) {
     return streamsResueltos.filter(s => esYouTube(s.url) ? (s.deCanal || videosYTVivos[s.id] === true) : conPartido.includes(s.id))
   }, [streamsResueltos, clavePartidoStream, videosYTVivos])
   const streamsVisibles = streamsVivos
+  // Qué transmisión va con cada partido en vivo (botón "Ver en YouTube" dentro del partido y marcador en la tarjeta).
+  const emparejados = useMemo(() => emparejarStreamsPartidos(streamsVivos, partidosVivo), [streamsVivos, partidosVivo])
   const hayVivoAhora = partidosVivo.length > 0 || streamsVisibles.length > 0
   usePresenciaSitio(streamsVisibles.length > 0) // cuenta de personas en el sitio (semáforo del admin)
   // Con algo en vivo: partidos cada 20 s; sin nada en vivo basta cada minuto. El panel de control (repetición/tabla/goles)
@@ -1065,7 +1074,7 @@ export default function LandingPage({ modo = 'inicio' }) {
             </span>
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {streamsVivos.map(s => <TarjetaEnVivo key={s.id} stream={s} partido={partidoActivoDeStream(s, partidosVivo)}/>)}
+            {streamsVivos.map(s => <TarjetaEnVivo key={s.id} stream={s} partido={emparejados.porStream.get(s.id) || null}/>)}
           </div>
         </div>
       )}
@@ -1226,7 +1235,7 @@ export default function LandingPage({ modo = 'inicio' }) {
       {!soloTorneos && (<>
       {/* ── Partidos (hoy / por día) con los que están en vivo ya incluidos; "VER EN VIVO" del inicio baja hasta acá ── */}
       <div ref={vivoRef}>
-        <PartidosDelDia partidosVivo={partidosVivo} onVerDetalleVivo={setDetalleVivoId} senalVivo={senalVivo}/>
+        <PartidosDelDia partidosVivo={partidosVivo} onVerDetalleVivo={setDetalleVivoId} senalVivo={senalVivo} streamPorPartido={emparejados.porPartido}/>
       </div>
 
       {/* ── Escenarios / Escuelas ── */}
@@ -1331,7 +1340,7 @@ export default function LandingPage({ modo = 'inicio' }) {
       </div>
 
       {detalleVivoId && partidosVivo.some(p => p.id === detalleVivoId) && (
-        <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} onClose={() => setDetalleVivoId(null)}
+        <LiveMatchDetalle m={partidosVivo.find(p => p.id === detalleVivoId)} stream={emparejados.porPartido.get(detalleVivoId)} onClose={() => setDetalleVivoId(null)}
           onVerTorneo={() => { const tid = partidosVivo.find(p => p.id === detalleVivoId)?.tournament_id; setDetalleVivoId(null); if (tid) { prefetchTorneoPublico(tid); navigate('/t/' + tid) } }}/>
       )}
 
