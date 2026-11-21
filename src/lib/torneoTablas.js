@@ -58,7 +58,7 @@ export function enVivoDe(p, esLocal, nombreRival) {
     : { gf: p.away_score || 0, gc: p.home_score || 0, rival: nombreRival || p.home?.name || '' }
 }
 
-// Forma reciente de cada equipo: sus últimos 5 resultados ya jugados, del más
+// Forma de cada equipo: TODOS sus resultados ya jugados (fase de grupos), del más
 // viejo al más nuevo, como 'G' (ganó), 'E' (empató), 'P' (perdió), 'W' (ganó
 // por W) o 'WP' (perdió por W — no se presentó). Los partidos que vienen de la
 // base ya llegan ordenados por played_at; acá solo se descartan los que no han
@@ -78,7 +78,7 @@ export function agregarForma(filas, partidos) {
       ;(forma[p.home_team_id] = forma[p.home_team_id] || []).push(letra(l, v))
       ;(forma[p.away_team_id] = forma[p.away_team_id] || []).push(letra(v, l))
     })
-  filas.forEach(f => { f.forma = (forma[f.equipo.id] || []).slice(-5) })
+  filas.forEach(f => { f.forma = forma[f.equipo.id] || [] })
   return filas
 }
 
