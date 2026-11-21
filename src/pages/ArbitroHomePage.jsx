@@ -6,6 +6,7 @@ import { LogOut, Shield, Download, Check, MapPin, Printer, X, AlertTriangle, Cli
 import PlanillaSegunPartido from '../components/PlanillaSegunPartido'
 import InformeSolo from '../components/planillaRapida/InformeSolo'
 import BannerCaja, { BotonCuentaDelDia } from '../components/CajaDelDia'
+import CanchasProgramadas from '../components/CanchasProgramadas'
 import { PaginaPanel, CuerpoPanel, EncabezadoPanel, Saludo, TarjetaPanel, CifrasPanel, BarraPanel, BotonVerde, FilaPanel, AvisoPanel, MasOpciones, G } from '../components/PanelUI'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { aplicarAliasMultiTorneo } from '../lib/nombresTorneo'
@@ -146,6 +147,22 @@ export default function ArbitroHomePage() {
     // Partido ya cerrado que se vuelve a abrir (corregir algo): se marca en la URL para que, si el celular recarga,
     // la restauración no la cierre sola por estar "finished".
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('planilla', p.id); if (p.status === 'finished') n.set('reabierta', '1'); else n.delete('reabierta'); return n }, { replace: true })
+  }
+  // Desde «Canchas programadas»: cualquier partido que no se haya jugado, aunque no esté asignado a este árbitro.
+  // Se trae el partido completo (y fresco) antes de abrir la planilla.
+  async function planillarDesdeCanchas(p) {
+    const otro = (p.arbitro1 || '').trim() && p.arbitro1_id !== arbitro?.id ? p.arbitro1.trim() : ''
+    const aviso = otro ? `\n\nOjo: este partido lo tiene asignado ${otro}.` : ''
+    if (!window.confirm(`¿Vas a planillar ${p.home?.name || 'Local'} vs ${p.away?.name || 'Visitante'}?\n${p.tournaments?.name || ''}${aviso}`)) return
+    let fresco = null
+    try {
+      const { data } = await supabase.from('matches')
+        .select('*, tournaments(id,name,modalidad), home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
+        .eq('id', p.id).single()
+      fresco = data ? (await aplicarAliasMultiTorneo([data]))[0] : null
+    } catch (e) { /* sin señal: se abre con lo que se tiene */ }
+    if (fresco?.status === 'finished') { window.alert('Este partido ya se cerró.'); return }
+    abrirPlanilla(fresco || p)
   }
   async function reabrirPlanilla(p) {
     if (!window.confirm('Vas a volver a abrir una planilla que ya estaba cerrada.\n\nSolo hazlo para corregir un error. El resultado guardado se mantiene hasta que guardes los cambios, y queda registrado que se editó después del cierre.\n\n¿Abrir la planilla?')) return
@@ -371,6 +388,9 @@ export default function ArbitroHomePage() {
 
         {/* Mi caja: cobros del día (solo torneos que cobran en cancha) */}
         <BannerCaja partidos={partidos}/>
+
+        {/* Todas las canchas con partidos (escenario → cancha → partidos): para no esperar a que lo designen */}
+        <CanchasProgramadas miId={arbitro?.id} onPlanillar={planillarDesdeCanchas}/>
 
         <div style={{ fontSize:'.76rem', fontWeight:800, letterSpacing:'.08em', textTransform:'uppercase', color:G.muted, margin:'6px 4px 8px' }}>Todos mis partidos</div>
         {/* Tabs */}
