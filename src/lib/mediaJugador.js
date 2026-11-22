@@ -8,8 +8,12 @@ import { armarLista, obtenerAgregado } from './rankingsJugadores'
 // de los demás (0 = el peor, 1 = el mejor), se ponderan y se pasa a la escala 40–99:
 //   JUGADOR DE CAMPO: goles por partido 30% · % de partidos ganados 22% · MVP por partido 15% · partidos jugados 13%
 //                     · goles en total 10% · TÍTULOS 10%
-//   ARQUERO:          goles recibidos por partido 30% (menos es mejor) · arcos en cero por partido 18%
-//                     · % de partidos ganados 18% · partidos jugados 12% · TÍTULOS 12% · MVP por partido 10%
+//   ARQUERO:          goles recibidos por partido 25% (menos es mejor) · PARTIDOS JUGADOS 22% · arcos en cero (total) 15%
+//                     · % de partidos ganados 15% · TÍTULOS 13% · MVP por partido 10%
+//   Al arquero se le da MUCHO valor a los partidos jugados: un arquero con pocos partidos y pocos goles recibidos no
+//   puede quedar por encima de uno que ha atajado muchos partidos. Por eso, además del 22%, sus promedios se acercan
+//   mucho más al promedio de todos mientras tenga pocos partidos (K = 8 partidos de referencia; al de campo, K = 2),
+//   y los arcos en cero cuentan por TOTAL (más partidos → más arcos en cero), no por partido.
 //   TÍTULOS: campeón vale 3, subcampeón 2 y tercer puesto 1 (los que guardó el organizador al cerrar cada torneo).
 // Además arma el "por qué" (en qué está fuerte y qué lo baja) y RETOS para subirla: simula sus próximos partidos
 // ("si haces 3 goles en tus próximos 3 partidos tu media pasa de 74 a 76") contra los mismos rivales de siempre.
@@ -37,9 +41,10 @@ const VALOR_TITULO = { campeon: 3, campeonato: 3, subcampeon: 2, final: 2, terce
 
 // Los campos pj, goles, recibidos, pg, mvp, ceros y titulos ya vienen CON el peso del tiempo; los números de verdad
 // (para mostrar) van en j.real. Los promedios se "acercan" al de todos con K partidos de referencia (ver arriba).
-const K = 2
-const prom = (j, campo, ref) => ((j[campo] || 0) + K * ref) / ((j.pj || 0) + K)
+const K_CAMPO = 2, K_ARQUERO = 8
 function componentes(tipo, ref) {
+  const K = tipo === 'campo' ? K_CAMPO : K_ARQUERO
+  const prom = (j, campo, r) => ((j[campo] || 0) + K * r) / ((j.pj || 0) + K)
   if (tipo === 'campo') return [
     { k: 'gpp',   peso: .30, nombre: 'Goles por partido',   valor: j => prom(j, 'goles', ref.gpp), mejorMayor: true,  ver: v => v.toFixed(1) },
     { k: 'efic',  peso: .22, nombre: 'Partidos ganados',    valor: j => prom(j, 'pg', ref.efic),   mejorMayor: true,  ver: v => `${Math.round(v * 100)}%` },
@@ -49,11 +54,11 @@ function componentes(tipo, ref) {
     { k: 'titulos', peso: .10, nombre: 'Títulos',           valor: j => j.titulos || 0,            mejorMayor: true,  ver: (v, j) => verTitulos(j.real) },
   ]
   return [
-    { k: 'rpp',   peso: .30, nombre: 'Goles recibidos por partido', valor: j => prom(j, 'recibidos', ref.rpp), mejorMayor: false, ver: v => v.toFixed(1) },
-    { k: 'ceros', peso: .18, nombre: 'Arcos en cero',       valor: j => prom(j, 'ceros', ref.ceros), mejorMayor: true,  ver: (v, j) => `${j.real.ceros}` },
-    { k: 'efic',  peso: .18, nombre: 'Partidos ganados',    valor: j => prom(j, 'pg', ref.efic),     mejorMayor: true,  ver: v => `${Math.round(v * 100)}%` },
-    { k: 'pj',    peso: .12, nombre: 'Partidos jugados',    valor: j => j.pj,                        mejorMayor: true,  ver: (v, j) => `${j.real.pj}` },
-    { k: 'titulos', peso: .12, nombre: 'Títulos',           valor: j => j.titulos || 0,              mejorMayor: true,  ver: (v, j) => verTitulos(j.real) },
+    { k: 'rpp',   peso: .25, nombre: 'Goles recibidos por partido', valor: j => prom(j, 'recibidos', ref.rpp), mejorMayor: false, ver: v => v.toFixed(1) },
+    { k: 'pj',    peso: .22, nombre: 'Partidos jugados',    valor: j => j.pj,                        mejorMayor: true,  ver: (v, j) => `${j.real.pj}` },
+    { k: 'ceros', peso: .15, nombre: 'Arcos en cero',       valor: j => j.ceros || 0,                mejorMayor: true,  ver: (v, j) => `${j.real.ceros}` },
+    { k: 'efic',  peso: .15, nombre: 'Partidos ganados',    valor: j => prom(j, 'pg', ref.efic),     mejorMayor: true,  ver: v => `${Math.round(v * 100)}%` },
+    { k: 'titulos', peso: .13, nombre: 'Títulos',           valor: j => j.titulos || 0,              mejorMayor: true,  ver: (v, j) => verTitulos(j.real) },
     { k: 'mvp',   peso: .10, nombre: 'Veces MVP',           valor: j => prom(j, 'mvp', ref.mvp),     mejorMayor: true,  ver: (v, j) => `${j.real.mvp}` },
   ]
 }
