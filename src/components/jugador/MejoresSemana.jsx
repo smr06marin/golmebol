@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Star, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { J, FD, FT, HEXAGONO } from './juegoEstilo'
 import { Desplegable, Escudo } from './juegoUI'
-import { semanaAtras, nombreSemana, cargarMejoresSemana, porQue } from '../../lib/mejoresSemana'
+import { semanaAtras, nombreSemana, diaCorto, proximaPublicacion, cargarMejoresSemana, porQue } from '../../lib/mejoresSemana'
 
 // ── Lo mejor de la semana: Top 5 de jugadores, arqueros, equipos y partidos ──────────────────────
-// Todos los torneos juntos, de lunes a domingo. Por defecto se ve la semana que ya terminó y con las flechas se
-// ven las anteriores. Cada puesto trae una frase corta de POR QUÉ salió ahí (y cuánto le sacó al de abajo).
+// Todos los torneos juntos, de lunes 12:00 a. m. a domingo 11:59 p. m. Cada semana se publica el lunes siguiente a la
+// 1:00 p. m. (ver semanaAtras en lib/mejoresSemana.js); con las flechas se ven las anteriores.
+// NO se muestran puntos: solo los 5 mejores y una frase corta de POR QUÉ salió cada uno.
 // Si el jugador (o su equipo) salió, se resalta con "TÚ" / "TU EQUIPO" y se avisa en el resumen de la sección.
 
 const PESTANAS = [
@@ -34,7 +35,7 @@ function Puesto({ i }) {
 }
 
 // Una fila del Top 5 (jugador, arquero o equipo)
-function FilaTop({ i, foto, escudo, nombre, sub, datos, pts, frase, soyYo, etiquetaYo }) {
+function FilaTop({ i, foto, escudo, nombre, sub, datos, frase, soyYo, etiquetaYo }) {
   const c = COLOR_PUESTO[i]
   const primero = i === 0
   return (
@@ -48,11 +49,7 @@ function FilaTop({ i, foto, escudo, nombre, sub, datos, pts, frase, soyYo, etiqu
         <div style={{ flex: 1, minWidth: 0 }}>
           {soyYo && <span style={{ display: 'inline-block', fontSize: '.72rem', fontWeight: 900, color: J.greenDk, background: J.green, borderRadius: 999, padding: '1px 8px', marginBottom: 3 }}>{etiquetaYo}</span>}
           <div style={{ fontSize: primero ? '1.1rem' : '1.02rem', fontWeight: 900, lineHeight: 1.2 }}>{nombre}</div>
-          {sub && <div style={{ fontSize: '.86rem', color: J.text2, marginTop: 2, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
-        </div>
-        <div style={{ textAlign: 'center', flexShrink: 0 }}>
-          <div style={{ fontFamily: FD, fontSize: primero ? '2.2rem' : '1.8rem', lineHeight: .9, color: i < 3 ? c : J.text }}>{pts}</div>
-          <div style={{ fontSize: '.72rem', fontWeight: 800, color: J.muted }}>PUNTOS</div>
+          {sub && <div style={{ fontSize: '.86rem', color: J.text2, marginTop: 2, lineHeight: 1.3 }}>{sub}</div>}
         </div>
       </div>
       {datos && <div style={{ position: 'relative', display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>{datos.map(d => <span key={d} style={{ fontSize: '.86rem', fontWeight: 800, color: J.text, background: 'rgba(255,255,255,.07)', borderRadius: 999, padding: '2px 10px' }}>{d}</span>)}</div>}
@@ -96,14 +93,14 @@ function FilaPartidoTop({ i, m, frase, esMio }) {
 }
 
 const EXPLICACION = {
-  jugadores: 'Gol: 3 puntos · Victoria: 2 · Empate: 1 · MVP: 4 · Amarilla o azul: −1 · Roja: −3',
-  arqueros:  'Arco en cero: 5 puntos · Victoria: 2 · Empate: 1 · MVP: 4 · Gol del arquero: 3 · Recibir pocos goles: 0 goles +3, 1 gol +2, 2 goles +1',
-  equipos:   'Victoria: 3 puntos · Empate: 1 · Más la diferencia de gol de la semana',
-  partidos:  'Un punto por cada gol · +4 si se definió por 1 gol o menos · +1 si fue empate · +2 si era de eliminación · +4 si hubo remontada (solo cuando el partido se planilló con el cronómetro: si los goles no tienen minuto, no se puede saber)',
+  jugadores: 'Se tienen en cuenta los goles, los partidos ganados, las veces que fue MVP y las tarjetas (las tarjetas restan). Cuentan todos sus partidos de la semana, en todos sus equipos y torneos.',
+  arqueros:  'Se tienen en cuenta los arcos en cero, los pocos goles recibidos, los partidos ganados, si fue MVP y si hizo gol.',
+  equipos:   'Se tienen en cuenta los partidos ganados y empatados y la diferencia de goles de la semana.',
+  partidos:  'Se tienen en cuenta los goles, si fue parejo (se definió por un gol o empate), si era de eliminación y si hubo remontada. La remontada solo se sabe si el partido se planilló con el cronómetro.',
 }
 
 export default function MejoresSemana({ playerId, misEquipos = [] }) {
-  const [atras, setAtras] = useState(1)
+  const [atras, setAtras] = useState(1)          // 1 = la última semana publicada
   const [pestana, setPestana] = useState('jugadores')
   const [datos, setDatos] = useState(null)       // { clave, ...resultado }
   const [error, setError] = useState(false)
@@ -115,7 +112,10 @@ export default function MejoresSemana({ playerId, misEquipos = [] }) {
     let vivo = true
     const t = setTimeout(() => {
       cargarMejoresSemana(semanaAtras(atras))
-        .then(r => { if (vivo) { setDatos({ ...r, atras }); setError(false) } })
+        .then(r => {
+          if (!vivo) return
+          setDatos({ ...r, atras }); setError(false)
+        })
         .catch(() => { if (vivo) setError(true) })
     }, atras === 1 ? 600 : 0)   // la primera vez espera un poquito: lo importante del inicio carga primero
     return () => { vivo = false; clearTimeout(t) }
@@ -138,15 +138,9 @@ export default function MejoresSemana({ playerId, misEquipos = [] }) {
     ? (error ? 'No se pudo cargar. Ábrela para intentar de nuevo.' : `Semana del ${nombreSemana(semana)}`)
     : logros.length > 0
       ? <b style={{ color: J.gold }}>🎉 ¡Saliste! {logros.join(' · ')}</b>
-      : datos.partidosJugados === 0 ? `Semana del ${nombreSemana(semana)} · sin partidos` : `Top 5 de la semana del ${nombreSemana(semana)}`
+      : datos.partidosJugados === 0 ? `Semana del ${nombreSemana(semana)} · sin partidos` : `Los 5 mejores del ${nombreSemana(semana)}`
 
   const lista = listo ? datos[pestana] : []
-  // Mi puesto en la pestaña actual si no salí en el Top 5 (para animar)
-  const miPuestoFuera = !listo ? null
-    : pestana === 'jugadores' && pJug > 5 ? `Tú quedaste #${pJug} de ${datos.totalJugadores} jugadores.`
-    : pestana === 'arqueros' && pArq > 5 ? `Tú quedaste #${pArq} de ${datos.totalArqueros} arqueros.`
-    : pestana === 'equipos' && pEq > 5 && pEq !== Infinity ? `Tu equipo quedó #${pEq} de ${datos.totalEquipos}.`
-    : null
 
   return (
     <Desplegable id="semana" icono={<Star size={22} color={J.gold} strokeWidth={2.5}/>} color={J.gold} titulo="Lo mejor de la semana" resumen={resumen} retraso={.08}
@@ -159,13 +153,20 @@ export default function MejoresSemana({ playerId, misEquipos = [] }) {
         </button>
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: '.8rem', fontWeight: 800, color: J.muted, textTransform: 'uppercase', letterSpacing: '.06em' }}>{atras === 1 ? 'Semana pasada' : `Hace ${atras} semanas`}</div>
-          <div style={{ fontSize: '1.02rem', fontWeight: 900 }}>{nombreSemana(semana)}</div>
+          <div style={{ fontSize: '.92rem', fontWeight: 900, lineHeight: 1.35 }}>Desde el {diaCorto(semana.inicio)} <span style={{ whiteSpace: 'nowrap', color: J.text2, fontWeight: 700 }}>· 12:00 a.m.</span></div>
+          <div style={{ fontSize: '.92rem', fontWeight: 900, lineHeight: 1.35 }}>hasta el {diaCorto(semana.fin - 1)} <span style={{ whiteSpace: 'nowrap', color: J.text2, fontWeight: 700 }}>· 11:59 p.m.</span></div>
         </div>
         <button type="button" onClick={() => setAtras(a => Math.max(1, a - 1))} disabled={atras <= 1} aria-label="Semana siguiente" className="gj-boton"
           style={{ width: 42, height: 42, flexShrink: 0, borderRadius: 12, border: `1px solid ${J.linea}`, background: 'rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: atras <= 1 ? .35 : 1 }}>
           <ChevronRight size={22} color={J.text}/>
         </button>
       </div>
+
+      {atras === 1 && (
+        <div style={{ textAlign: 'center', fontSize: '.86rem', fontWeight: 700, color: J.gold, margin: '-2px 0 10px' }}>
+          🕐 La próxima sale el {diaCorto(proximaPublicacion())} <span style={{ whiteSpace: 'nowrap' }}>a la 1:00 p.m.</span>
+        </div>
+      )}
 
       {/* Pestañas */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginBottom: 12 }}>
@@ -194,25 +195,25 @@ export default function MejoresSemana({ playerId, misEquipos = [] }) {
         </button>
       )}
       {listo && lista.length === 0 && (
-        <div style={{ fontSize: '1.02rem', color: J.text2, lineHeight: 1.45, padding: '6px 2px' }}>Esta semana no hubo partidos terminados. Mira la semana anterior con la flecha ‹</div>
+        <div style={{ fontSize: '1.02rem', color: J.text2, lineHeight: 1.45, padding: '6px 2px' }}>Esa semana no hubo partidos terminados. Mira la semana anterior con la flecha ‹</div>
       )}
 
       {listo && lista.length > 0 && (
         <div style={{ display: 'grid', gap: 8 }}>
           {pestana === 'jugadores' && lista.map((j, i) => (
-            <FilaTop key={j.id} i={i} foto={j.foto} nombre={j.nombre} sub={j.equipo?.name || j.torneo}
+            <FilaTop key={j.id} i={i} foto={j.foto} nombre={j.nombre} sub={j.equipos?.length > 1 ? `Juega en ${j.equipos.slice(0, -1).join(', ')} y ${j.equipos[j.equipos.length - 1]}` : (j.equipo?.name || j.torneo)}
               datos={[j.goles > 0 && `⚽ ${j.goles} ${j.goles === 1 ? 'gol' : 'goles'}`, j.mvp > 0 && `⭐ ${j.mvp} MVP`, `✅ ${j.pg} de ${j.pj} ganados`].filter(Boolean)}
-              pts={j.pts} frase={porQue('jugadores', j, lista, i)} soyYo={String(j.id) === yo} etiquetaYo="TÚ"/>
+              frase={porQue('jugadores', j, lista, i)} soyYo={String(j.id) === yo} etiquetaYo="TÚ"/>
           ))}
           {pestana === 'arqueros' && lista.map((j, i) => (
-            <FilaTop key={j.id} i={i} foto={j.foto} nombre={j.nombre} sub={j.equipo?.name || j.torneo}
+            <FilaTop key={j.id} i={i} foto={j.foto} nombre={j.nombre} sub={j.equipos?.length > 1 ? `Juega en ${j.equipos.slice(0, -1).join(', ')} y ${j.equipos[j.equipos.length - 1]}` : (j.equipo?.name || j.torneo)}
               datos={[j.goles > 0 && `⚽ ${j.goles} ${j.goles === 1 ? 'gol' : 'goles'}`, `🧤 ${j.ceros} en cero`, `🥅 ${j.recibidos} ${j.recibidos === 1 ? 'recibido' : 'recibidos'}`, j.mvp > 0 && `⭐ ${j.mvp} MVP`].filter(Boolean)}
-              pts={j.pts} frase={porQue('arqueros', j, lista, i)} soyYo={String(j.id) === yo} etiquetaYo="TÚ"/>
+              frase={porQue('arqueros', j, lista, i)} soyYo={String(j.id) === yo} etiquetaYo="TÚ"/>
           ))}
           {pestana === 'equipos' && lista.map((e, i) => (
             <FilaTop key={e.id} i={i} escudo={e.equipo || { name: 'Equipo' }} nombre={e.equipo?.name || 'Equipo'} sub={e.torneo}
               datos={[e.pg > 0 && `✅ ${e.pg} ${e.pg === 1 ? 'ganado' : 'ganados'}`, e.pe > 0 && `🤝 ${e.pe} ${e.pe === 1 ? 'empate' : 'empates'}`, e.pp > 0 && `❌ ${e.pp} ${e.pp === 1 ? 'perdido' : 'perdidos'}`, `⚽ ${e.gf - e.gc >= 0 ? '+' : ''}${e.gf - e.gc} de diferencia`].filter(Boolean)}
-              pts={e.pts} frase={porQue('equipos', e, lista, i)} soyYo={misEq.has(String(e.id))} etiquetaYo="TU EQUIPO"/>
+              frase={porQue('equipos', e, lista, i)} soyYo={misEq.has(String(e.id))} etiquetaYo="TU EQUIPO"/>
           ))}
           {pestana === 'partidos' && lista.map((m, i) => (
             <FilaPartidoTop key={m.id} i={i} m={m} frase={porQue('partidos', m, lista, i)} esMio={misEq.has(String(m.home_team_id)) || misEq.has(String(m.away_team_id))}/>
@@ -220,14 +221,12 @@ export default function MejoresSemana({ playerId, misEquipos = [] }) {
         </div>
       )}
 
-      {miPuestoFuera && <div style={{ marginTop: 10, fontSize: '.95rem', fontWeight: 700, color: J.green, textAlign: 'center' }}>{miPuestoFuera} ¡A subir la próxima semana!</div>}
-
-      {/* Cómo se cuentan los puntos */}
+      {/* Cómo se escogen */}
       <button type="button" onClick={() => setVerReglas(v => !v)}
         style={{ marginTop: 12, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'none', border: 'none', color: J.muted, fontFamily: FT, fontWeight: 700, fontSize: '.9rem', cursor: 'pointer', padding: 6 }}>
-        <Info size={16}/> {verReglas ? 'Ocultar' : '¿Cómo se cuentan los puntos?'}
+        <Info size={16}/> {verReglas ? 'Ocultar' : '¿Cómo se escogen?'}
       </button>
-      {verReglas && <div className="gj-abre" style={{ fontSize: '.9rem', color: J.text2, lineHeight: 1.5, padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,.04)' }}>{EXPLICACION[pestana]}. Cuentan todos los torneos de Golmebol de lunes a domingo.</div>}
+      {verReglas && <div className="gj-abre" style={{ fontSize: '.9rem', color: J.text2, lineHeight: 1.5, padding: '8px 10px', borderRadius: 10, background: 'rgba(255,255,255,.04)' }}>{EXPLICACION[pestana]} Cuentan todos los torneos de Golmebol, de lunes a domingo.</div>}
     </Desplegable>
   )
 }

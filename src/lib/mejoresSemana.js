@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 // Se arma con TODOS los partidos terminados de la semana (lunes a domingo, hora de Colombia) de todos los torneos
 // juntos, menos los de niños (categorías Sub-…, infantiles o de escuela, que tienen su propio portal).
 //
-// Cómo se cuentan los puntos (lo mismo que se le explica al jugador en la pantalla):
+// Cómo se ordena por dentro (en la pantalla NO se muestran puntos, solo los 5 mejores y por qué):
 //  · JUGADOR:  gol 3 · victoria 2 · empate 1 · MVP 4 · amarilla o azul −1 · roja −3
 //  · ARQUERO:  arco en cero 5 · victoria 2 · empate 1 · MVP 4 · gol 3 · y por recibir pocos goles: 0 goles +3, 1 gol +2, 2 goles +1
 //  · EQUIPO:   victoria 3 · empate 1 · más la diferencia de gol de la semana
@@ -31,13 +31,27 @@ function lunesDe(ms) {
   return Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate() - desdeLunes) + COT
 }
 
-// atras = 1 → la semana que ya terminó; 2 → la anterior…
+// Cada semana va de lunes 12:00 a. m. a domingo 11:59 p. m. (hora Colombia) y SE PUBLICA el lunes siguiente a la
+// 1:00 p. m. (así alcanzan a cargar las planillas del fin de semana). Antes de esa hora se sigue viendo la anterior.
+// atras = 1 → la última semana publicada; 2 → la anterior…
+const HORA_PUBLICACION = 13   // lunes a la 1:00 p. m.
 export function semanaAtras(atras = 1) {
-  const inicio = lunesDe(Date.now()) - atras * 7 * DIA
-  return { inicio, fin: inicio + 7 * DIA }
+  const base = lunesDe(Date.now() - HORA_PUBLICACION * 60 * 60 * 1000)
+  const inicio = base - atras * 7 * DIA
+  return { inicio, fin: inicio + 7 * DIA, publicada: inicio + 7 * DIA + HORA_PUBLICACION * 60 * 60 * 1000 }
+}
+// Cuándo sale la próxima
+export function proximaPublicacion() {
+  return semanaAtras(0).publicada
 }
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+// "lunes 16 de nov" (hora Colombia)
+export function diaCorto(ms) {
+  const d = new Date(ms - COT)
+  return `${DIAS[d.getUTCDay()]} ${d.getUTCDate()} de ${MESES[d.getUTCMonth()]}`
+}
 export function nombreSemana({ inicio, fin }) {
   const a = new Date(inicio - COT), b = new Date(fin - COT - DIA)
   const ma = MESES[a.getUTCMonth()], mb = MESES[b.getUTCMonth()]
@@ -122,7 +136,9 @@ const memoria = new Map()   // semana → resultado (para no volver a pedir al c
 
 export async function cargarMejoresSemana(semana) {
   const clave = `${semana.inicio}`
-  if (memoria.has(clave)) return memoria.get(clave)
+  const guardado = memoria.get(clave)
+  const enCurso = semana.fin > Date.now()
+  if (guardado && (!enCurso || Date.now() - guardado.t < 5 * 60 * 1000)) return guardado.r
 
   const partidosTodos = await todas(() => supabase.from('matches')
     .select('id, played_at, home_score, away_score, home_team_id, away_team_id, fase, tournament_id, home:home_team_id(id,name,logo_url), away:away_team_id(id,name,logo_url), tournaments(id,name,categoria,logo_url,duracion_tiempo_min)')
@@ -134,7 +150,7 @@ export async function cargarMejoresSemana(semana) {
   const ids = partidos.map(m => m.id)
   if (ids.length === 0) {
     const vacio = { partidosJugados: 0, jugadores: [], arqueros: [], equipos: [], partidos: [] }
-    memoria.set(clave, vacio)
+    memoria.set(clave, { t: Date.now(), r: vacio })
     return vacio
   }
 
@@ -184,6 +200,7 @@ export async function cargarMejoresSemana(semana) {
       j.pts += goles * 3 + res(s.team_result) + (mvp ? 4 : 0) - (s.yellow_cards || 0) - (s.blue_cards || 0) - (s.red_cards || 0) * 3
     }
     j.equipoId = s.team_id || j.equipoId
+    ;(j.equiposIds = j.equiposIds || new Set()).add(s.team_id)
     mapa.set(s.player_id, j)
   })
   // Momentos decisivos (gol de la victoria, últimos goles, goles en una remontada) para la frase del "por qué"
@@ -247,7 +264,8 @@ export async function cargarMejoresSemana(semana) {
   const goleadoresClave = partidosTop.flatMap(m => [m.historia?.golVictoria?.playerId, m.historia?.ultimosGoles?.playerId, m.historia?.golEmpate?.playerId, ...m.figuras.map(f => f.playerId)]).filter(Boolean)
   const { data: fotos } = await supabase.from('players_publico').select('id, name, photo_url, photo_face_url').in('id', [...new Set([...top.map(j => j.id), ...goleadoresClave])])
   const info = new Map((fotos || []).map(p => [p.id, p]))
-  const vestir = j => ({ ...j, nombre: info.get(j.id)?.name || 'Jugador', foto: info.get(j.id)?.photo_face_url || info.get(j.id)?.photo_url || null, equipo: equipoPorId.get(j.equipoId) || null })
+  const vestir = j => ({ ...j, nombre: info.get(j.id)?.name || 'Jugador', foto: info.get(j.id)?.photo_face_url || info.get(j.id)?.photo_url || null, equipo: equipoPorId.get(j.equipoId) || null,
+    equipos: [...(j.equiposIds || [])].map(id => equipoPorId.get(id)?.name).filter(Boolean) })
 
   const resultado = {
     partidosJugados: partidos.length,
@@ -261,7 +279,7 @@ export async function cargarMejoresSemana(semana) {
     puestoEquipo: new Map(equiposTodos.map((e, i) => [String(e.id), i + 1])),
     totalJugadores: jugadoresTodos.length, totalArqueros: arquerosTodos.length, totalEquipos: equiposTodos.length,
   }
-  memoria.set(clave, resultado)
+  memoria.set(clave, { t: Date.now(), r: resultado })
   return resultado
 }
 
@@ -272,14 +290,6 @@ const FASE = { octavos: 'los octavos', cuartos: 'los cuartos de final', semifina
 const NOMBRE_GOLES = { 3: '¡Hat-trick!', 4: '¡Póker de goles!', 5: '¡Manita!' }
 
 export function porQue(tipo, item, lista, i) {
-  const sig = lista[i + 1], ant = lista[i - 1]
-  // Cómo le ganó al siguiente (o qué le faltó para alcanzar al de arriba)
-  const comparar = () => {
-    if (i === 0 && sig) return sig.pts < item.pts ? ` Le sacó ${n(item.pts - sig.pts, 'punto', 'puntos')} al segundo.` : ' Empató en puntos con el segundo y lo superó en el desempate.'
-    if (i > 0 && ant && ant.pts > item.pts) return ` Le ${ant.pts - item.pts === 1 ? 'faltó' : 'faltaron'} ${n(ant.pts - item.pts, 'punto', 'puntos')} para el puesto ${i}.`
-    if (i > 0 && ant && ant.pts === item.pts) return ` Empató en puntos con el puesto ${i}, que ganó en el desempate.`
-    return ''
-  }
   // Lo más decisivo que hizo (si la planilla tenía minutos)
   const momento = () => {
     const peso = x => x.tipo === 'ultimos' ? 5 : x.tipo === 'remontada' ? 4 : x.tipo === 'victoria' ? (x.remontada ? 4 : x.tardio ? 3 : 2) : 1
@@ -313,7 +323,7 @@ export function porQue(tipo, item, lista, i) {
     resumen.push(item.pg === item.pj ? (item.pj === 1 ? 'ganó su partido' : `ganó sus ${item.pj} partidos`) : `ganó ${item.pg} de ${item.pj}`)
     if (item.tarjetas === 0 && item.pj > 1) resumen.push('sin tarjetas')
     frases.push(mayus(`${frases.length ? 'en la semana: ' : ''}${unirFrase(resumen)}.`))
-    return frases.slice(0, 3).join(' ') + comparar()
+    return frases.slice(0, 3).join(' ')
   }
   if (tipo === 'arqueros') {
     const frases = []
@@ -330,7 +340,7 @@ export function porQue(tipo, item, lista, i) {
     else frases.push(`Recibió solo ${n(item.recibidos, 'gol', 'goles')} en ${n(item.pj, 'partido', 'partidos')}.`)
     // 4. Victorias
     if (frases.length < 3 && item.pg > 0) frases.push(item.pg === item.pj ? (item.pj === 1 ? 'Y su equipo ganó.' : `Y ganaron sus ${item.pj} partidos.`) : `Y ganaron ${item.pg} de ${item.pj}.`)
-    return frases.slice(0, 3).join(' ') + comparar()
+    return frases.slice(0, 3).join(' ')
   }
   if (tipo === 'equipos') {
     const dif = item.gf - item.gc
@@ -340,7 +350,7 @@ export function porQue(tipo, item, lista, i) {
     if (mo) f += mo
     else if (item.mejor && item.mejor.dif >= 3) f += ` Su mejor resultado: le ganó ${item.mejor.marcador} a ${item.mejor.rival}.`
     if (item.pp === 0 && item.pj > 1) f += ' Invicto en la semana.'
-    return f + comparar()
+    return f
   }
   // Partido: si la planilla tiene minutos se cuenta cómo se dio; si no, solo el marcador
   const total = item.home_score + item.away_score, dif = Math.abs(item.home_score - item.away_score)
