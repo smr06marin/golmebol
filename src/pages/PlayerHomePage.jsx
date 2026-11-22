@@ -319,13 +319,20 @@ export default function PlayerHomePage() {
         .from('matches')
         .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
         .or(`home_team_id.in.(${lista}),away_team_id.in.(${lista})`)
-        .gte('played_at', new Date(ahora.getTime() - 3 * 60 * 60 * 1000).toISOString()) // incluye el que está jugando ahora
+        // Desde hace 30 días: así también salen los partidos que se pasaron de fecha sin jugarse
+        // (p. ej. una semifinal aplazada a la que no le han cambiado la fecha) como "pendientes"
+        .gte('played_at', new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString())
         .neq('status', 'finished')
         .order('played_at', { ascending: true })
-        .limit(8)
+        .limit(20)
       if (errProx) return
-      setProximo(proximosPartidos?.[0] || null)
-      setProximos(proximosPartidos || [])
+      // Primero los que vienen (incluye el que se está jugando ahora), después los pendientes por reprogramar
+      const limiteVivo = ahora.getTime() - 3 * 60 * 60 * 1000
+      const conFecha   = (proximosPartidos || []).filter(m => new Date(m.played_at).getTime() >= limiteVivo)
+      const pendientes = (proximosPartidos || []).filter(m => new Date(m.played_at).getTime() < limiteVivo).reverse()
+      const ordenados  = [...conFecha, ...pendientes].slice(0, 8)
+      setProximo(ordenados[0] || null)
+      setProximos(ordenados)
       // El aviso de arriba solo sale si el partido (uno que todavía no empieza) es en las próximas 24 horas
       const partido   = (proximosPartidos || []).find(m => new Date(m.played_at) > ahora)
       if (!partido || new Date(partido.played_at) - ahora > 24 * 60 * 60 * 1000) return

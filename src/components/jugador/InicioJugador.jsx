@@ -165,20 +165,31 @@ function MisEquiposDueno({ equipos, onAbrir }) {
 }
 
 // Un partido programado, en pantalla de "VS": escudos frente a frente, cuánto falta, día, hora y cancha
+// Fase del partido (si no es de la fase de grupos)
+const NOMBRE_FASE = { octavos: 'Octavos de final', cuartos: 'Cuartos de final', semifinal: 'Semifinal', final: 'Final', tercer_puesto: 'Tercer puesto' }
+// Partido que se pasó de fecha sin jugarse (el organizador todavía no le cambia la fecha)
+const esPendiente = p => new Date(p.played_at).getTime() < Date.now() - 3 * 60 * 60 * 1000
+
 function PartidoVS({ p, numero, total }) {
   const f = new Date(p.played_at)
   const mismoDia = f.toDateString() === new Date().toDateString()
+  const pendiente = esPendiente(p)
+  const fase = p.fase && p.fase !== 'grupo' ? NOMBRE_FASE[p.fase] : null
   return (
-    <div style={{ height: '100%', boxSizing: 'border-box', padding: '12px 12px 14px', borderRadius: 14, border: `1px solid ${numero === 1 ? J.green + '66' : J.linea}`,
+    <div style={{ height: '100%', boxSizing: 'border-box', padding: '12px 12px 14px', borderRadius: 14, border: `1px solid ${pendiente ? J.gold + '66' : numero === 1 ? J.green + '66' : J.linea}`,
       background: `radial-gradient(80% 70% at 0% 40%, rgba(111,207,61,.10), transparent 60%), radial-gradient(80% 70% at 100% 40%, rgba(255,90,82,.08), transparent 60%), rgba(0,0,0,.28)` }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ fontSize: '.85rem', fontWeight: 700, color: J.muted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {total > 1 ? `Partido ${numero} de ${total}` : 'Tu próximo partido'}
         </span>
-        <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '.85rem', fontWeight: 800, color: J.green, background: 'rgba(111,207,61,.12)', border: '1px solid rgba(111,207,61,.35)', borderRadius: 999, padding: '2px 9px' }}>
-          {numero === 1 && <span className="gj-anim" style={{ width: 7, height: 7, borderRadius: '50%', background: J.green, animation: 'gjPulso 1.4s ease-in-out infinite' }}/>}
-          {cuantoFalta(f)}
-        </span>
+        {pendiente ? (
+          <span style={{ flexShrink: 0, fontSize: '.85rem', fontWeight: 800, color: J.gold, background: 'rgba(245,182,35,.12)', border: '1px solid rgba(245,182,35,.4)', borderRadius: 999, padding: '2px 9px' }}>⏳ Por confirmar</span>
+        ) : (
+          <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '.85rem', fontWeight: 800, color: J.green, background: 'rgba(111,207,61,.12)', border: '1px solid rgba(111,207,61,.35)', borderRadius: 999, padding: '2px 9px' }}>
+            {numero === 1 && <span className="gj-anim" style={{ width: 7, height: 7, borderRadius: '50%', background: J.green, animation: 'gjPulso 1.4s ease-in-out infinite' }}/>}
+            {cuantoFalta(f)}
+          </span>
+        )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 6, marginTop: 12 }}>
         {[p.home, null, p.away].map((eq, i) => i === 1 ? (
@@ -191,8 +202,18 @@ function PartidoVS({ p, numero, total }) {
         ))}
       </div>
       <div style={{ marginTop: 12, textAlign: 'center' }}>
-        <div style={{ fontSize: '1.02rem', fontWeight: 800 }}>{mismoDia ? 'Hoy' : `${mayus(DIAS[f.getDay()])} ${f.getDate()} de ${MESES[f.getMonth()]}`}</div>
-        <div style={{ fontFamily: FD, fontSize: '1.9rem', lineHeight: 1, color: J.green, marginTop: 3, letterSpacing: '.03em' }}>{fmtHoraDate(f)}</div>
+        {fase && <div style={{ display: 'inline-block', fontSize: '.85rem', fontWeight: 900, letterSpacing: '.05em', textTransform: 'uppercase', color: '#2a1a00', background: `linear-gradient(180deg, ${J.goldLuz}, ${J.gold})`, padding: '2px 12px', borderRadius: 999, marginBottom: 6 }}>🏆 {fase}</div>}
+        {pendiente ? (
+          <>
+            <div style={{ fontSize: '1.08rem', fontWeight: 800, color: J.gold }}>Pendiente por jugar</div>
+            <div style={{ fontSize: '.92rem', color: J.text2, marginTop: 3, lineHeight: 1.35 }}>Estaba para el {DIAS[f.getDay()]} {f.getDate()} de {MESES[f.getMonth()]}. Apenas el organizador ponga la nueva fecha, aparece aquí.</div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: '1.02rem', fontWeight: 800 }}>{mismoDia ? 'Hoy' : `${mayus(DIAS[f.getDay()])} ${f.getDate()} de ${MESES[f.getMonth()]}`}</div>
+            <div style={{ fontFamily: FD, fontSize: '1.9rem', lineHeight: 1, color: J.green, marginTop: 3, letterSpacing: '.03em' }}>{fmtHoraDate(f)}</div>
+          </>
+        )}
         {p.location && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '.95rem', fontWeight: 600, color: J.text2, marginTop: 3 }}>
             <MapPin size={15} color={J.green}/> {p.location}
@@ -351,7 +372,9 @@ export default function InicioJugador({
       {proximo !== undefined && (
         <Desplegable id="proximo" icono={<CalendarDays size={22} color={J.green} strokeWidth={2.5}/>} color={J.green} retraso={.05}
           titulo={listaProx.length > 1 ? `Próximos partidos (${listaProx.length})` : 'Mi próximo partido'}
-          resumen={fechaProx ? (
+          resumen={fechaProx && esPendiente(listaProx[0]) ? (
+            <b style={{ color: J.gold }}>⏳ Partido pendiente · fecha por confirmar</b>
+          ) : fechaProx ? (
             <span>
               <span className="gj-anim" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: J.green, boxShadow: `0 0 8px ${J.green}`, animation: 'gjPulso 1.4s ease-in-out infinite', marginRight: 6, verticalAlign: 'middle' }}/>
               <b style={{ color: J.green }}>{cuantoFalta(fechaProx)}</b> · {fechaProx.toDateString() === new Date().toDateString() ? fmtHoraDate(fechaProx) : `${DIAS[fechaProx.getDay()]} ${fechaProx.getDate()}`}
