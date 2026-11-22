@@ -65,18 +65,12 @@ export function useContador(valor, ms = 900) {
   return v
 }
 
-// Qué secciones dejó abiertas el jugador (se recuerda en su celular; si no se puede guardar, no pasa nada)
-const CLAVE_ABIERTOS = 'golmebol_inicio_abiertos'
-export function leerAbierto(id, porDefecto = false) {
-  try { const a = JSON.parse(localStorage.getItem(CLAVE_ABIERTOS) || '{}'); return id in a ? !!a[id] : porDefecto } catch { return porDefecto }
-}
-export function guardarAbierto(id, abierto) {
-  try { const a = JSON.parse(localStorage.getItem(CLAVE_ABIERTOS) || '{}'); a[id] = abierto; localStorage.setItem(CLAVE_ABIERTOS, JSON.stringify(a)) } catch { /* sin guardar */ }
-}
+// Las secciones NO se recuerdan abiertas: cada vez que el jugador entra (o vuelve al inicio) todo aparece
+// cerrado y limpio. Se borra lo que guardaba la versión anterior en el celular.
+try { localStorage.removeItem('golmebol_inicio_abiertos') } catch { /* sin acceso, no pasa nada */ }
 
 // Abre una sección desplegable desde otro lugar (p. ej. el botón de cámara de la tarjeta) y baja hasta ella
 export function abrirSeccion(id) {
-  guardarAbierto(id, true)
   try { window.dispatchEvent(new CustomEvent('gj-abrir', { detail: id })) } catch { /* navegador muy viejo */ }
   setTimeout(() => document.getElementById(`gj-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
 }

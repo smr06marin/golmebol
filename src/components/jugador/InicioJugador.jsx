@@ -14,7 +14,7 @@ import { Panel, Desplegable, BotonJuego, Escudo, IconoHex, Carrusel } from './ju
 // Inicio del jugador con estilo de videojuego, LIMPIO:
 //  · Arriba, siempre a la vista: su tarjeta (pequeña, flotando), su nivel y cuánto le falta para la siguiente.
 //  · Debajo, todo lo demás en secciones DESPLEGABLES: cerradas se ve solo el título y un resumen corto;
-//    el jugador toca la que quiera ver y se abre (y se recuerda en su celular cuáles dejó abiertas).
+//    el jugador toca la que quiera ver y se abre; al salir y volver, todo aparece cerrado otra vez.
 //    Novedades · Próximos partidos (carrusel si tiene varios) · Mi carrera · Últimos partidos · Mis torneos · Reto del día · Mis puestos · Mis fotos.
 //  · Avisos importantes (de Golmebol o del organizador) y, si es DUEÑO de un equipo, el acceso a su equipo:
 //    siempre a la vista debajo de la tarjeta, porque son cosas que tiene que atender.

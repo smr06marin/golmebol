@@ -1,7 +1,8 @@
 import { Children, useEffect, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { ChevronDown, X } from 'lucide-react'
 import { urlMini, alFallarMini } from '../../lib/imagenMini'
-import { J, FT, HEXAGONO, recorte, useContador, leerAbierto, guardarAbierto } from './juegoEstilo'
+import { J, FT, HEXAGONO, recorte, useContador } from './juegoEstilo'
 
 // Piezas de la pantalla con estilo de videojuego (colores, letras y animaciones en juegoEstilo.js)
 
@@ -34,10 +35,10 @@ export function IconoHex({ children, color = J.green, size = 46, lleno = false }
 
 // ── Sección desplegable ────────────────────────────────────────────────────────
 // Cerrada: una fila limpia con ícono, título y un resumen corto (lo más importante de un vistazo).
-// Al tocarla se abre y muestra todo. Se recuerda en el celular qué secciones dejó abiertas.
+// Al tocarla se abre y muestra todo. Al salir y volver, todo aparece cerrado otra vez.
 export function Desplegable({ id, icono, color = J.green, titulo, resumen, derecha, abiertoPorDefecto = false, retraso = 0, children }) {
-  const [abierto, setAbierto] = useState(() => leerAbierto(id, abiertoPorDefecto))
-  const alternar = () => setAbierto(a => { guardarAbierto(id, !a); return !a })
+  const [abierto, setAbierto] = useState(abiertoPorDefecto)
+  const alternar = () => setAbierto(a => !a)
   // Otra parte de la pantalla puede pedir que esta sección se abra (ver abrirSeccion en juegoEstilo.js)
   useEffect(() => {
     const abrir = e => { if (e.detail === id) setAbierto(true) }
@@ -179,5 +180,49 @@ export function Carrusel({ children, color = J.gold, nombres = [] }) {
         </div>
       )}
     </div>
+  )
+}
+
+// ── Hoja de detalle: sube desde abajo y tapa la pantalla (como el menú de un juego) ──
+// Se cierra con la X, con el botón grande de abajo, tocando afuera o con el botón "atrás" del celular.
+export function HojaJuego({ abierta, titulo, subtitulo, icono, color = J.green, onCerrar, children }) {
+  const cerrarRef = useRef(onCerrar)
+  useEffect(() => { cerrarRef.current = onCerrar })
+  useEffect(() => {
+    if (!abierta) return undefined
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    // Una entrada en el historial: así el botón "atrás" del celular cierra la hoja en vez de salir de la página
+    try { window.history.pushState({ ...(window.history.state || {}), gjHoja: true }, '') } catch { /* sin historial */ }
+    const alVolver = () => cerrarRef.current?.()
+    window.addEventListener('popstate', alVolver)
+    return () => { window.removeEventListener('popstate', alVolver); document.body.style.overflow = antes }
+  }, [abierta])
+  if (!abierta) return null
+  const cerrar = () => { if (window.history.state?.gjHoja) window.history.back(); else cerrarRef.current?.() }
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={titulo} onClick={cerrar}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.72)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', fontFamily: FT }}>
+      <div onClick={e => e.stopPropagation()} className="gj-abre"
+        style={{ width: '100%', maxWidth: 640, maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: `radial-gradient(90% 40% at 50% 0%, ${color}22, transparent 70%), #0e1110`,
+          borderTop: `2px solid ${color}`, borderRadius: '22px 22px 0 0', boxShadow: `0 -10px 40px -10px ${color}88`, color: J.text }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 16px 12px' }}>
+          {icono && <IconoHex color={color}>{icono}</IconoHex>}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, lineHeight: 1.2 }}>{titulo}</div>
+            {subtitulo && <div style={{ fontSize: '.95rem', color: J.text2, marginTop: 2 }}>{subtitulo}</div>}
+          </div>
+          <button type="button" onClick={cerrar} aria-label="Cerrar" className="gj-boton"
+            style={{ width: 44, height: 44, flexShrink: 0, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={24} color={J.text}/>
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 14px 12px' }}>{children}</div>
+        <div style={{ padding: '10px 14px calc(14px + env(safe-area-inset-bottom))', borderTop: `1px solid ${J.linea}` }}>
+          <BotonJuego variante="contorno" onClick={cerrar}>Cerrar</BotonJuego>
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }

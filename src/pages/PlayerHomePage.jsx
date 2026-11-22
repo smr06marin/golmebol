@@ -419,10 +419,10 @@ export default function PlayerHomePage() {
     Promise.all([
       supabase
         .from('player_match_stats')
-        .select('*, matches(id, played_at, home_score, away_score, matchday, location, home_team_id, away_team_id, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(id,name,logo_url), tournaments(id,name,logo_url)')
+        .select('*, matches(id, played_at, home_score, away_score, matchday, location, fase, ronda, home_team_id, away_team_id, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(id,name,logo_url), tournaments(id,name,logo_url)')
         .eq('player_id', p.id)
         .order('created_at', { ascending: false }),
-      supabase.from('tournament_logros').select('id, tipo, match_id, tournament_id').eq('player_id', p.id),
+      supabase.from('tournament_logros').select('id, tipo, match_id, tournament_id, team_id').eq('player_id', p.id),
     ])
       .then(([{ data }, { data: lg }]) => {
         const mvp = new Set((lg || []).filter(l => l.tipo === 'mvp').map(l => l.match_id))
