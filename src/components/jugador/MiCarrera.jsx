@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, BarChart3, History, Trophy } from 'lucide-react'
+import { ChevronRight, ChevronDown, BarChart3, History, Trophy } from 'lucide-react'
 import { J, FD, FT, HEXAGONO } from './juegoEstilo'
 import { Panel, Desplegable, BotonJuego, Escudo, Contador, Chip, FormaReciente, HojaJuego } from './juegoUI'
 
@@ -11,7 +11,8 @@ import { Panel, Desplegable, BotonJuego, Escudo, Contador, Chip, FormaReciente, 
 //     los perdidos, "Arcos en cero" los partidos sin goles en contra, "MVP" los partidos donde fue el mejor, y
 //     "Títulos" sus campeonatos y subcampeonatos + hasta dónde llegó su equipo en CADA torneo.
 //  2. ÚLTIMOS PARTIDOS: "10-4 GANAMOS vs La Cecilia", con su equipo siempre primero en el marcador.
-//  3. MIS TORNEOS: con qué equipo, cómo le fue y hasta dónde llegó (campeón, subcampeón, 3.º, 4.º, semifinal…).
+//  3. MIS TORNEOS: cada torneo es desplegable. Cerrado: escudo, nombre y cómo le fue (campeón, subcampeón, 3.º, 4.º,
+//     eliminado en semifinal…, en juego). Abierto: sus números en ese torneo, premios y el botón para ver sus partidos.
 // historial: filas de player_match_stats con matches(…fase, ronda, home_team_id, away_team_id, home, away),
 //            tournaments, teams y es_mvp.
 // logros: filas de tournament_logros del jugador (tipo, match_id, tournament_id, team_id).
@@ -64,7 +65,11 @@ function ladoDelJugador(h) {
   }
 }
 
-// ¿Hasta dónde llegó en este torneo? → { clave, ...RESULTADO_TORNEO[clave] } o { enJuego, fase }
+// ¿Hasta dónde llegó en este torneo? → { clave, ...RESULTADO_TORNEO[clave] } o { enJuego, fase, ... }
+//  1. Lo que guardó el organizador al cerrar el torneo (lo más confiable).
+//  2. Si no hay nada guardado, se deduce de sus partidos de eliminación: perdió la final → subcampeón,
+//     ganó el partido por el 3.º → tercero, perdió una semifinal ya jugada en un torneo viejo → eliminado ahí…
+//     (los cruces de ida y vuelta no se deducen: un partido de ida no define nada).
 function resultadoDelTorneo(filas, logrosDelTorneo) {
   const FASE_GUARDADA = { campeon: 1, campeonato: 1, subcampeon: 2, final: 2, tercer_puesto: 3, semifinal: 5, cuartos: 6, octavos: 7, fase_grupos: 8 }
   let mejor = null
@@ -79,15 +84,34 @@ function resultadoDelTorneo(filas, logrosDelTorneo) {
     if (clave === 'semifinal' && partidoTercero) clave = partidoTercero.team_result === 'win' ? 'tercer_puesto' : partidoTercero.team_result === 'loss' ? 'cuarto_puesto' : clave
     return { clave, ...RESULTADO_TORNEO[clave] }
   }
-  // Sin fase guardada (torneo todavía sin cerrar): hasta qué fase ha jugado
-  let fase = null
+
+  // Sin fase guardada: se mira el partido de eliminación más alto que jugó
+  const idaVuelta = m => /\((ida|vuelta)\)/i.test(m?.ronda || '')
+  let alto = null
   filas.forEach(h => {
     const f = h.matches?.fase
-    if (PESO_FASE[f] && !esTercerPuesto(h.matches) && (!fase || PESO_FASE[f] > PESO_FASE[fase])) fase = f
+    if (PESO_FASE[f] && !esTercerPuesto(h.matches) && (!alto || PESO_FASE[f] > PESO_FASE[alto.matches.fase])) alto = h
   })
   const ultimo = Math.max(...filas.map(h => new Date(h.matches?.played_at || 0).getTime()))
   const reciente = Date.now() - ultimo < 60 * 24 * 60 * 60 * 1000
-  return { enJuego: reciente, fase, icono: reciente ? '⏳' : '📋', texto: reciente ? 'En juego' : 'Sin resultado final', color: reciente ? J.green : J.muted, rango: 9 }
+  const fase = alto?.matches?.fase || null
+  const definido = alto && !idaVuelta(alto.matches) && (alto.team_result === 'win' || alto.team_result === 'loss')
+  if (definido && fase === 'final') {
+    const clave = alto.team_result === 'win' ? 'campeon' : 'subcampeon'
+    return { clave, ...RESULTADO_TORNEO[clave] }
+  }
+  if (partidoTercero && !idaVuelta(partidoTercero.matches) && partidoTercero.team_result !== 'draw') {
+    const clave = partidoTercero.team_result === 'win' ? 'tercer_puesto' : 'cuarto_puesto'
+    return { clave, ...RESULTADO_TORNEO[clave] }
+  }
+  if (definido && alto.team_result === 'loss') return { clave: fase, ...RESULTADO_TORNEO[fase] }
+  const SIGUIENTE = { octavos: 'cuartos de final', cuartos: 'semifinal', semifinal: 'la final' }
+  if (reciente) {
+    const texto = !fase ? 'En juego' : definido && alto.team_result === 'win' && SIGUIENTE[fase] ? `En juego · pasó a ${SIGUIENTE[fase]}` : `En juego · llegó a ${NOMBRE_FASE[fase]}`
+    return { enJuego: true, fase, icono: '⏳', texto, color: J.green, rango: 9 }
+  }
+  if (fase) return { fase, icono: '📋', texto: `Llegó a ${NOMBRE_FASE[fase]}`, color: J.text2, rango: 8.5 }
+  return { icono: '📋', texto: 'Torneo terminado', color: J.muted, rango: 10 }
 }
 
 // Un número grande del marcador (Ganados / Empates / Perdidos), se puede tocar
@@ -136,7 +160,7 @@ function FilaPartido({ h, esPortero, onClick, retraso = 0 }) {
   if ((h.goals_scored || 0) > 0) chips.push({ t: `⚽ ${plural(h.goals_scored, 'gol', 'goles')}`, c: J.green })
   if ((h.red_cards || 0) > 0) chips.push({ t: '🟥 Roja', c: J.red })
   else if ((h.yellow_cards || 0) > 0) chips.push({ t: '🟨 Amarilla', c: J.gold })
-  const fase = h.matches?.fase && NOMBRE_FASE[h.matches.fase] ? (esTercerPuesto(h.matches) ? 'Tercer puesto' : NOMBRE_FASE[h.matches.fase].replace(/^la /, '')) : null
+  const fase = h.matches?.fase && NOMBRE_FASE[h.matches.fase] ? (esTercerPuesto(h.matches) ? 'Tercer puesto' : (n => n.charAt(0).toUpperCase() + n.slice(1))(NOMBRE_FASE[h.matches.fase].replace(/^la /, ''))) : null
   const Etiqueta = onClick ? 'button' : 'div'
   return (
     <Etiqueta {...(onClick ? { type: 'button', onClick } : {})} className={`gj-abre${onClick ? ' gj-boton' : ''}`}
@@ -174,51 +198,88 @@ function Medalla({ icono, valor, texto, color }) {
   )
 }
 
-// Un torneo con su resultado (para la hoja de títulos y para "Mis torneos")
-function FilaTorneo({ t, esPortero, compacta = false }) {
+// Pastilla con el resultado del torneo (campeón dorado, subcampeón plateado, tercero bronce…)
+function PastillaResultado({ res, chica = false }) {
+  return (
+    <span style={{ display: 'inline-block', fontWeight: 900, fontSize: chica ? '.88rem' : '.95rem', padding: chica ? '2px 9px' : '4px 12px', borderRadius: 8, lineHeight: 1.3,
+      ...(res.medalla ? { color: '#1a1200', background: `linear-gradient(180deg, #ffffff66, ${res.color})` } : { color: res.color, background: 'rgba(255,255,255,.08)' }) }}>
+      {res.icono} {res.texto}
+    </span>
+  )
+}
+
+// Un número del resumen de un torneo
+function Dato({ valor, texto, color = J.text }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '8px 2px', background: 'rgba(255,255,255,.04)', borderRadius: 10, borderTop: `2px solid ${color}` }}>
+      <div style={{ fontFamily: FD, fontSize: '1.9rem', lineHeight: .95, color }}>{valor}</div>
+      <div style={{ fontSize: '.8rem', fontWeight: 700, color: J.text2, marginTop: 3 }}>{texto}</div>
+    </div>
+  )
+}
+
+// Un torneo: cerrado se ve solo el escudo, el nombre y cómo le fue; al tocarlo se abre con sus números
+function TorneoDesplegable({ t, esPortero, onVerPartidos, abiertoPorDefecto = false }) {
+  const [abierto, setAbierto] = useState(abiertoPorDefecto)
   const res = t.resultado
   const brilla = res.clave === 'campeon'
   return (
-    <div className="gj-abre" style={{ position: 'relative', overflow: 'hidden', borderRadius: 12, padding: 12,
-      background: brilla ? `linear-gradient(135deg, ${J.gold}2e, rgba(255,255,255,.03) 60%)` : res.medalla ? `linear-gradient(135deg, ${res.color}1f, rgba(255,255,255,.03) 60%)` : 'rgba(255,255,255,.035)',
-      border: `1px solid ${res.medalla ? res.color + '88' : J.linea}`, boxShadow: brilla ? `0 0 22px -6px ${J.gold}88` : 'none' }}>
-      {brilla && <span aria-hidden="true" style={{ position: 'absolute', right: -8, top: -14, fontSize: '4.4rem', opacity: .15, transform: 'rotate(12deg)' }}>🏆</span>}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 12,
+      background: brilla ? `linear-gradient(135deg, ${J.gold}26, rgba(255,255,255,.03) 60%)` : res.medalla ? `linear-gradient(135deg, ${res.color}1a, rgba(255,255,255,.03) 60%)` : 'rgba(255,255,255,.035)',
+      border: `1px solid ${res.medalla ? res.color + '77' : abierto ? 'rgba(255,255,255,.18)' : J.linea}`, boxShadow: brilla ? `0 0 20px -8px ${J.gold}88` : 'none' }}>
+      {brilla && <span aria-hidden="true" style={{ position: 'absolute', right: -6, top: -12, fontSize: '3.6rem', opacity: .13, transform: 'rotate(12deg)', pointerEvents: 'none' }}>🏆</span>}
+      <button type="button" onClick={() => setAbierto(a => !a)} aria-expanded={abierto} className="gj-boton"
+        style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: J.text, fontFamily: FT }}>
         <Escudo url={t.logo || t.equipo?.logo_url} nombre={t.nombre} size={46}/>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '1.05rem', fontWeight: 800, lineHeight: 1.2 }}>{t.nombre}</div>
-          {t.equipo?.name && <div style={{ fontSize: '.92rem', color: J.text2, marginTop: 2 }}>Con {t.equipo.name}</div>}
-        </div>
-      </div>
-      {/* Hasta dónde llegó */}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-        <span style={{ fontWeight: 900, fontSize: '.98rem', padding: '4px 12px', borderRadius: 8,
-          ...(res.medalla ? { color: '#1a1200', background: `linear-gradient(180deg, #fff6, ${res.color})` } : { color: res.color, background: 'rgba(255,255,255,.08)' }) }}>
-          {res.icono} {res.texto}
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: '1.02rem', fontWeight: 800, lineHeight: 1.2 }}>{t.nombre}</span>
+          <span style={{ display: 'block', marginTop: 5 }}><PastillaResultado res={res} chica/></span>
         </span>
-        {res.enJuego !== undefined && res.fase && <span style={{ fontSize: '.92rem', fontWeight: 700, color: J.text2 }}>Ha jugado hasta {NOMBRE_FASE[res.fase]}</span>}
-      </div>
-      {!compacta && (
-        <>
-          <div style={{ position: 'relative', display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-            <Chip color={J.text2}>{plural(t.filas.length, 'partido', 'partidos')}</Chip>
-            {t.g > 0 && <Chip color={J.green}>{plural(t.g, 'ganado', 'ganados')}</Chip>}
-            {t.e > 0 && <Chip color={J.gris}>{plural(t.e, 'empate', 'empates')}</Chip>}
-            {t.p > 0 && <Chip color={J.red}>{plural(t.p, 'perdido', 'perdidos')}</Chip>}
-            {esPortero
-              ? <Chip color={J.text2}>{plural(t.recibidos, 'gol recibido', 'goles recibidos')}</Chip>
-              : t.goles > 0 && <Chip color={J.green}>⚽ {plural(t.goles, 'gol', 'goles')}</Chip>}
+        <ChevronDown className="gj-flecha" size={22} color={J.text2} style={{ flexShrink: 0, transform: abierto ? 'rotate(180deg)' : 'none' }}/>
+      </button>
+      {abierto && (
+        <div className="gj-abre" style={{ position: 'relative', padding: '0 12px 12px' }}>
+          {t.equipo?.name && <div style={{ fontSize: '.95rem', color: J.text2, marginBottom: 10 }}>Jugaste con <b style={{ color: J.text }}>{t.equipo.name}</b></div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+            <Dato valor={t.filas.length} texto={t.filas.length === 1 ? 'Jugado' : 'Jugados'}/>
+            <Dato valor={t.g} texto={t.g === 1 ? 'Ganado' : 'Ganados'} color={J.green}/>
+            <Dato valor={t.e} texto={t.e === 1 ? 'Empate' : 'Empates'} color={J.gris}/>
+            <Dato valor={t.p} texto={t.p === 1 ? 'Perdido' : 'Perdidos'} color={J.red}/>
           </div>
-          {(t.premios.length > 0 || t.mvp > 0) && (
-            <div style={{ position: 'relative', display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {esPortero
+              ? <><Chip color={J.green}>🧤 {plural(t.enCero, 'arco en cero', 'arcos en cero')}</Chip><Chip color={J.text2}>🥅 {plural(t.recibidos, 'gol recibido', 'goles recibidos')}</Chip></>
+              : <Chip color={J.green}>⚽ {plural(t.goles, 'gol', 'goles')}</Chip>}
+            {t.mvp > 0 && <Chip color={J.gold}>⭐ {t.mvp} {t.mvp === 1 ? 'vez' : 'veces'} MVP</Chip>}
+          </div>
+          {t.premios.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
               {t.premios.map((x, i) => (
                 <span key={i} style={{ fontWeight: 900, fontSize: '.92rem', color: '#2a1a00', background: `linear-gradient(180deg, ${J.goldLuz}, ${J.gold})`, padding: '3px 10px', borderRadius: 8 }}>{x.icono} {x.texto}</span>
               ))}
-              {t.mvp > 0 && <span style={{ fontWeight: 800, fontSize: '.92rem', color: J.gold, background: `${J.gold}1f`, border: `1px solid ${J.gold}55`, padding: '2px 10px', borderRadius: 8 }}>⭐ {t.mvp} {t.mvp === 1 ? 'vez' : 'veces'} MVP</span>}
             </div>
           )}
-        </>
+          <div style={{ marginTop: 10 }}>
+            <BotonJuego variante="contorno" onClick={() => onVerPartidos?.(t)}>Ver mis {plural(t.filas.length, 'partido', 'partidos')} de este torneo <ChevronRight size={18} color={J.green} strokeWidth={3}/></BotonJuego>
+          </div>
+        </div>
       )}
+    </div>
+  )
+}
+
+// Fila corta de un torneo (para la hoja de títulos)
+function FilaTorneoCorta({ t }) {
+  const res = t.resultado
+  return (
+    <div className="gj-abre" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12,
+      background: res.medalla ? `linear-gradient(135deg, ${res.color}1f, rgba(255,255,255,.03) 60%)` : 'rgba(255,255,255,.035)', border: `1px solid ${res.medalla ? res.color + '77' : J.linea}` }}>
+      <Escudo url={t.logo || t.equipo?.logo_url} nombre={t.nombre} size={42}/>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '1rem', fontWeight: 800, lineHeight: 1.2 }}>{t.nombre}</div>
+        {t.equipo?.name && <div style={{ fontSize: '.88rem', color: J.text2, marginTop: 2 }}>Con {t.equipo.name}</div>}
+        <div style={{ marginTop: 5 }}><PastillaResultado res={res} chica/></div>
+      </div>
     </div>
   )
 }
@@ -229,6 +290,7 @@ function Subtitulo({ children }) {
 
 export default function MiCarrera({ historial = [], logros = [], esPortero, onVerTodos, cargando }) {
   const [hoja, setHoja] = useState(null)   // qué detalle está abierto: 'win' | 'draw' | 'loss' | 'cero' | 'mvp' | 'goles' | 'tarjetas' | 'titulos'
+  const [torneoAbierto, setTorneoAbierto] = useState(null)   // torneo cuyos partidos se están viendo en la hoja
 
   const partidos = [...(historial || [])]
     .filter(h => h.matches)
@@ -281,9 +343,11 @@ export default function MiCarrera({ historial = [], logros = [], esPortero, onVe
     t.goles = t.filas.reduce((s, h) => s + (h.goals_scored || 0), 0)
     t.recibidos = t.filas.reduce((s, h) => s + (h.goals_conceded || 0), 0)
     t.mvp = t.filas.filter(h => h.es_mvp).length
+    t.enCero = t.filas.filter(h => h.fue_arquero !== false && (h.goals_conceded || 0) === 0).length
   })
   const campeonatos    = porTorneo.filter(t => t.resultado.clave === 'campeon')
   const subcampeonatos = porTorneo.filter(t => t.resultado.clave === 'subcampeon')
+  const terceros       = porTorneo.filter(t => t.resultado.clave === 'tercer_puesto')
   // Para la hoja de títulos: primero los mejores resultados, los torneos en juego al final
   const torneosPorResultado = [...porTorneo].sort((a, b) => a.resultado.rango - b.resultado.rango)
 
@@ -336,7 +400,7 @@ export default function MiCarrera({ historial = [], logros = [], esPortero, onVe
           )}
           <Ficha icono="⭐" valor={conMvp.length} titulo={conMvp.length === 1 ? 'Vez MVP' : 'Veces MVP'} detalle="Mejor jugador del partido" color={J.gold} onClick={() => setHoja('mvp')}/>
           <Ficha icono="🏆" valor={campeonatos.length} titulo={campeonatos.length === 1 ? 'Título' : 'Títulos'} color={J.gold} onClick={() => setHoja('titulos')}
-            detalle={subcampeonatos.length > 0 ? `🥈 ${plural(subcampeonatos.length, 'subcampeonato', 'subcampeonatos')}` : 'Campeonatos ganados'}/>
+            detalle={subcampeonatos.length + terceros.length > 0 ? [subcampeonatos.length > 0 && `🥈 ${subcampeonatos.length} subcampeón`, terceros.length > 0 && `🥉 ${terceros.length} tercero`].filter(Boolean).join(' · ') : 'Campeonatos ganados'}/>
         </div>
       </Desplegable>
 
@@ -358,9 +422,10 @@ export default function MiCarrera({ historial = [], logros = [], esPortero, onVe
 
       {/* 3. Mis torneos */}
       <Desplegable id="torneos" icono={<Trophy size={22} color={J.gold} strokeWidth={2.5}/>} color={J.gold} titulo="Mis torneos" retraso={.2}
-        resumen={<>{plural(porTorneo.length, 'torneo', 'torneos')}{campeonatos.length > 0 && <> · <b style={{ color: J.gold }}>{plural(campeonatos.length, 'título', 'títulos')} 🏆</b></>}</>}>
-        <div style={{ display: 'grid', gap: 10, marginTop: 2 }}>
-          {porTorneo.map(t => <FilaTorneo key={t.id} t={t} esPortero={esPortero}/>)}
+        resumen={<>{plural(porTorneo.length, 'torneo', 'torneos')}{campeonatos.length > 0 && <> · <b style={{ color: J.gold }}>{plural(campeonatos.length, 'título', 'títulos')} 🏆</b></>}{porTorneo.some(t => t.resultado.enJuego) && <> · <span style={{ color: J.green }}>{porTorneo.filter(t => t.resultado.enJuego).length} en juego</span></>}</>}>
+        <div style={{ fontSize: '.92rem', fontWeight: 600, color: J.muted, margin: '0 2px 8px' }}>👆 Toca un torneo para ver cómo te fue</div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {porTorneo.map(t => <TorneoDesplegable key={t.id} t={t} esPortero={esPortero} onVerPartidos={setTorneoAbierto}/>)}
         </div>
       </Desplegable>
 
@@ -371,20 +436,28 @@ export default function MiCarrera({ historial = [], logros = [], esPortero, onVe
         {hojaPartidos && <ListaPartidos filas={hojaPartidos.filas} esPortero={esPortero} vacio={hojaPartidos.vacio}/>}
       </HojaJuego>
 
-      {/* Hoja de detalle: títulos y hasta dónde llegó en cada torneo */}
-      <HojaJuego abierta={hoja === 'titulos'} onCerrar={() => setHoja(null)} color={J.gold} icono="🏆" titulo="Mis títulos" subtitulo="Campeonatos, subcampeonatos y cómo te fue en cada torneo">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Medalla icono="🏆" valor={campeonatos.length} texto={campeonatos.length === 1 ? 'Campeón' : 'Veces campeón'} color={J.gold}/>
-          <Medalla icono="🥈" valor={subcampeonatos.length} texto={subcampeonatos.length === 1 ? 'Subcampeón' : 'Veces subcampeón'} color="#cfd8dc"/>
+      {/* Hoja de detalle: partidos de un torneo */}
+      <HojaJuego abierta={!!torneoAbierto} onCerrar={() => setTorneoAbierto(null)} color={J.gold} icono="🏆"
+        titulo={torneoAbierto?.nombre || ''} subtitulo={torneoAbierto ? `${torneoAbierto.resultado.texto}${torneoAbierto.equipo?.name ? ` · con ${torneoAbierto.equipo.name}` : ''}` : ''}>
+        {torneoAbierto && <ListaPartidos filas={torneoAbierto.filas} esPortero={esPortero} vacio="Sin partidos."/>}
+      </HojaJuego>
+
+      {/* Hoja de detalle: títulos (campeón, subcampeón, tercero) y hasta dónde llegó en cada torneo */}
+      <HojaJuego abierta={hoja === 'titulos'} onCerrar={() => setHoja(null)} color={J.gold} icono="🏆" titulo="Mis títulos" subtitulo="Campeón, subcampeón, tercer puesto y cómo te fue en cada torneo">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+          <Medalla icono="🏆" valor={campeonatos.length} texto="Campeón" color={J.gold}/>
+          <Medalla icono="🥈" valor={subcampeonatos.length} texto="Subcampeón" color="#cfd8dc"/>
+          <Medalla icono="🥉" valor={terceros.length} texto="Tercero" color="#e0a36b"/>
         </div>
-        {campeonatos.length > 0 && (<><Subtitulo>🏆 Campeón</Subtitulo><div style={{ display: 'grid', gap: 8 }}>{campeonatos.map(t => <FilaTorneo key={t.id} t={t} esPortero={esPortero} compacta/>)}</div></>)}
-        {subcampeonatos.length > 0 && (<><Subtitulo>🥈 Subcampeón</Subtitulo><div style={{ display: 'grid', gap: 8 }}>{subcampeonatos.map(t => <FilaTorneo key={t.id} t={t} esPortero={esPortero} compacta/>)}</div></>)}
-        {campeonatos.length + subcampeonatos.length === 0 && (
-          <div style={{ fontSize: '1.02rem', color: J.text2, lineHeight: 1.45, marginTop: 12 }}>Todavía no tienes campeonatos ni subcampeonatos. ¡Vamos por el primero!</div>
+        {campeonatos.length > 0 && (<><Subtitulo>🏆 Campeón</Subtitulo><div style={{ display: 'grid', gap: 8 }}>{campeonatos.map(t => <FilaTorneoCorta key={t.id} t={t}/>)}</div></>)}
+        {subcampeonatos.length > 0 && (<><Subtitulo>🥈 Subcampeón</Subtitulo><div style={{ display: 'grid', gap: 8 }}>{subcampeonatos.map(t => <FilaTorneoCorta key={t.id} t={t}/>)}</div></>)}
+        {terceros.length > 0 && (<><Subtitulo>🥉 Tercer puesto</Subtitulo><div style={{ display: 'grid', gap: 8 }}>{terceros.map(t => <FilaTorneoCorta key={t.id} t={t}/>)}</div></>)}
+        {campeonatos.length + subcampeonatos.length + terceros.length === 0 && (
+          <div style={{ fontSize: '1.02rem', color: J.text2, lineHeight: 1.45, marginTop: 12 }}>Todavía no tienes títulos ni podios. ¡Vamos por el primero!</div>
         )}
         <Subtitulo>Hasta dónde llegaste en cada torneo</Subtitulo>
         <div style={{ display: 'grid', gap: 8 }}>
-          {torneosPorResultado.map(t => <FilaTorneo key={t.id} t={t} esPortero={esPortero} compacta/>)}
+          {torneosPorResultado.map(t => <FilaTorneoCorta key={t.id} t={t}/>)}
         </div>
       </HojaJuego>
     </>
