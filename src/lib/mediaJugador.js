@@ -6,32 +6,68 @@ import { armarLista, obtenerAgregado } from './rankingsJugadores'
 // Sale de comparar al jugador contra TODOS los de Golmebol de su mismo tipo (arqueros con arqueros, jugadores de
 // campo con jugadores de campo) que tengan al menos 3 partidos. En cada cosa se mira "mejor que qué porcentaje"
 // de los demás (0 = el peor, 1 = el mejor), se ponderan y se pasa a la escala 40–99:
-//   JUGADOR DE CAMPO: goles por partido 35% · % de partidos ganados 25% · partidos jugados 15% · MVP por partido 15%
-//                     · goles en total 10%
-//   ARQUERO:          goles recibidos por partido 35% (menos es mejor) · arcos en cero por partido 20%
-//                     · % de partidos ganados 20% · partidos jugados 15% · MVP por partido 10%
+//   JUGADOR DE CAMPO: goles por partido 30% · % de partidos ganados 22% · MVP por partido 15% · partidos jugados 13%
+//                     · goles en total 10% · TÍTULOS 10%
+//   ARQUERO:          goles recibidos por partido 30% (menos es mejor) · arcos en cero por partido 18%
+//                     · % de partidos ganados 18% · partidos jugados 12% · TÍTULOS 12% · MVP por partido 10%
+//   TÍTULOS: campeón vale 3, subcampeón 2 y tercer puesto 1 (los que guardó el organizador al cerrar cada torneo).
 // Además arma el "por qué" (en qué está fuerte y qué lo baja) y RETOS para subirla: simula sus próximos partidos
 // ("si haces 3 goles en tus próximos 3 partidos tu media pasa de 74 a 76") contra los mismos rivales de siempre.
-// Los MVP y los arcos en cero no vienen en el ranking: se cuentan aparte (todas las páginas, Supabase da 1000 por vez).
+//
+// LO RECIENTE PESA MÁS (migracion_media_jugadores.sql → función media_jugadores_stats): cada partido, MVP, arco en
+// cero y título pesa según su antigüedad: hoy vale 1, hace 6 meses 0,5, hace un año 0,25… Así un jugador que fue
+// muy bueno hace tiempo pero ahora no tanto va bajando, y uno que viene jugando bien sube rápido. Además, cuando un
+// jugador tiene poco peso reciente (lleva mucho sin jugar), sus promedios se acercan al promedio de todos (K = 2
+// partidos "de referencia"), para que un buen rato de hace dos años no lo deje arriba para siempre.
+// Si esa función todavía no está en la base, se cuenta todo igual (sin el tiempo) con el ranking normal + MVP,
+// arcos en cero y títulos contados aparte (todas las páginas, Supabase da 1000 por vez).
 
 export const MIN_PJ_MEDIA = 3
 const PAG = 1000
 
-const COMPONENTES = {
-  campo: [
-    { k: 'gpp',   peso: .35, nombre: 'Goles por partido',   valor: j => j.goles / j.pj,     mejorMayor: true,  ver: v => v.toFixed(1) },
-    { k: 'efic',  peso: .25, nombre: 'Partidos ganados',    valor: j => j.pg / j.pj,        mejorMayor: true,  ver: v => `${Math.round(v * 100)}%` },
-    { k: 'pj',    peso: .15, nombre: 'Partidos jugados',    valor: j => j.pj,               mejorMayor: true,  ver: v => `${v}` },
-    { k: 'mvp',   peso: .15, nombre: 'Veces MVP',           valor: j => (j.mvp || 0) / j.pj, mejorMayor: true, ver: (v, j) => `${j.mvp || 0}` },
-    { k: 'goles', peso: .10, nombre: 'Goles en total',      valor: j => j.goles,            mejorMayor: true,  ver: v => `${v}` },
-  ],
-  arquero: [
-    { k: 'rpp',   peso: .35, nombre: 'Goles recibidos por partido', valor: j => j.recibidos / j.pj, mejorMayor: false, ver: v => v.toFixed(1) },
-    { k: 'ceros', peso: .20, nombre: 'Arcos en cero',       valor: j => (j.ceros || 0) / j.pj, mejorMayor: true, ver: (v, j) => `${j.ceros || 0}` },
-    { k: 'efic',  peso: .20, nombre: 'Partidos ganados',    valor: j => j.pg / j.pj,        mejorMayor: true,  ver: v => `${Math.round(v * 100)}%` },
-    { k: 'pj',    peso: .15, nombre: 'Partidos jugados',    valor: j => j.pj,               mejorMayor: true,  ver: v => `${v}` },
-    { k: 'mvp',   peso: .10, nombre: 'Veces MVP',           valor: j => (j.mvp || 0) / j.pj, mejorMayor: true, ver: (v, j) => `${j.mvp || 0}` },
-  ],
+// "1 campeón, 1 tercero" / "ninguno todavía"
+function verTitulos(j) {
+  const partes = []
+  if (j.campeon) partes.push(`${j.campeon} ${j.campeon === 1 ? 'campeón' : 'veces campeón'}`)
+  if (j.subcampeon) partes.push(`${j.subcampeon} ${j.subcampeon === 1 ? 'subcampeón' : 'veces subcampeón'}`)
+  if (j.tercero) partes.push(`${j.tercero} ${j.tercero === 1 ? 'tercer puesto' : 'terceros puestos'}`)
+  return partes.length ? partes.join(', ') : 'ninguno todavía'
+}
+const VALOR_TITULO = { campeon: 3, campeonato: 3, subcampeon: 2, final: 2, tercer_puesto: 1 }
+
+// Los campos pj, goles, recibidos, pg, mvp, ceros y titulos ya vienen CON el peso del tiempo; los números de verdad
+// (para mostrar) van en j.real. Los promedios se "acercan" al de todos con K partidos de referencia (ver arriba).
+const K = 2
+const prom = (j, campo, ref) => ((j[campo] || 0) + K * ref) / ((j.pj || 0) + K)
+function componentes(tipo, ref) {
+  if (tipo === 'campo') return [
+    { k: 'gpp',   peso: .30, nombre: 'Goles por partido',   valor: j => prom(j, 'goles', ref.gpp), mejorMayor: true,  ver: v => v.toFixed(1) },
+    { k: 'efic',  peso: .22, nombre: 'Partidos ganados',    valor: j => prom(j, 'pg', ref.efic),   mejorMayor: true,  ver: v => `${Math.round(v * 100)}%` },
+    { k: 'mvp',   peso: .15, nombre: 'Veces MVP',           valor: j => prom(j, 'mvp', ref.mvp),   mejorMayor: true,  ver: (v, j) => `${j.real.mvp}` },
+    { k: 'pj',    peso: .13, nombre: 'Partidos jugados',    valor: j => j.pj,                      mejorMayor: true,  ver: (v, j) => `${j.real.pj}` },
+    { k: 'goles', peso: .10, nombre: 'Goles en total',      valor: j => j.goles,                   mejorMayor: true,  ver: (v, j) => `${j.real.goles}` },
+    { k: 'titulos', peso: .10, nombre: 'Títulos',           valor: j => j.titulos || 0,            mejorMayor: true,  ver: (v, j) => verTitulos(j.real) },
+  ]
+  return [
+    { k: 'rpp',   peso: .30, nombre: 'Goles recibidos por partido', valor: j => prom(j, 'recibidos', ref.rpp), mejorMayor: false, ver: v => v.toFixed(1) },
+    { k: 'ceros', peso: .18, nombre: 'Arcos en cero',       valor: j => prom(j, 'ceros', ref.ceros), mejorMayor: true,  ver: (v, j) => `${j.real.ceros}` },
+    { k: 'efic',  peso: .18, nombre: 'Partidos ganados',    valor: j => prom(j, 'pg', ref.efic),     mejorMayor: true,  ver: v => `${Math.round(v * 100)}%` },
+    { k: 'pj',    peso: .12, nombre: 'Partidos jugados',    valor: j => j.pj,                        mejorMayor: true,  ver: (v, j) => `${j.real.pj}` },
+    { k: 'titulos', peso: .12, nombre: 'Títulos',           valor: j => j.titulos || 0,              mejorMayor: true,  ver: (v, j) => verTitulos(j.real) },
+    { k: 'mvp',   peso: .10, nombre: 'Veces MVP',           valor: j => prom(j, 'mvp', ref.mvp),     mejorMayor: true,  ver: (v, j) => `${j.real.mvp}` },
+  ]
+}
+
+// ── Estadísticas con el peso del tiempo (función media_jugadores_stats); null si todavía no existe ──
+let _pesados = null, _enVueloPesados = null
+export function obtenerPesados() {
+  if (_pesados && Date.now() - _pesados.t < 5 * 60 * 1000) return Promise.resolve(_pesados.d)
+  if (_enVueloPesados) return _enVueloPesados
+  _enVueloPesados = todas(() => supabase.rpc('media_jugadores_stats').order('player_id', { ascending: true }))
+    .then(filas => { const d = filas.length ? filas : null; _pesados = { t: Date.now(), d }; return d })
+    .catch(() => null)
+    .finally(() => { _enVueloPesados = null })
+  return _enVueloPesados
 }
 
 // ── MVP y arcos en cero de todos (se guardan 5 minutos en memoria) ──
@@ -52,8 +88,22 @@ export function obtenerExtras() {
   _enVuelo = Promise.all([
     todas(() => supabase.from('tournament_logros').select('id, player_id').eq('tipo', 'mvp').order('id', { ascending: true })),
     todas(() => supabase.from('player_match_stats').select('id, player_id').eq('fue_arquero', true).eq('goals_conceded', 0).order('id', { ascending: true })),
-  ]).then(([mvps, ceros]) => {
-    const d = { mvp: new Map(), ceros: new Map() }
+    todas(() => supabase.from('tournament_logros').select('id, player_id, tournament_id, tipo').in('tipo', Object.keys(VALOR_TITULO)).order('id', { ascending: true })),
+  ]).then(([mvps, ceros, titulos]) => {
+    const d = { mvp: new Map(), ceros: new Map(), titulos: new Map() }
+    // Títulos: por jugador y por torneo se queda el mejor (por si quedó guardado dos veces)
+    const mejor = new Map()
+    titulos.forEach(r => {
+      const clave = `${r.player_id}|${r.tournament_id}`
+      if ((VALOR_TITULO[r.tipo] || 0) > (VALOR_TITULO[mejor.get(clave)] || 0)) mejor.set(clave, r.tipo)
+    })
+    mejor.forEach((tipo, clave) => {
+      const id = clave.split('|')[0]
+      const t = d.titulos.get(id) || { puntos: 0, campeon: 0, subcampeon: 0, tercero: 0 }
+      t.puntos += VALOR_TITULO[tipo]
+      if (VALOR_TITULO[tipo] === 3) t.campeon++; else if (VALOR_TITULO[tipo] === 2) t.subcampeon++; else t.tercero++
+      d.titulos.set(id, t)
+    })
     mvps.forEach(r => { const id = String(r.player_id); d.mvp.set(id, (d.mvp.get(id) || 0) + 1) })
     ceros.forEach(r => { const id = String(r.player_id); d.ceros.set(id, (d.ceros.get(id) || 0) + 1) })
     _extras = { t: Date.now(), d }
@@ -83,16 +133,34 @@ function porcentaje(ordenadaOtros, v, mejorMayor) {
 const aMedia = s => Math.max(40, Math.min(99, Math.round(40 + 59 * s)))
 
 // Arma la media del jugador (con el por qué y los retos). null si no está en el ranking.
-export function calcularMedia(agregado, extras, playerId) {
+// pesados: filas de media_jugadores_stats (con el tiempo). Si no hay, se usa agregado + extras (sin el tiempo).
+export function calcularMedia(agregado, extras, playerId, pesados = null) {
   const id = String(playerId || '')
-  const lista = armarLista(agregado || []).map(j => ({ ...j, mvp: extras?.mvp?.get(j.id) || 0, ceros: extras?.ceros?.get(j.id) || 0 }))
+  const lista = pesados
+    ? armarLista(pesados.map(r => ({
+        id: String(r.player_id), players: { posicion_futbol5: r.pos5, posicion_futbol7: r.pos7, posicion_futbol11: r.pos11 },
+        pj: Number(r.w_pj) || 0, goles: Number(r.w_goles) || 0, recibidos: Number(r.w_recibidos) || 0, pg: Number(r.w_pg) || 0,
+        mvp: Number(r.w_mvp) || 0, ceros: Number(r.w_ceros) || 0, titulos: Number(r.w_titulos) || 0,
+        real: { pj: r.pj || 0, goles: r.goles || 0, mvp: r.mvp || 0, ceros: r.ceros || 0, campeon: r.campeon || 0, subcampeon: r.subcampeon || 0, tercero: r.tercero || 0 },
+      })))
+    : armarLista(agregado || []).map(j => {
+        const t = extras?.titulos?.get(j.id)
+        const mvp = extras?.mvp?.get(j.id) || 0, ceros = extras?.ceros?.get(j.id) || 0
+        return { ...j, mvp, ceros, titulos: t?.puntos || 0,
+          real: { pj: j.pj, goles: j.goles, mvp, ceros, campeon: t?.campeon || 0, subcampeon: t?.subcampeon || 0, tercero: t?.tercero || 0 } }
+      })
   const yo = lista.find(j => j.id === id)
   if (!yo) return null
   const tipo = yo.esPortero ? 'arquero' : 'campo'
-  if (yo.pj < MIN_PJ_MEDIA) return { sinMedia: true, faltan: MIN_PJ_MEDIA - yo.pj, tipo, pj: yo.pj }
+  if (yo.real.pj < MIN_PJ_MEDIA) return { sinMedia: true, faltan: MIN_PJ_MEDIA - yo.real.pj, tipo, pj: yo.real.pj }
 
-  const comps = COMPONENTES[tipo]
-  const otros = lista.filter(j => j.id !== id && j.pj >= MIN_PJ_MEDIA && !!j.esPortero === !!yo.esPortero)
+  const todos = lista.filter(j => j.real.pj >= MIN_PJ_MEDIA && !!j.esPortero === !!yo.esPortero)
+  const otros = todos.filter(j => j.id !== id)
+  // Promedios de todos (la "referencia" hacia la que se acercan los que llevan mucho sin jugar)
+  const suma = c => todos.reduce((s, j) => s + (j[c] || 0), 0)
+  const sPj = suma('pj') || 1
+  const ref = { gpp: suma('goles') / sPj, efic: suma('pg') / sPj, mvp: suma('mvp') / sPj, rpp: suma('recibidos') / sPj, ceros: suma('ceros') / sPj }
+  const comps = componentes(tipo, ref)
   const ordenadas = comps.map(c => otros.map(c.valor).sort((a, b) => a - b))
   const evaluar = j => {
     const partes = comps.map((c, i) => ({ ...c, p: porcentaje(ordenadas[i], c.valor(j), c.mejorMayor), texto: c.ver(c.valor(j), j) }))
@@ -110,7 +178,8 @@ export function calcularMedia(agregado, extras, playerId) {
 
   // ── Retos: qué pasaría en sus próximos partidos ──
   const gpp = yo.goles / yo.pj, efic = yo.pg / yo.pj, rpp = yo.recibidos / yo.pj
-  const con = cambios => evaluar({ ...yo, ...Object.fromEntries(Object.entries(cambios).map(([k, v]) => [k, (yo[k] || 0) + v])) }).media
+  // Los partidos nuevos pesan 1 (son de hoy)
+  const con = cambios => evaluar({ ...yo, real: { ...yo.real, pj: yo.real.pj + (cambios.pj || 0) }, ...Object.fromEntries(Object.entries(cambios).map(([k, v]) => [k, (yo[k] || 0) + v])) }).media
   const retos = []
   if (tipo === 'campo') {
     // Goles en los próximos 3 partidos (el menor número que sube la media)
@@ -126,11 +195,14 @@ export function calcularMedia(agregado, extras, playerId) {
     retos.push({ icono: '✅', texto: 'Gana tus próximos 2 partidos', media: con({ pj: 2, pg: 2, recibidos: Math.round(2 * rpp) }) })
     retos.push({ icono: '⭐', texto: 'Sé el MVP de tu próximo partido', media: con({ pj: 1, pg: 1, mvp: 1, recibidos: Math.round(rpp) }) })
   }
-  const retosUtiles = retos.map(r => ({ ...r, sube: r.media - mio.media })).filter(r => r.sube > 0).sort((a, b) => b.sube - a.sube).slice(0, 3)
+  // El reto más grande: salir campeón del torneo que está jugando
+  const mCampeon = con({ titulos: 3 })
+  if (mCampeon > mio.media) retos.push({ icono: '🏆', texto: 'Sal campeón de tu torneo', media: mCampeon })
+  const retosUtiles = retos.map(r => ({ ...r, sube: r.media - mio.media })).filter(r => r.sube > 0).sort((a, b) => b.sube - a.sube).slice(0, 4)
 
   const porFuerza = [...mio.partes].sort((a, b) => b.p - a.p)
   return {
-    tipo, media: mio.media, partes: mio.partes, superaA, puesto, total: mediasOtros.length + 1,
+    tipo, media: mio.media, partes: mio.partes, superaA, puesto, total: mediasOtros.length + 1, conTiempo: !!pesados,
     fuerte: porFuerza[0], debil: porFuerza[porFuerza.length - 1], retos: retosUtiles,
   }
 }
@@ -141,9 +213,11 @@ export function useMediaJugador(playerId, userId, pj) {
   useEffect(() => {
     if (!playerId) return undefined
     let vivo = true
-    Promise.all([obtenerAgregado(userId), obtenerExtras().catch(() => null)])
-      .then(([ag, ex]) => { if (vivo) setRes(calcularMedia(ag, ex, playerId)) })
-      .catch(() => {})
+    obtenerPesados().then(async pesados => {
+      // Con la función del tiempo no hace falta nada más; sin ella, el ranking normal + MVP, ceros y títulos aparte
+      const [ag, ex] = pesados ? [null, null] : await Promise.all([obtenerAgregado(userId), obtenerExtras().catch(() => null)])
+      if (vivo) setRes(calcularMedia(ag, ex, playerId, pesados))
+    }).catch(() => {})
     return () => { vivo = false }
   }, [playerId, userId, pj])
   return res

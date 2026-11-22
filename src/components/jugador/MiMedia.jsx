@@ -84,7 +84,8 @@ export default function MiMedia({ media }) {
         <div style={{ fontSize: '.98rem', color: J.text2, lineHeight: 1.45 }}>Estás muy arriba: para subir más tienes que mantener el nivel partido a partido. ¡Sigue así!</div>
       )}
       <div style={{ fontSize: '.82rem', color: J.muted, marginTop: 10, lineHeight: 1.4 }}>
-        La media se compara con todos los {quienes} de Golmebol que tienen al menos 3 partidos, y se actualiza con cada partido.
+        La media se compara con todos los {quienes} de Golmebol que tienen al menos 3 partidos y se actualiza con cada partido.
+        {media.conTiempo && ' Cuenta más lo reciente: un partido o un título de hace 6 meses vale la mitad, y uno de hace un año la cuarta parte. Si dejas de jugar, tu media va bajando.'}
       </div>
     </div>
   )
