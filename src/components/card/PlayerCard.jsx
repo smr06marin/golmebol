@@ -193,6 +193,7 @@ export default function PlayerCard({
 
   // ── Datos que muestra la tarjeta ──
   const eficacia = stats.eficacia ?? (stats.pj > 0 ? Math.round(((stats.pg || 0) / stats.pj) * 100) : 0)
+  const conMedia = typeof stats.media === 'number'   // la media tipo FIFA (lib/mediaJugador.js), si ya la tiene
   const fila1 = modoEscuela
     ? (esPortero
         ? [
@@ -294,14 +295,14 @@ export default function PlayerCard({
 
         {/* 3 · Placa, marco, adornos y textos */}
         <svg viewBox={`0 0 ${W} ${H}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
-          role="img" aria-label={`Tarjeta de ${nombre}: ${stats.pj ?? 0} partidos jugados`}>
+          role="img" aria-label={conMedia ? `Tarjeta de ${nombre}: media ${stats.media}, ${stats.pj ?? 0} partidos jugados` : `Tarjeta de ${nombre}: ${stats.pj ?? 0} partidos jugados`}>
           <ArteFrente c={c} uid={uid} conFoto={conFoto} animado={animado}/>
 
-          {/* Partidos jugados */}
+          {/* Arriba a la izquierda: la MEDIA del jugador (como en FIFA) si ya la tiene; si no, los partidos jugados */}
           {pista && interactiva && <rect x="26" y="46" width="96" height="78" rx="14" fill={conFoto ? '#fff' : c.a} fillOpacity=".1" className="gmc-pista"/>}
-          <text x="34" y="101" fontFamily={FUENTE} fontSize="68" fill={tintaArriba} style={sombraTexto}>{stats.pj ?? 0}</text>
+          <text x="34" y="101" fontFamily={FUENTE} fontSize="68" fill={tintaArriba} style={sombraTexto}>{conMedia ? stats.media : (stats.pj ?? 0)}</text>
           <text x="36" y="117" fontFamily={FUENTE} fontSize="12.5" letterSpacing="2.4" fill={tintaArriba} opacity=".92" style={conFoto ? { paintOrder: 'stroke', stroke: 'rgba(0,0,0,.5)', strokeWidth: 2 } : null}>
-            {stats.pj === 1 ? 'PARTIDO' : 'PARTIDOS'}
+            {conMedia ? `MEDIA · ${stats.pj ?? 0} PJ` : stats.pj === 1 ? 'PARTIDO' : 'PARTIDOS'}
           </text>
 
           {/* Bases de los escudos */}
@@ -386,7 +387,7 @@ export default function PlayerCard({
 
         {interactiva && (
           <>
-            <button type="button" onClick={() => onStatClick('pj')} aria-label={`Partidos jugados: ${stats.pj ?? 0}. Ver ranking`} style={{ ...botonInvisible, ...zona(24, 44, 100, 82) }}/>
+            <button type="button" onClick={() => onStatClick(conMedia ? 'media' : 'pj')} aria-label={conMedia ? `Media: ${stats.media}. Ver por qué y cómo subirla` : `Partidos jugados: ${stats.pj ?? 0}. Ver ranking`} style={{ ...botonInvisible, ...zona(24, 44, 100, 82) }}/>
             {fila1.map((s, i) => (
               <button key={s.key} type="button" onClick={() => onStatClick(s.key)} aria-label={`${s.nombre}: ${s.value}. Ver ranking`} style={{ ...botonInvisible, ...zona(X1[i] - 47, 361, 94, 50) }}/>
             ))}

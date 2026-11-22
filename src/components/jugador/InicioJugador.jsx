@@ -4,6 +4,7 @@ import PlayerCard from '../card/PlayerCard'
 import MisPuestos from '../card/MisPuestos'
 import MiCarrera from './MiCarrera'
 import MejoresSemana from './MejoresSemana'
+import MiMedia from './MiMedia'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../SubidaFotoJugador'
 import { CARD_DESIGNS } from '../card/designs/cardDesigns'
 import { arteDe, NOMBRE_NIVEL } from '../card/designs/cardArte'
@@ -230,7 +231,7 @@ export default function InicioJugador({
   player, userId, nombre, stats, cardStats, cardType, esPortero, esDefensa, torneosData, equiposData,
   novedades = [], proximo, proximos, historial = [], logros = [], cargandoHistorial = false, siguiente, desbloqueadas = 0, totalTarjetas = 0,
   onVerTarjeta, onVerColeccion, onVerHistorial, onVerHistorialCompleto, onAbrirRanking, onFotoSubida,
-  equiposDueno = [], onAbrirEquipo, avisos = [],
+  equiposDueno = [], onAbrirEquipo, avisos = [], media = null,
 }) {
   const design = CARD_DESIGNS.find(d => d.id === cardType) || CARD_DESIGNS[0]
   const arte = arteDe(design)
@@ -285,8 +286,16 @@ export default function InicioJugador({
             {/* Nivel, nombre de la tarjeta y avance hacia la siguiente */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '1rem', fontWeight: 600, color: J.text2 }}>Hola, {mayus(String(nombre || '').toLowerCase())} 👋</div>
-              <span style={{ display: 'inline-block', marginTop: 8, fontSize: '.85rem', fontWeight: 800, letterSpacing: '.04em', color: J.greenDk, background: `linear-gradient(180deg, ${J.greenLuz}, ${J.green})`, padding: '3px 12px', borderRadius: 999 }}>
-                {nombreNivel(arte)}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                <span style={{ fontSize: '.85rem', fontWeight: 800, letterSpacing: '.04em', color: J.greenDk, background: `linear-gradient(180deg, ${J.greenLuz}, ${J.green})`, padding: '3px 12px', borderRadius: 999 }}>
+                  {nombreNivel(arte)}
+                </span>
+                {media && !media.sinMedia && (
+                  <button type="button" onClick={() => abrirSeccion('puestos')} className="gj-boton" aria-label={`Mi media: ${media.media}. Ver por qué y cómo subirla`}
+                    style={{ fontSize: '.85rem', fontWeight: 900, color: '#1a1200', background: `linear-gradient(180deg, ${J.goldLuz}, ${J.gold})`, padding: '3px 10px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: FT }}>
+                    MEDIA {media.media}
+                  </button>
+                )}
               </span>
               <div style={{ fontSize: '1.6rem', fontWeight: 900, lineHeight: 1.1, marginTop: 6, color: J.text, textShadow: `0 0 20px ${luz}66`, wordBreak: 'break-word' }}>{nombreBonito(design.nombre)}</div>
 
@@ -403,7 +412,9 @@ export default function InicioJugador({
       <RetoDeHoy playerId={player.id} userId={userId} esPortero={esPortero} pj={pj} onAbrir={onAbrirRanking}/>
 
       {pj > 0 && (
-        <Desplegable id="puestos" icono={<Medal size={22} color={J.azul} strokeWidth={2.5}/>} color={J.azul} titulo="Mis rankings" resumen="Tu puesto frente a todos" retraso={.35}>
+        <Desplegable id="puestos" icono={<Medal size={22} color={J.azul} strokeWidth={2.5}/>} color={J.azul} titulo="Mi media y mis rankings" retraso={.35}
+          resumen={media && !media.sinMedia ? <>Tu media: <b style={{ color: J.gold }}>{media.media}</b> · mejor que el {media.superaA}%</> : media?.sinMedia ? `Juega ${media.faltan} ${media.faltan === 1 ? 'partido' : 'partidos'} más para tener tu media` : 'Tu media y tu puesto frente a todos'}>
+          <MiMedia media={media}/>
           <MisPuestos playerId={player.id} userId={userId} pj={pj} onAbrir={onAbrirRanking} enInicio/>
         </Desplegable>
       )}

@@ -9,6 +9,8 @@ import PlayerCard from '../components/card/PlayerCard'
 import { CARD_DESIGNS } from '../components/card/designs/cardDesigns'
 import StatRankingModal from '../components/card/StatRankingModal'
 import MisPuestos from '../components/card/MisPuestos'
+import { useMediaJugador } from '../lib/mediaJugador'
+import { abrirSeccion } from '../components/jugador/juegoEstilo'
 import ColeccionTarjetas from '../components/card/ColeccionTarjetas'
 import InicioJugador from '../components/jugador/InicioJugador'
 import { obtenerAgregado, misPuestos } from '../lib/rankingsJugadores'
@@ -686,6 +688,9 @@ export default function PlayerHomePage() {
     return () => clearTimeout(t)
   }, [idTarjetaNueva])
 
+  // La media del jugador (número tipo FIFA): va en la tarjeta y en "Mi media y mis rankings" del inicio
+  const media = useMediaJugador(player?.id, user?.id, stats?.pj)
+
   if (loading) return <PantallaCargando/>
 
   if (!player) return null
@@ -737,6 +742,7 @@ export default function PlayerHomePage() {
     vallasCero:   stats?.vallasCero   || 0,
     golesComoJug: stats?.golesComoJug || 0,
     golesComoArq: stats?.golesComoArq || 0,
+    media:        media && !media.sinMedia ? media.media : null,
   }
 
   const nombre      = player.name?.toUpperCase().split(' ')[0] || 'JUGADOR'
@@ -744,6 +750,8 @@ export default function PlayerHomePage() {
   const equiposData = torneos.map(t => ({ id: t.teams?.id, nombre: t.teams?.name, logo_url: t.teams?.logo_url || null })).filter((e, i, arr) => e.id && arr.findIndex(x => x.id === e.id) === i)
 
   function handleCardClick(itemId) {
+    // Tocar la media de la tarjeta: lleva al inicio y abre "Mi media y mis rankings" (por qué y cómo subirla)
+    if (itemId === 'media') { setTab('inicio'); setTimeout(() => abrirSeccion('puestos'), 350); return }
     const statKeys = ['pj', 'gc', 'prom', 'efic', 'pg', 'pe', 'pp']
     if (statKeys.includes(itemId)) { abrirRanking(itemId); return }
     const torneo = torneosData.find(t => t.id === itemId)
@@ -968,6 +976,7 @@ export default function PlayerHomePage() {
             onVerColeccion={() => setShowSelector(true)}
             onVerHistorial={() => setTab('historial')}
             onVerHistorialCompleto={() => navigate('/jugador/historial')}
+            media={media}
             avisos={notifs.filter(n => !String(n.id).startsWith('partido_')).slice(0, 2).map(n => ({ id: n.id, titulo: n.titulo, texto: n.texto, onClick: () => { if (n.accion?.fn) n.accion.fn(); dismissNotif(n.id) } }))}
             equiposDueno={equiposDueno} onAbrirEquipo={id => navigate(`/equipos/${id}`)}
             onFotoSubida={(campo, url) => setPlayer(p => ({ ...p, [campo]: url, [campo === 'photo_url' ? 'foto_cambiar_tarjeta' : 'foto_cambiar_perfil']: false }))}
