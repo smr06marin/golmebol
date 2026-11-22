@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { abrirChatAyuda } from '../../lib/abrirChat'
 import { celebrar } from '../../lib/celebracion'
+import { PLAZO_PREMIO_MS, tiempoParaReclamar } from '../../lib/desbloqueosTarjetas'
 
 const S = {
   navy:    '#0a0a0a',
@@ -36,6 +37,13 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
   const [loading, setLoading] = useState(true)
   const [verRotos, setVerRotos] = useState(false)
   const [celebrando, setCelebrando] = useState(null) // tarjeta recién desbloqueada que se está celebrando
+  const [reclamando, setReclamando] = useState(null)  // id del nivel cuyo premio se está reclamando
+  const [ahora, setAhora] = useState(() => Date.now())
+  // El reloj del plazo para reclamar se actualiza cada minuto
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), 60000)
+    return () => clearInterval(t)
+  }, [])
 
   // ¿Desbloqueó una tarjeta nueva desde la última vez que entró (en este celular)? → confeti, fuegos y aviso.
   // La primera vez que se abre en un celular solo se celebra lo desbloqueado en los últimos 7 días.
@@ -216,9 +224,42 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
   const requeridos      = objetivo.logros_requeridos || 3
   const desbloqueada    = !hayYaTiene && activoCompleto
   const pct             = totalLogros > 0 ? Math.round((logrosCompletos / requeridos) * 100) : 0
-  // Premio por el chat: solo tarjetas que no son de Iniciación
-  const conPremio = nivel => !['nivel1_verde','nivel1_azul','nivel1_bronce','nivel1_plata','nivel1_oro'].includes(nivel.card_design_id)
-  const premioActivo = activoCompleto && conPremio(subnivel_activo)
+  // ¿La tarjeta da premio? Lo decide el administrador (cards.da_premio). Si todavía no existe esa opción,
+  // como antes: las de Iniciación no dan premio.
+  const conPremio = nivel => {
+    const card = nivel.card || (data.cards || []).find(c => c.id === nivel.card_id)
+    if (card && card.da_premio !== undefined && card.da_premio !== null) return card.da_premio !== false
+    return !['nivel1_verde','nivel1_azul','nivel1_bronce','nivel1_plata','nivel1_oro'].includes(nivel.card_design_id)
+  }
+  // Premios de tarjetas desbloqueadas: por reclamar (3 días), ya reclamados (falta entregar) o vencidos hace poco
+  const premios = (data.levels || [])
+    .filter(l => progresoMap[l.id]?.desbloqueada && conPremio(l))
+    .map(l => {
+      const pr = progresoMap[l.id]
+      const fecha = pr.fecha_desbloqueada
+      const t = Date.parse(fecha) || 0
+      const estado = pr.premio_entregado_en ? 'entregado' : pr.premio_reclamado_en ? 'reclamado' : ahora - t > PLAZO_PREMIO_MS ? 'vencido' : 'en_plazo'
+      return { nivel: { ...l, card: (data.cards || []).find(c => c.id === l.card_id) }, fecha, estado, reclamado: pr.premio_reclamado_en, vencioHace: ahora - t - PLAZO_PREMIO_MS }
+    })
+    .filter(p => p.estado === 'en_plazo' || p.estado === 'reclamado' || (p.estado === 'vencido' && p.vencioHace < 7 * 864e5))
+    .sort((a, b) => (Date.parse(b.fecha) || 0) - (Date.parse(a.fecha) || 0))
+
+  const conPremioModal = nivel => !!nivel && conPremio(nivel) && !progresoMap[nivel.id]?.premio_reclamado_en
+    && (Date.now() - (Date.parse(progresoMap[nivel.id]?.fecha_desbloqueada) || 0)) < PLAZO_PREMIO_MS
+
+  async function reclamar(p) {
+    setReclamando(p.nivel.id)
+    const { data: r, error } = await supabase.rpc('reclamar_premio_tarjeta', { p_player_id: playerId, p_card_level_id: String(p.nivel.id) })
+    setReclamando(null)
+    const nombre = `${p.nivel.card?.nombre || ''} · ${p.nivel.nombre}`
+    if (error || !r?.ok) {
+      if (r?.motivo === 'vencido') { fetchProgreso(); return }
+      // Si la base todavía no tiene esta opción, igual se abre el chat para que no pierda el premio
+    } else {
+      setData(d => d && ({ ...d, progresoMap: { ...d.progresoMap, [p.nivel.id]: { ...d.progresoMap[p.nivel.id], premio_reclamado_en: r.reclamado_en || new Date().toISOString() } } }))
+    }
+    abrirChatAyuda(`🎁 ¡Desbloqueé la tarjeta ${nombre} en Golmebol! Vengo a reclamar mi premio. Te adjunto el pantallazo de mi tarjeta 📸`)
+  }
 
   const filaLogro = (a, color) => {
     const completado  = achMap[a.id]?.completado || false
@@ -269,12 +310,67 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
             <div style={{ fontSize: '.7rem', fontWeight: 900, letterSpacing: '.24em', color: S.gold, marginTop: '12px' }}>¡NUEVA TARJETA!</div>
             <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#fff', marginTop: '6px', lineHeight: 1.2 }}>{celebrando.card?.nombre} · {celebrando.nombre}</div>
             <div style={{ fontSize: '.85rem', color: S.text2, marginTop: '8px', lineHeight: 1.45 }}>Rompiste los logros y la desbloqueaste. ¡Ya es tuya! 🔥</div>
+            {conPremioModal(celebrando) && (
+              <div style={{ marginTop: '12px', background: 'rgba(245,166,35,.14)', border: `1px solid ${S.gold}`, borderRadius: '12px', padding: '10px 12px', color: '#ffe3a6', fontSize: '.84rem', fontWeight: 700, lineHeight: 1.4 }}>
+                🎁 Esta tarjeta tiene premio. Tienes <b>3 días</b> para reclamarlo: arriba te decimos cómo hacerlo.
+              </div>
+            )}
             <button type="button" onClick={() => setCelebrando(null)}
               style={{ marginTop: '18px', width: '100%', minHeight: '50px', border: 'none', borderRadius: '14px', background: S.cyan, color: '#0a1a05', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit' }}>
               ¡Vamos! 💪
             </button>
           </div>
         </div>
+      )}
+
+      {/* Premios por reclamar (3 días desde que desbloquea) */}
+      {premios.map(p => {
+        const nombre = `${p.nivel.card?.nombre || ''} · ${p.nivel.nombre}`
+        if (p.estado === 'en_plazo') {
+          const queda = tiempoParaReclamar(p.fecha, ahora)
+          return (
+            <div key={p.nivel.id} className="gm-premio-pulso" style={{ marginBottom: '12px', borderRadius: '16px', padding: '16px', background: 'linear-gradient(150deg, rgba(245,166,35,.22), rgba(245,166,35,.06) 60%), #120e05', border: `1.5px solid ${S.gold}`, boxShadow: '0 0 0 3px rgba(245,166,35,.12)' }}>
+              <div style={{ fontSize: '.72rem', fontWeight: 900, letterSpacing: '.18em', color: S.gold }}>🎁 ¡RECLAMA TU PREMIO!</div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#fff', marginTop: '6px', lineHeight: 1.25 }}>Desbloqueaste {nombre}</div>
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,0,0,.35)', borderRadius: '12px', padding: '10px 12px' }}>
+                <span style={{ fontSize: '1.3rem' }}>⏳</span>
+                <div style={{ fontSize: '.86rem', color: '#fff', lineHeight: 1.35 }}>
+                  Te quedan <b style={{ color: S.gold }}>{queda}</b> para reclamarlo.<br/>
+                  <span style={{ color: S.muted, fontSize: '.76rem' }}>Después de 3 días ya no se puede reclamar.</span>
+                </div>
+              </div>
+              <ol style={{ margin: '12px 0 0', paddingLeft: '20px', color: S.text2, fontSize: '.84rem', lineHeight: 1.5 }}>
+                <li><b style={{ color: '#fff' }}>Toma un pantallazo</b> de esta pantalla, que se vea tu tarjeta desbloqueada y los 5 niveles.</li>
+                <li>Toca <b style={{ color: '#fff' }}>Reclamar mi premio</b> y <b style={{ color: '#fff' }}>envía el pantallazo</b> por el chat.</li>
+              </ol>
+              <button type="button" disabled={reclamando === p.nivel.id} onClick={() => reclamar(p)}
+                style={{ marginTop: '12px', width: '100%', minHeight: '52px', border: 'none', borderRadius: '14px', background: S.gold, color: '#1a1000', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit', opacity: reclamando === p.nivel.id ? .6 : 1 }}>
+                {reclamando === p.nivel.id ? 'Abriendo el chat…' : '📸 Reclamar mi premio'}
+              </button>
+            </div>
+          )
+        }
+        if (p.estado === 'reclamado') {
+          return (
+            <div key={p.nivel.id} style={{ marginBottom: '12px', borderRadius: '14px', padding: '14px 16px', background: S.winDim, border: `1px solid ${S.win}66` }}>
+              <div style={{ fontSize: '.86rem', fontWeight: 800, color: '#fff' }}>✓ Ya reclamaste el premio de {nombre}</div>
+              <div style={{ fontSize: '.78rem', color: S.text2, marginTop: '4px', lineHeight: 1.45 }}>Te vamos a responder por el chat. Si todavía no enviaste el pantallazo de tu tarjeta, envíalo ahí.</div>
+              <button type="button" onClick={() => abrirChatAyuda(`🎁 Reclamé el premio de la tarjeta ${nombre}. Te envío el pantallazo 📸`)}
+                style={{ marginTop: '10px', minHeight: '44px', padding: '0 16px', border: `1px solid ${S.win}`, borderRadius: '12px', background: 'transparent', color: '#fff', fontWeight: 800, fontSize: '.84rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                💬 Abrir el chat
+              </button>
+            </div>
+          )
+        }
+        return (
+          <div key={p.nivel.id} style={{ marginBottom: '12px', borderRadius: '14px', padding: '12px 16px', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)' }}>
+            <div style={{ fontSize: '.82rem', fontWeight: 800, color: S.text2 }}>⌛ Se venció el plazo del premio de {nombre}</div>
+            <div style={{ fontSize: '.74rem', color: S.muted, marginTop: '3px', lineHeight: 1.4 }}>Había 3 días para reclamarlo. En tu próxima tarjeta, ¡reclámalo apenas la desbloquees!</div>
+          </div>
+        )
+      })}
+      {premios.some(p => p.estado === 'en_plazo') && (
+        <style>{'@keyframes gmPremioPulso{0%,100%{box-shadow:0 0 0 3px rgba(245,166,35,.12)}50%{box-shadow:0 0 0 7px rgba(245,166,35,.22)}} .gm-premio-pulso{animation:gmPremioPulso 2s ease-in-out infinite} @media (prefers-reduced-motion: reduce){.gm-premio-pulso{animation:none}}'}</style>
       )}
 
       {/* Tarjeta que ya tiene (cuando ya va por la siguiente) */}
@@ -292,16 +388,6 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
           {verRotos && (
             <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {logrosActivo.map(a => filaLogro(a, colorDe(subnivel_activo)))}
-            </div>
-          )}
-          {premioActivo && (
-            <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, rgba(30,142,62,.15), rgba(249,168,37,.1))', border: `1px solid ${S.win}44`, borderRadius: '12px', padding: '14px 16px' }}>
-              <div style={{ fontSize: '.82rem', fontWeight: '800', color: S.gold, marginBottom: '6px' }}>🎉 ¡Tarjeta desbloqueada!</div>
-              <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', lineHeight: 1.5, marginBottom: '12px' }}>Cuéntanos por el chat que la desbloqueaste y reclama tu premio 👇</div>
-              <button type="button" onClick={() => abrirChatAyuda(`¡Desbloqueé la tarjeta ${subnivel_activo.card?.nombre} · ${subnivel_activo.nombre} en Golmebol! 🎉 Vengo a reclamar mi premio.`)}
-                style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: S.win, borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem' }}>
-                💬 Reclamar premio por el chat
-              </button>
             </div>
           )}
         </div>
@@ -328,16 +414,6 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
             </span>
           )}
         </div>
-        {!hayYaTiene && premioActivo && (
-          <div style={{ margin: '12px 16px 0', background: 'linear-gradient(135deg, rgba(30,142,62,.15), rgba(249,168,37,.1))', border: `1px solid ${S.win}44`, borderRadius: '12px', padding: '14px 16px' }}>
-            <div style={{ fontSize: '.82rem', fontWeight: '800', color: S.gold, marginBottom: '6px' }}>🎉 ¡Tarjeta desbloqueada!</div>
-            <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', lineHeight: 1.5, marginBottom: '12px' }}>Cuéntanos por el chat que la desbloqueaste y reclama tu premio 👇</div>
-            <button type="button" onClick={() => abrirChatAyuda(`¡Desbloqueé la tarjeta ${subnivel_activo.card?.nombre} · ${subnivel_activo.nombre} en Golmebol! 🎉 Vengo a reclamar mi premio.`)}
-              style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: S.win, borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem' }}>
-              💬 Reclamar premio por el chat
-            </button>
-          </div>
-        )}
         {/* Barra de progreso */}
         <div style={{ padding: '12px 16px 4px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>

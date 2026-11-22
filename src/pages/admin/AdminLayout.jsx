@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { Ban, Trophy, Shield, Users, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone, Wallet } from 'lucide-react'
+import { Ban, Trophy, Shield, Users, Star, CreditCard, Newspaper, Medal, UserCheck, UserCog, GraduationCap, Building2, Radio, Globe, Megaphone, Wallet, Gift } from 'lucide-react'
 import { supabase, supabaseSilent } from '../../lib/supabase'
 import { errorAmigable } from '../../lib/mensajesError'
 import ConfirmHost from '../../components/ConfirmHost'
@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/authStore'
 import ChatSoporte from '../../components/ChatSoporte'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { notify } from '../../lib/notify'
+import { CLAVE_VISTO_DESBLOQUEOS } from '../../lib/desbloqueosTarjetas'
 
 const MENU_COMPLETO = [
   { icon: <Trophy size={22}/>,       label: 'TORNEOS',    ruta: '/admin/torneos', ayuda: 'Crea y maneja tus torneos, equipos, calendario y resultados' },
@@ -17,6 +18,7 @@ const MENU_COMPLETO = [
   { icon: <Ban size={22}/>,          label: 'SUSPENSIONES', ruta: '/admin/suspensiones', ayuda: 'Jugadores sancionados: quita o extiende sanciones y pide vetos' },
   { icon: <Wallet size={22}/>,       label: 'CUADRE CANCHA', ruta: '/admin/cobros', ayuda: 'Plata recogida por cancha cada día, fotos de transferencias y lo que te queda después de pagar árbitros y canchas' },
   { icon: <CreditCard size={22}/>,   label: 'TARJETAS',   ruta: '/admin/tarjetas',  soloAdmin: true },
+  { icon: <Gift size={22}/>,         label: 'DESBLOQUEOS', ruta: '/admin/desbloqueos', soloAdmin: true, ayuda: 'Jugadores que desbloquearon tarjetas, con la fecha, y sus premios por entregar' },
   { icon: <Star size={22}/>,         label: 'SPONSORS',   ruta: '/admin/sponsors',  soloAdmin: true },
   { icon: <Newspaper size={22}/>,    label: 'NOTICIAS',   ruta: '/admin/noticias', ocultoOrganizador: true },
   { icon: <Medal size={22}/>,        label: 'RÉCORDS',    ruta: '/admin/records',   soloAdmin: true },
@@ -67,6 +69,31 @@ export default function AdminLayout() {
   const esAdmin = rol?.rol ? rol.rol === 'admin' : true
   const esOrganizador = rol?.rol === 'organizador'
   const MENU = MENU_COMPLETO.filter(m => (esAdmin || !m.soloAdmin) && !(esOrganizador && m.ocultoOrganizador))
+
+  // Número rojo en DESBLOQUEOS: tarjetas desbloqueadas desde la última vez que se abrió esa pestaña, más los premios
+  // que ya reclamaron y falta entregar. Se revisa al entrar y cada 2 minutos.
+  const [pendTarjetas, setPendTarjetas] = useState(0)
+  const esAdminReal = rol?.rol === 'admin'
+  useEffect(() => {
+    if (!esAdminReal) return undefined
+    let vivo = true
+    const revisar = async () => {
+      let visto
+      try { visto = Number(window.localStorage.getItem(CLAVE_VISTO_DESBLOQUEOS)) || 0 } catch { visto = 0 }
+      // Solo un número (liviano): desbloqueos desde la última visita + premios reclamados sin entregar
+      const { data, error } = await supabase.rpc('admin_desbloqueos_pendientes', { p_desde: new Date(visto).toISOString() })
+      if (!vivo || error || typeof data !== 'number') return
+      setPendTarjetas(data)
+    }
+    const t0 = setTimeout(revisar, 1500)
+    const t = setInterval(revisar, 120000)
+    window.addEventListener('gm-desbloqueos-visto', revisar)
+    return () => { vivo = false; clearTimeout(t0); clearInterval(t); window.removeEventListener('gm-desbloqueos-visto', revisar) }
+  }, [esAdminReal])
+  const badgeDe = item => (item.ruta === '/admin/desbloqueos' ? pendTarjetas : 0)
+  const Badge = ({ n }) => (n > 0 ? (
+    <span style={{ position: 'absolute', top: 2, right: 6, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: '#d93025', color: '#fff', fontSize: '.62rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', lineHeight: 1 }}>{n > 99 ? '99+' : n}</span>
+  ) : null)
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -152,9 +179,10 @@ export default function AdminLayout() {
               const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
               return (
                 <div key={item.ruta} onClick={() => navigate(item.ruta)} title={item.ayuda ? `${item.label} — ${item.ayuda}` : item.label}
-                  style={{ width: '84px', minHeight: '54px', borderRadius: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', padding: '6px 2px', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent', transition: 'background .15s' }}
+                  style={{ position: 'relative', width: '84px', minHeight: '54px', borderRadius: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', padding: '6px 2px', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent', transition: 'background .15s' }}
                   onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#f1f3f4' }}
                   onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
+                  <Badge n={badgeDe(item)}/>
                   {item.icon}
                   <span style={{ fontSize: item.label.length > 11 ? '.5rem' : '.58rem', fontWeight: active ? '700' : '500', letterSpacing: '.01em', textAlign: 'center', lineHeight: 1.15, maxWidth: '100%', whiteSpace: 'nowrap' }}>{item.label}</span>
                 </div>
@@ -182,7 +210,8 @@ export default function AdminLayout() {
             const active = location.pathname === item.ruta || location.pathname.startsWith(item.ruta + '/')
             return (
               <div key={item.ruta} data-activo={active ? '1' : undefined} onClick={() => navigate(item.ruta)}
-                style={{ minWidth: '64px', flex: '1 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', padding: '7px 4px', borderRadius: '10px', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent' }}>
+                style={{ position: 'relative', minWidth: '64px', flex: '1 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', padding: '7px 4px', borderRadius: '10px', cursor: 'pointer', color: active ? '#1a73e8' : '#5f6368', background: active ? '#e8f0fe' : 'transparent' }}>
+                <Badge n={badgeDe(item)}/>
                 {item.icon}
                 <span style={{ fontSize: '.55rem', fontWeight: active ? '700' : '500', letterSpacing: '.02em' }}>{item.label}</span>
               </div>

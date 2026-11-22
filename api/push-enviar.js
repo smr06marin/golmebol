@@ -35,7 +35,7 @@ const EDAD_MAXIMA_H = 72       // un aviso con más de 3 días ya no sirve
 const CONCURRENCIA = 20
 // Avisos para ORGANIZADORES (tarjeta roja en vivo e informe del árbitro): salen de inmediato, a cualquier hora,
 // y solo a quien es dueño del torneo (o administrador de Golmebol si el torneo no tiene organizador).
-const URGENTES = ['roja', 'informe', 'cobro']
+const URGENTES = ['roja', 'informe', 'cobro', 'tarjeta'] // 'tarjeta': un jugador desbloqueó una tarjeta (solo a los administradores)
 const EDAD_URGENTE_H = 6       // una roja o un informe de hace más de 6 horas ya no es "de inmediato"
 
 // ── Firebase (HTTP v1) ────────────────────────────────────────
@@ -177,6 +177,13 @@ async function cargarDispositivos(db) {
 async function cargarDuenos(db, items) {
   const ids = [...new Set(items.map(i => i.torneo_id).filter(Boolean))]
   const duenos = {}
+  // Desbloqueo de tarjetas: no es de un torneo, le llega a los administradores de Golmebol
+  if (items.some(i => i.tipo === 'tarjeta')) {
+    try {
+      const { data: rs } = await db.from('roles_plataforma').select('user_id').eq('rol', 'admin').neq('activo', false).not('user_id', 'is', null)
+      duenos.__admins = new Set((rs || []).map(r => r.user_id))
+    } catch { /* sin administradores no se manda a nadie */ }
+  }
   if (!ids.length) return duenos
   try {
     const { data: ts } = await db.from('tournaments').select('id, organizador_id').in('id', ids)
@@ -195,6 +202,7 @@ async function cargarDuenos(db, items) {
 
 export function leAplica(disp, item, duenos = {}) {
   // roja / informe: solo el organizador del torneo (nunca a los hinchas que siguen el torneo o el equipo)
+  if (item.tipo === 'tarjeta') return !!disp.usuario_id && !!duenos.__admins?.has(disp.usuario_id)
   if (URGENTES.includes(item.tipo)) return !!disp.usuario_id && !!duenos[item.torneo_id]?.has(disp.usuario_id)
   const siguePorEquipo = item.equipos?.some(e => disp.equipos?.includes(e))
   if (item.tipo === 'recordatorio') return !!siguePorEquipo      // el recordatorio solo por equipo
@@ -209,6 +217,7 @@ const RESUMEN = {
   roja:    { titulo: 'Tarjetas rojas en tus partidos', texto: n => `Hubo ${n} tarjetas rojas en tus torneos. Abre Golmebol para verlas.` },
   informe: { titulo: 'Informes de los árbitros',        texto: n => `Los árbitros escribieron ${n} informes en tus torneos. Abre Golmebol para leerlos.` },
   cobro:   { titulo: 'Transferencias de los árbitros',  texto: n => `Los árbitros recibieron ${n} transferencias en la cancha. Abre Golmebol para ver las fotos.` },
+  tarjeta: { titulo: 'Tarjetas desbloqueadas',          texto: n => `${n} jugadores desbloquearon tarjetas. Abre Golmebol para verlos.` },
 }
 
 // ── Aviso ordenado: título corto + líneas (equipos / cuándo y dónde / torneo) ──
@@ -278,7 +287,9 @@ export function avisosParaDispositivo(items, detalles = {}, disp = null) {
         avisos.push({
           tipo, titulo: rico?.titulo || it.titulo, cuerpo: rico?.cuerpo || it.cuerpo, icono: rico?.icono || '',
           // Al tocarlo abre el partido: el resultado abre el minuto a minuto; lo demás, la programación
-          ruta: it.tipo === 'cobro'
+          ruta: it.tipo === 'tarjeta'
+            ? '/admin/desbloqueos'
+            : it.tipo === 'cobro'
             ? '/admin/cobros'
             : it.tipo === 'informe' && it.torneo_id
             ? `/admin/torneos/${it.torneo_id}?tab=informes${it.match_id ? `&partido=${it.match_id}` : ''}`
@@ -287,7 +298,7 @@ export function avisosParaDispositivo(items, detalles = {}, disp = null) {
         })
       }
     } else {
-      avisos.push({ tipo, titulo: RESUMEN[tipo].titulo, cuerpo: RESUMEN[tipo].texto(lista.length), ruta: URGENTES.includes(tipo) ? '/admin' : '/', tag: `resumen:${tipo}` })
+      avisos.push({ tipo, titulo: RESUMEN[tipo].titulo, cuerpo: RESUMEN[tipo].texto(lista.length), ruta: tipo === 'tarjeta' ? '/admin/desbloqueos' : URGENTES.includes(tipo) ? '/admin' : '/', tag: `resumen:${tipo}` })
     }
   }
   return avisos
