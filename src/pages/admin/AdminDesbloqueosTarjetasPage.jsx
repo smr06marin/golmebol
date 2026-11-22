@@ -11,8 +11,9 @@ import { CLAVE_VISTO_DESBLOQUEOS, PLAZO_PREMIO_MS, estadoPremio } from '../../li
 // ─────────────────────────────────────────────────────────────────────────────
 // DESBLOQUEO DE TARJETAS (solo el administrador de la plataforma)
 //  · Quién desbloqueó qué tarjeta y CUÁNDO (fecha y hora).
-//  · El premio: el jugador tiene 3 días (72 h) desde que la desbloquea para reclamarlo desde su tarjeta,
-//    mandando el pantallazo por el chat. Aquí se ve si lo reclamó, si ya se le entregó o si se venció.
+//  · REGLA: con 3 de los 5 logros de una tarjeta se desbloquea la siguiente; con LOS 5 gana el premio de esa
+//    tarjeta y tiene 3 días (72 h) para reclamarlo desde su tarjeta, mandando el pantallazo por el chat.
+//    Aquí se ve si lo reclamó, si ya se le entregó o si se venció.
 //  · "En qué va cada jugador": la tarjeta más alta de cada uno.
 //  · Qué tarjetas dan premio (se prende / apaga por tarjeta).
 //  · Al celular del administrador le llega un aviso cada vez que alguien desbloquea
@@ -29,6 +30,9 @@ const COLORES_TARJETA = {
 const sinTildes = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 const fmtFechaHora = new Intl.DateTimeFormat('es-CO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' })
 const fmtCorta = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })
+
+// Lo último que pasó con esa tarjeta: la desbloqueó o rompió sus 5 logros
+const ultimaNovedad = d => Math.max(Date.parse(d.fecha) || 0, Date.parse(d.completa) || 0)
 
 function leerVisto() { try { return Number(window.localStorage.getItem(CLAVE_VISTO_DESBLOQUEOS)) || 0 } catch { return 0 } }
 
@@ -102,7 +106,7 @@ export default function AdminDesbloqueosTarjetasPage() {
     lista.forEach(d => {
       const e = estadoPremio(d, ahora)
       if (c[e] != null) c[e]++
-      if ((Date.parse(d.fecha) || 0) > vistoAntes) c.nuevos++
+      if (ultimaNovedad(d) > vistoAntes) c.nuevos++
     })
     return c
   }, [lista, ahora, vistoAntes])
@@ -112,7 +116,7 @@ export default function AdminDesbloqueosTarjetasPage() {
     return lista.filter(d => {
       if (q && !sinTildes(`${d.jugador} ${d.tarjeta} ${d.nivel}`).includes(q)) return false
       const e = estadoPremio(d, ahora)
-      if (filtro === 'atender') return e === 'reclamado' || e === 'en_plazo' || (Date.parse(d.fecha) || 0) > vistoAntes
+      if (filtro === 'atender') return e === 'reclamado' || e === 'en_plazo' || ultimaNovedad(d) > vistoAntes
       if (filtro === 'entregado') return e === 'entregado'
       if (filtro === 'vencido') return e === 'vencido'
       return true
@@ -171,8 +175,8 @@ export default function AdminDesbloqueosTarjetasPage() {
         </button>
       </div>
       <p style={{ margin: '6px 0 14px', color: GRIS, fontSize: '.88rem', lineHeight: 1.45 }}>
-        Aquí ves quién desbloqueó cada tarjeta y la fecha. Si la tarjeta da premio, el jugador tiene <b>3 días</b> para reclamarlo
-        mandando el pantallazo por el chat. Cuando se lo entregues, toca <b>Marcar entregado</b>.
+        Con <b>3 de 5 logros</b> el jugador desbloquea la tarjeta siguiente. Con <b>los 5 logros</b> gana el premio de esa tarjeta
+        y tiene <b>3 días</b> para reclamarlo mandando el pantallazo por el chat. Cuando se lo entregues, toca <b>Marcar entregado</b>.
       </p>
 
       {/* Resumen */}
@@ -180,8 +184,8 @@ export default function AdminDesbloqueosTarjetasPage() {
         {[
           { t: 'Nuevos desde tu última visita', n: conteo.nuevos, c: AZUL },
           { t: 'Reclamaron: por entregar', n: conteo.reclamado, c: VERDE },
-          { t: 'En plazo, sin reclamar', n: conteo.en_plazo, c: NARANJA },
-          { t: 'Vencidos (no reclamaron)', n: conteo.vencido, c: ROJO },
+          { t: 'Ganaron premio, sin reclamar', n: conteo.en_plazo, c: NARANJA },
+          { t: 'Premios vencidos', n: conteo.vencido, c: ROJO },
         ].map(x => (
           <div key={x.t} style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '12px', padding: '10px 12px' }}>
             <div style={{ fontSize: '1.55rem', fontWeight: 900, color: x.c, lineHeight: 1 }}>{filas === null ? '–' : x.n}</div>
@@ -227,7 +231,7 @@ export default function AdminDesbloqueosTarjetasPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {visibles.map(d => {
               const e = estadoPremio(d, ahora)
-              const nuevo = (Date.parse(d.fecha) || 0) > vistoAntes
+              const nuevo = ultimaNovedad(d) > vistoAntes
               const color = COLORES_TARJETA[d.card_id] || AZUL
               const ocupado = guardando === d.player_id + d.card_level_id
               return (
@@ -240,14 +244,16 @@ export default function AdminDesbloqueosTarjetasPage() {
                         {nuevo && <Pastilla bg={AZUL} color="#fff">NUEVO</Pastilla>}
                       </div>
                       <div style={{ fontSize: '.84rem', fontWeight: 800, color }}>{d.tarjeta} · {d.nivel}</div>
-                      <div style={{ fontSize: '.76rem', color: GRIS, marginTop: '2px' }}>Desbloqueó: {d.fecha ? fmtFechaHora.format(new Date(d.fecha)) : 'sin fecha'}</div>
+                      <div style={{ fontSize: '.76rem', color: GRIS, marginTop: '2px' }}>Desbloqueó: {d.fecha ? fmtFechaHora.format(new Date(d.fecha)) : 'desde el inicio'}</div>
+                      {d.completa && <div style={{ fontSize: '.76rem', color: '#b06000', fontWeight: 700 }}>Rompió los 5 logros: {fmtFechaHora.format(new Date(d.completa))}</div>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
                     {e === 'sin_premio' && <Pastilla bg="#f1f3f4" color={GRIS}>Esta tarjeta no da premio</Pastilla>}
                     {e === 'entregado' && <Pastilla bg="#e6f4ea" color={VERDE}>✓ Premio entregado el {fmtCorta.format(new Date(d.entregado))}</Pastilla>}
                     {e === 'reclamado' && <Pastilla bg="#e6f4ea" color={VERDE}>📸 Reclamó el {fmtCorta.format(new Date(d.reclamado))} · revisa el chat</Pastilla>}
-                    {e === 'en_plazo' && <Pastilla bg="#fef7e0" color={NARANJA}>⏳ No ha reclamado · {quedaTexto(d.fecha, ahora)}</Pastilla>}
+                    {e === 'sin_completar' && <Pastilla bg="#f1f3f4" color={GRIS}>🔓 Lleva {Math.min(5, Number(d.logros) || 0)} de 5 logros · el premio es con los 5</Pastilla>}
+                    {e === 'en_plazo' && <Pastilla bg="#fef7e0" color={NARANJA}>🎁 Ganó el premio · no ha reclamado · {quedaTexto(d.completa, ahora)}</Pastilla>}
                     {e === 'vencido' && <Pastilla bg="#fce8e6" color={ROJO}>⌛ Se venció: no reclamó en 3 días</Pastilla>}
                     {(e === 'reclamado' || e === 'en_plazo') && (
                       <button type="button" disabled={ocupado} onClick={() => marcarEntregado(d, true)}
@@ -291,7 +297,7 @@ export default function AdminDesbloqueosTarjetasPage() {
       {vista === 'premios' && (
         <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: '14px', overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px', fontSize: '.84rem', color: GRIS, lineHeight: 1.45, borderBottom: '1px solid #f1f3f4' }}>
-            Si una tarjeta <b>da premio</b>, al jugador le sale en su perfil <b>"Reclama tu premio"</b> con 3 días de plazo.
+            Si una tarjeta <b>da premio</b>, cuando el jugador rompe sus 5 logros le sale en su perfil <b>"Reclama tu premio"</b> con 3 días de plazo.
           </div>
           {tarjetas.map((c, i) => {
             const da = c.da_premio !== false
