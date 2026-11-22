@@ -364,6 +364,7 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
         </div>
       </div>
 
+      <style>{'@keyframes gmPuntoCurso{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}} .gm-punto-curso{animation:gmPuntoCurso 1.4s ease-in-out infinite} @media (prefers-reduced-motion: reduce){.gm-punto-curso{animation:none}}'}</style>
       {/* Mapa de todas las tarjetas */}
       <div style={{ marginTop: '14px', display: 'flex', gap: '6px' }}>
         {data.cards.map(card => {
@@ -375,11 +376,22 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
               <div style={{ fontSize: '.9rem', marginBottom: '4px' }}>{CARD_ICONS[card.id]}</div>
               <div style={{ fontSize: '.58rem', color, fontWeight: '700', lineHeight: 1.2, marginBottom: '6px' }}>{card.nombre}</div>
               <div style={{ display: 'flex', gap: '2px', justifyContent: 'center' }}>
-                {lvls.map((l, i) => (
-                  <div key={l.id} style={{ width: '8px', height: '8px', borderRadius: '50%', background: progresoMap[l.id]?.desbloqueada ? color : 'rgba(255,255,255,.1)', border: `1px solid ${color}44` }}/>
-                ))}
+                {lvls.map(l => {
+                  const tiene = !!progresoMap[l.id]?.desbloqueada
+                  // La que está ganando ahora: punto a medio llenar, con brillo que late (ej. "va en la 2")
+                  const enCurso = !tiene && l.id === objetivo.id
+                  return (
+                    <div key={l.id} className={enCurso ? 'gm-punto-curso' : undefined} title={tiene ? 'Desbloqueada' : enCurso ? 'La estás ganando ahora' : 'Por desbloquear'}
+                      style={{ width: '8px', height: '8px', borderRadius: '50%', boxSizing: 'border-box',
+                        background: tiene ? color : enCurso ? `linear-gradient(90deg, ${color} 50%, rgba(255,255,255,.12) 50%)` : 'rgba(255,255,255,.1)',
+                        border: enCurso ? `1.5px solid ${color}` : `1px solid ${color}44`,
+                        boxShadow: enCurso ? `0 0 6px ${color}` : 'none' }}/>
+                  )
+                })}
               </div>
-              <div style={{ fontSize: '.55rem', color: S.muted, marginTop: '4px' }}>{desbloqueados}/5</div>
+              <div style={{ fontSize: '.55rem', color: S.muted, marginTop: '4px' }}>
+                {desbloqueados}/5{lvls.some(l => l.id === objetivo.id && !progresoMap[l.id]?.desbloqueada) && <span style={{ color, fontWeight: 800 }}> · vas en la {objetivo.subnivel}</span>}
+              </div>
             </div>
           )
         })}
