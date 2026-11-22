@@ -16,11 +16,12 @@ import { calcularNovedades } from '../lib/novedadesJugador'
 import { arteDe, NOMBRE_NIVEL, poligonoCss } from '../components/card/designs/cardArte'
 import CardProgressSection from '../components/card/CardProgressSection'
 import SponsorSplash from '../components/card/SponsorSplash'
-import { EncabezadoPanel, Saludo, CuerpoPanel, TarjetaPanel, BotonVerde, BotonContorno, FilaPanel, AvisoPanel, MasOpciones, BotonVolver, G } from '../components/PanelUI'
-import { Crown, Target, Newspaper, Layers, Printer, Bell, Hourglass } from 'lucide-react'
+import { EncabezadoPanel, Saludo, CuerpoPanel, TarjetaPanel, BotonVerde, BotonContorno, FilaPanel, MasOpciones, BotonVolver, G } from '../components/PanelUI'
+import { Target, Newspaper, Layers, Printer, Hourglass } from 'lucide-react'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../components/SubidaFotoJugador'
 import { fmtHoraDate } from '../lib/horaHelpers'
 import { abrirChatAyuda } from '../lib/abrirChat'
+import { celebrar } from '../lib/celebracion'
 
 const TABS = [
   { id: 'tarjeta',   label: 'Mi Tarjeta', icon: '🃏' },
@@ -92,6 +93,8 @@ export default function PlayerHomePage() {
   const [stats,             setStats]             = useState(null)
   const [torneos,           setTorneos]           = useState([])
   const [historial,         setHistorial]         = useState([])
+  const [logrosTorneo,      setLogrosTorneo]      = useState([])    // MVP, campeón, goleador… (para "Mi carrera")
+  const [historialListo,    setHistorialListo]    = useState(false)
   const [sponsors,          setSponsors]          = useState([])
   const [cardLevelProgress, setCardLevelProgress] = useState([])
   const [tarjetasCustom,    setTarjetasCustom]    = useState([]) // tarjetas custom de BD
@@ -135,7 +138,7 @@ export default function PlayerHomePage() {
       setPlayer(c.player); if (c.player.card_type) setCardType(c.player.card_type)
       setStats(c.stats); setTorneos(c.torneos); setSponsors(c.sponsors); setCardLevelProgress(c.clp)
       setTarjetasCustom(c.tarjetasCustom); setEquiposDueno(c.equiposDueno); setSinEquipo(c.sinEquipo)
-      setHistorial(c.historial || []); if (c.logrosData) setLogrosData(c.logrosData)
+      setHistorial(c.historial || []); setLogrosTorneo(c.logrosTorneo || []); if (c.logrosData) setLogrosData(c.logrosData)
       setLoading(false)
     } else {
       setLoading(true)
@@ -260,6 +263,16 @@ export default function PlayerHomePage() {
     setTorneos(regs || [])
 
     setEquiposDueno(equiposDuenoData || [])
+    // Escudos de los equipos de los que es dueño (la consulta de dueños no trae el logo).
+    // Se completan los mismos objetos, así la copia guardada en el celular también queda con el escudo.
+    const idsDueno = (equiposDuenoData || []).filter(e => e.id && !e.logo_url).map(e => e.id)
+    if (idsDueno.length) {
+      supabase.from('teams').select('id, logo_url').in('id', idsDueno).then(({ data }) => {
+        if (!data?.length) return
+        data.forEach(t => { const e = equiposDuenoData.find(x => x.id === t.id); if (e) e.logo_url = t.logo_url || null })
+        setEquiposDueno([...equiposDuenoData])
+      })
+    }
 
     // ¿Está registrado como jugador en algún equipo (torneo o plantilla)? Si
     // tampoco es DUEÑO de ninguno, ahí sí su portal se limita a PREDIX — ser
@@ -376,7 +389,7 @@ export default function PlayerHomePage() {
     if (clp && clp.length > 0) {
       const vistas = p.tarjetas_vistas || []
       const nuevas = clp
-        .filter(c => c.desbloqueada && c.card_levels?.card_design_id && !vistas.includes(c.card_levels.card_design_id))
+        .filter(c => c.desbloqueada && c.card_levels?.card_design_id && c.card_levels.card_design_id !== 'nivel1_verde' && !vistas.includes(c.card_levels.card_design_id))
         .map(c => CARD_DESIGNS.find(d => d.id === c.card_levels.card_design_id))
         .filter(Boolean)
       if (nuevas.length > 0) { setNuevasTarjetas(nuevas); setNotifIndex(0) }
@@ -385,21 +398,30 @@ export default function PlayerHomePage() {
     setLoading(false)
 
     // Lo que NO hace falta para mostrar la tarjeta se trae después, sin hacer
-    // esperar al jugador: el aviso del próximo partido y el historial (solo los
-    // últimos 5 con sus equipos; el total de partidos sale de las estadísticas).
+    // esperar al jugador: el aviso del próximo partido y TODA su carrera (todos sus partidos con equipos y torneo,
+    // y sus logros de torneo: MVP, campeón, goleador…) para "Mi carrera" del inicio.
     cargarProximoPartido().catch(() => {})
-    supabase
-      .from('player_match_stats')
-      .select('*, matches(id, played_at, home_score, away_score, matchday, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(name,logo_url)')
-      .eq('player_id', p.id)
-      .order('created_at', { ascending: false })
-      .limit(5)
-      .then(({ data }) => { setHistorial(data || []); if (CACHE_PERFIL?.userId === user.id) { CACHE_PERFIL.historial = data || []; guardarCopiaEnCelular() } })
-      .catch(() => {})
+    Promise.all([
+      supabase
+        .from('player_match_stats')
+        .select('*, matches(id, played_at, home_score, away_score, matchday, location, home_team_id, away_team_id, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)), teams(id,name,logo_url), tournaments(id,name,logo_url)')
+        .eq('player_id', p.id)
+        .order('created_at', { ascending: false }),
+      supabase.from('tournament_logros').select('id, tipo, match_id, tournament_id').eq('player_id', p.id),
+    ])
+      .then(([{ data }, { data: lg }]) => {
+        const mvp = new Set((lg || []).filter(l => l.tipo === 'mvp').map(l => l.match_id))
+        const filas = (data || [])
+          .map(h => ({ ...h, es_mvp: mvp.has(h.match_id) }))
+          .sort((a, b) => new Date(b.matches?.played_at || 0) - new Date(a.matches?.played_at || 0))
+        setHistorial(filas); setLogrosTorneo(lg || []); setHistorialListo(true)
+        if (CACHE_PERFIL?.userId === user.id) { CACHE_PERFIL.historial = filas; CACHE_PERFIL.logrosTorneo = lg || []; guardarCopiaEnCelular() }
+      })
+      .catch(() => setHistorialListo(true))
 
     // Guarda lo cargado en memoria: al volver a esta pantalla en la misma
     // sesión (desde Predix, historial, etc.) aparece al instante y se refresca atrás.
-    CACHE_PERFIL = { userId: user.id, player: p, stats: statsCalc, torneos: regs || [], sponsors: spons || [], clp: clp || [], tarjetasCustom: customCards || [], equiposDueno: equiposDuenoData || [], sinEquipo: (regs || []).length === 0 && (tps || []).length === 0 && (equiposDuenoData || []).length === 0, historial: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.historial : [], logrosData: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.logrosData : null }
+    CACHE_PERFIL = { userId: user.id, player: p, stats: statsCalc, torneos: regs || [], sponsors: spons || [], clp: clp || [], tarjetasCustom: customCards || [], equiposDueno: equiposDuenoData || [], sinEquipo: (regs || []).length === 0 && (tps || []).length === 0 && (equiposDuenoData || []).length === 0, historial: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.historial : [], logrosTorneo: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.logrosTorneo : [], logrosData: CACHE_PERFIL?.userId === user.id ? CACHE_PERFIL.logrosData : null }
     guardarCopiaEnCelular()
   }
 
@@ -463,7 +485,29 @@ export default function PlayerHomePage() {
     return false
   }
 
+  // REGLA (migracion_tarjetas_cadena.sql): con 3 de los 5 logros de una tarjeta se desbloquea la SIGUIENTE.
+  // Así que para saber cuánto falta para una tarjeta se miran los logros de la tarjeta ANTERIOR.
+  function anteriorDe(cardId) {
+    const i = CARD_DESIGNS.findIndex(d => d.id === cardId)
+    return i > 0 ? CARD_DESIGNS[i - 1] : null
+  }
+  function rotosDeTarjeta(cardId) {
+    const lista = logrosDeTarjeta(cardId)
+    if (lista) return lista.filter(l => l.completado).length
+    return cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)?.logros_completados || 0
+  }
+
   function getProgreso(cardId) {
+    // Tarjeta de la cadena (Iniciación I … Leyenda V): se desbloquea con 3 logros de la anterior
+    const anterior = anteriorDe(cardId)
+    if (anterior) {
+      const nivelAnt = logrosData?.cardLevels?.find(l => l.card_design_id === anterior.id)
+        || cardLevelProgress.find(p => p.card_levels?.card_design_id === anterior.id)?.card_levels
+      const requeridos  = nivelAnt?.logros_requeridos || 3
+      const completados = Math.min(requeridos, rotosDeTarjeta(anterior.id))
+      const pct         = Math.min(100, Math.round((completados / requeridos) * 100))
+      return { actual: completados, meta: requeridos, sufijo: ' logros', pct, anterior, descripcion: `Rompe ${requeridos} de los 5 logros de tu tarjeta ${anterior.nombre} y esta se desbloquea` }
+    }
     // Tarjeta estática
     const clp = cardLevelProgress.find(p => p.card_levels?.card_design_id === cardId)
     if (clp) {
@@ -500,8 +544,10 @@ export default function PlayerHomePage() {
       .map(l => ({ nombre: l.nombre, completado: !!logrosData.progresoMap[l.id]?.completado, valorActual: Number(cache[l.stat_key] || 0), meta: Number(l.meta) }))
   }
 
-  async function fetchLogrosPreview(cardId) {
+  async function fetchLogrosPreview(cardIdTarjeta) {
     setPreviewLogrosListo(false)
+    // Regla nueva: los logros que desbloquean una tarjeta son los de la tarjeta ANTERIOR
+    const cardId = anteriorDe(cardIdTarjeta)?.id || cardIdTarjeta
     // Buscar card_level_id — puede ser estático o custom. Antes solo se buscaba
     // en el progreso del jugador: si nunca había empezado esa tarjeta, no había
     // fila y se quedaba en "Cargando logros..." para siempre. Ahora también se
@@ -617,6 +663,14 @@ export default function PlayerHomePage() {
     setNovedades(calcularNovedades(user.id, stats, puestos, stats.esPortero))
   }, [user?.id, stats, puestos])
 
+  // Tarjeta nueva desbloqueada: confeti y fuegos artificiales al mostrar el aviso
+  const idTarjetaNueva = nuevasTarjetas[notifIndex]?.id
+  useEffect(() => {
+    if (!idTarjetaNueva) return undefined
+    const t = setTimeout(() => celebrar('ambos'), 300)
+    return () => clearTimeout(t)
+  }, [idTarjetaNueva])
+
   if (loading) return <PantallaCargando/>
 
   if (!player) return null
@@ -690,7 +744,7 @@ export default function PlayerHomePage() {
   // La próxima tarjeta por desbloquear (la primera bloqueada, en orden) y el logro que tiene más cerca
   const siguienteDesign = CARD_DESIGNS.find(d => !estaDesbloqueada(d.id)) || null
   const siguienteTarjeta = siguienteDesign ? (() => {
-    const pendientes = (logrosDeTarjeta(siguienteDesign.id) || []).filter(l => !l.completado && l.meta > 0)
+    const pendientes = (logrosDeTarjeta(anteriorDe(siguienteDesign.id)?.id || siguienteDesign.id) || []).filter(l => !l.completado && l.meta > 0)
     const cerca = pendientes.sort((a, b) => (b.valorActual / b.meta) - (a.valorActual / a.meta))[0] || null
     return { design: siguienteDesign, prog: getProgreso(siguienteDesign.id), cerca }
   })() : null
@@ -707,7 +761,9 @@ export default function PlayerHomePage() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🎉</div>
               <div style={{ fontWeight: '800', color: '#fff', fontSize: '1.3rem', letterSpacing: '.04em' }}>¡NUEVA TARJETA!</div>
-              <div style={{ fontSize: '.82rem', color: 'rgba(255,255,255,.55)', marginTop: '4px' }}>Has desbloqueado una nueva tarjeta</div>
+              <div style={{ fontSize: '.9rem', color: 'rgba(255,255,255,.7)', marginTop: '4px', lineHeight: 1.4 }}>
+                {anteriorDe(tarjetaNotif.id) ? <>Rompiste 3 logros de <b>{anteriorDe(tarjetaNotif.id).nombre}</b> y la desbloqueaste</> : 'Has desbloqueado una nueva tarjeta'}
+              </div>
               {nuevasTarjetas.length > 1 && <div style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.4)', marginTop: '4px' }}>{notifIndex + 1} de {nuevasTarjetas.length}</div>}
             </div>
             <div style={{ width: '100%', filter: `drop-shadow(0 0 20px ${tarjetaNotif.color}88)` }}>
@@ -715,7 +771,7 @@ export default function PlayerHomePage() {
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontWeight: '700', color: tarjetaNotif.color, fontSize: '1.1rem', letterSpacing: '.08em' }}>{tarjetaNotif.nombre}</div>
-              <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.45)', marginTop: '4px' }}>Ya puedes usar esta tarjeta en tu perfil</div>
+              <div style={{ fontSize: '.85rem', color: 'rgba(255,255,255,.6)', marginTop: '4px', lineHeight: 1.4 }}>Ya puedes usarla. Ahora rompe sus logros: con 3 desbloqueas la siguiente y con los 5 ganas su premio 🎁</div>
             </div>
             <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
               <button onClick={() => { handleSeleccionarTarjeta(tarjetaNotif.id); handleCerrarNotif() }}
@@ -819,7 +875,9 @@ export default function PlayerHomePage() {
                 )}
                 {previewLogros.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ fontSize: '0.82rem', color: G.muted, fontWeight: '600', marginBottom: '4px' }}>LOGROS REQUERIDOS</div>
+                    <div style={{ fontSize: '0.82rem', color: G.muted, fontWeight: '600', marginBottom: '4px' }}>
+                      {anteriorDe(previewCard.id) ? `LOGROS DE TU TARJETA ${anteriorDe(previewCard.id).nombre} — ROMPE 3` : 'LOGROS REQUERIDOS'}
+                    </div>
                     {previewLogros.map((l, i) => {
                       const pctL  = Math.min(100, Math.round((l.valorActual / l.meta) * 100))
                       const falta = Math.max(0, l.meta - l.valorActual)
@@ -885,27 +943,20 @@ export default function PlayerHomePage() {
       {/* INICIO: lo de todos los días, grande y ordenado */}
       {tab === 'inicio' && (
         <CuerpoPanel>
-          <Saludo nombre={player.name?.split(' ')[0] || ''} texto="Así vas hoy en Golmebol"/>
-
-          {notifs.slice(0, 2).map(n => (
-            <AvisoPanel key={n.id} icono={Bell} titulo={n.titulo} sub={n.texto} color={G.gold}
-              onClick={() => { if (n.accion?.fn) n.accion.fn(); dismissNotif(n.id) }}/>
-          ))}
-          {equiposDueno.map(eq => (
-            <AvisoPanel key={eq.id || eq.name} icono={Crown} titulo={`Eres dueño de ${eq.name}`} sub="Toca para administrar tu equipo"
-              onClick={eq.id ? () => navigate(`/equipos/${eq.id}`) : undefined}/>
-          ))}
 
           <InicioJugador
             player={player} userId={user?.id} nombre={nombre} stats={stats} cardStats={cardStats} cardType={cardType}
             esPortero={esPortero} esDefensa={esDefensa} torneosData={torneosData} equiposData={equiposData}
-            novedades={novedades} proximo={proximo} historial={historial}
+            novedades={novedades} proximo={proximo} historial={historial} logros={logrosTorneo} cargandoHistorial={!historialListo && historial.length === 0}
             siguiente={siguienteTarjeta} desbloqueadas={totalMias} totalTarjetas={totalTarjetas}
             onVerTarjeta={() => setTab('tarjeta')}
             onVerColeccion={() => setShowSelector(true)}
             onVerHistorial={() => setTab('historial')}
+            onVerHistorialCompleto={() => navigate('/jugador/historial')}
+            avisos={notifs.filter(n => !String(n.id).startsWith('partido_')).slice(0, 2).map(n => ({ id: n.id, titulo: n.titulo, texto: n.texto, onClick: () => { if (n.accion?.fn) n.accion.fn(); dismissNotif(n.id) } }))}
+            equiposDueno={equiposDueno} onAbrirEquipo={id => navigate(`/equipos/${id}`)}
+            onFotoSubida={(campo, url) => setPlayer(p => ({ ...p, [campo]: url, [campo === 'photo_url' ? 'foto_cambiar_tarjeta' : 'foto_cambiar_perfil']: false }))}
             onAbrirRanking={abrirRanking}
-            onVerSiguiente={handleClickTarjeta}
           />
 
           {PREDIX_ACTIVO && (
@@ -973,6 +1024,12 @@ export default function PlayerHomePage() {
             )}
           </div>
 
+          <CardProgressSection
+            playerId={player.id}
+            esPortero={esPortero}
+            posicionDetallada={player.posicion_futbol5 || player.posicion_futbol7 || player.posicion_futbol11}
+          />
+
           <div style={{ maxWidth: '600px', margin: '0 auto', padding: '4px 16px 8px', display: 'grid', gap: '12px' }}>
             <div style={{ fontSize: '1.15rem', fontWeight: 900, color: G.text, margin: '6px 2px 0' }}>Mis fotos</div>
             {(player.foto_cambiar_cedula_frontal || player.foto_cambiar_cedula_trasera) && (
@@ -998,11 +1055,6 @@ export default function PlayerHomePage() {
             />
           </div>
 
-          <CardProgressSection
-            playerId={player.id}
-            esPortero={esPortero}
-            posicionDetallada={player.posicion_futbol5 || player.posicion_futbol7 || player.posicion_futbol11}
-          />
 
           <div style={{ maxWidth: '600px', margin: '0 auto', padding: '8px 16px 28px', display: 'grid', gap: '12px' }}>
             <button onClick={() => setShowSelector(true)}
@@ -1010,7 +1062,7 @@ export default function PlayerHomePage() {
               <Layers size={22} color={G.green}/>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '1rem', fontWeight: 800 }}>Mis tarjetas</div>
-                <div style={{ fontSize: '.88rem', color: G.muted, marginTop: '2px' }}>{totalMias} desbloqueadas de {totalTarjetas}</div>
+                <div style={{ fontSize: '.88rem', color: G.muted, marginTop: '2px' }}>{totalMias} de {totalTarjetas} desbloqueada{totalMias === 1 ? '' : 's'} · toca para ver todas y cambiar el diseño</div>
               </div>
               <span style={{ color: G.green, fontWeight: 800, fontSize: '.95rem' }}>Ver todas</span>
             </button>
@@ -1097,8 +1149,9 @@ export default function PlayerHomePage() {
                       {(h.blue_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#1a73e8', background: '#e8f0fe', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟦 Azul</span>}
                       {(h.red_cards || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#d93025', background: '#fce8e6', borderRadius: '20px', padding: '2px 9px', fontWeight: '600' }}>🟥 Roja</span>}
                       {(h.goals_conceded || 0) > 0 && esPortero && <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>🧤 {h.goals_conceded} recibido{h.goals_conceded > 1 ? 's' : ''}</span>}
+                      {(h.goals_conceded || 0) === 0 && esPortero && h.fue_arquero !== false && <span style={{ fontSize: '.72rem', color: '#1e8e3e', background: '#e6f4ea', borderRadius: '20px', padding: '2px 9px', fontWeight: 700 }}>🧤 Arco en cero</span>}
                       {(h.fouls || 0) > 0 && <span style={{ fontSize: '.72rem', color: '#9aa0a6', background: '#f1f3f4', borderRadius: '20px', padding: '2px 9px' }}>✋ {h.fouls} falta{h.fouls > 1 ? 's' : ''}</span>}
-                      {(h.goals_scored || 0) === 0 && (h.yellow_cards || 0) === 0 && (h.blue_cards || 0) === 0 && (h.red_cards || 0) === 0 && (h.fouls || 0) === 0 && <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Sin incidencias</span>}
+                      {(h.goals_scored || 0) === 0 && (h.yellow_cards || 0) === 0 && (h.blue_cards || 0) === 0 && (h.red_cards || 0) === 0 && (h.fouls || 0) === 0 && !(esPortero && (h.goals_conceded || 0) > 0) && !(esPortero && (h.goals_conceded || 0) === 0) && <span style={{ fontSize: '.72rem', color: '#9aa0a6' }}>Sin incidencias</span>}
                     </div>
                   </div>
                 )

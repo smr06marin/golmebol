@@ -278,9 +278,17 @@ export default function PlayerHistorialPage() {
   const edad         = calcularEdad(player?.fecha_nacimiento)
 
   const historialConPartido = historial.filter(s => s.matches)
+  // Arqueros: se mira lo de arquero (arcos en cero, goles recibidos), no los goles que hizo
+  const arcosCero = historial.filter(s => s.fue_arquero !== false && (s.goals_conceded || 0) === 0 && s.matches).length
+  const promedioRecibidos = pj > 0 ? recibidos / pj : 0
   const mejorActuacion = historialConPartido.length > 0
-    ? [...historialConPartido].sort((a, b) =>
-        (b.goals_scored || 0) - (a.goals_scored || 0) ||
+    ? [...historialConPartido].sort((a, b) => esArquero
+      ? ((b.es_mvp ? 1 : 0) - (a.es_mvp ? 1 : 0) ||
+         ((a.goals_conceded || 0) === 0 ? 1 : 0) * -1 - ((b.goals_conceded || 0) === 0 ? 1 : 0) * -1 ||
+         (b.team_result === 'win' ? 1 : 0) - (a.team_result === 'win' ? 1 : 0) ||
+         (a.goals_conceded || 0) - (b.goals_conceded || 0) ||
+         new Date(b.matches?.played_at || 0) - new Date(a.matches?.played_at || 0))
+      : (b.goals_scored || 0) - (a.goals_scored || 0) ||
         (b.es_mvp ? 1 : 0) - (a.es_mvp ? 1 : 0) ||
         new Date(b.matches?.played_at || 0) - new Date(a.matches?.played_at || 0))[0]
     : null
@@ -288,7 +296,8 @@ export default function PlayerHistorialPage() {
   const chartData = [...historial].filter(s => s.matches?.played_at)
     .sort((a, b) => new Date(a.matches.played_at) - new Date(b.matches.played_at))
     .slice(-16)
-  const maxGoles = Math.max(1, ...chartData.map(s => s.goals_scored || 0))
+  const valorBarra = s => (esArquero ? (s.goals_conceded || 0) : (s.goals_scored || 0))
+  const maxGoles = Math.max(1, ...chartData.map(valorBarra))
 
   // Desglose por torneo (para Estadísticas)
   const porTorneo = torneos.map(t => {
@@ -476,12 +485,17 @@ export default function PlayerHistorialPage() {
           <div>
             <div style={{ fontWeight:'800', fontSize:'1rem', color:S.text, margin:'10px 0 10px' }}>Resumen general</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(90px, 1fr))', gap:'10px', marginBottom:'16px' }}>
-              {[
+              {(esArquero ? [
+                { label:'Partidos',      valor: pj,          icon:'📅', color:S.cyan },
+                { label:'Arcos en cero', valor: arcosCero,   icon:'🧤', color:S.win },
+                { label:'Goles recibidos', valor: recibidos, icon:'🥅', color:S.loss },
+                { label:'MVP',           valor: mvpsCount,   icon:'⭐', color:S.gold },
+              ] : [
                 { label:'Partidos', valor: pj,          icon:'📅', color:S.cyan },
                 { label:'Goles',    valor: goles,        icon:'⚽', color:S.win },
                 { label:'MVP',      valor: mvpsCount,    icon:'⭐', color:S.gold },
                 { label:'Tarjetas', valor: tarjetasTotal,icon:'🟨', color:'#e8a33d' },
-              ].map(c => (
+              ]).map(c => (
                 <div key={c.label} style={{ background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'16px 8px', textAlign:'center' }}>
                   <div style={{ fontSize:'1.4rem', marginBottom:'6px' }}>{c.icon}</div>
                   <div style={{ fontSize:'1.5rem', fontWeight:'900', color:S.text, lineHeight:1 }}>{c.valor}</div>
@@ -496,9 +510,9 @@ export default function PlayerHistorialPage() {
                 <div style={{ display:'flex', gap:'10px', flexWrap:'wrap', marginBottom:'16px' }}>
                   <div style={{ flex:'1 1 140px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'16px', display:'flex', flexDirection:'column', alignItems:'center', gap:'10px' }}>
                     <div style={{ textAlign:'center' }}>
-                      <div style={{ fontSize:'.68rem', color:S.muted }}>Promedio de goles</div>
-                      <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.text }}>{promedioGoles.toFixed(2)}</div>
-                      <div style={{ fontSize:'.66rem', color:S.muted }}>goles por partido</div>
+                      <div style={{ fontSize:'.68rem', color:S.muted }}>{esArquero ? 'Goles recibidos' : 'Promedio de goles'}</div>
+                      <div style={{ fontSize:'1.6rem', fontWeight:'900', color:S.text }}>{(esArquero ? promedioRecibidos : promedioGoles).toFixed(2)}</div>
+                      <div style={{ fontSize:'.66rem', color:S.muted }}>{esArquero ? 'en promedio por partido' : 'goles por partido'}</div>
                     </div>
                     <div style={{ position:'relative', width:'92px', height:'92px', borderRadius:'50%', background:`conic-gradient(${S.win} ${efectividad * 3.6}deg, ${S.card2} 0deg)`, display:'flex', alignItems:'center', justifyContent:'center' }}>
                       <div style={{ width:'70px', height:'70px', borderRadius:'50%', background:S.card, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
@@ -510,12 +524,12 @@ export default function PlayerHistorialPage() {
 
                   <div style={{ flex:'2 1 220px', background:S.card, border:`1px solid ${S.border}`, borderRadius:'14px', padding:'16px' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'10px' }}>
-                      <span style={{ width:'8px', height:'8px', borderRadius:'50%', background:S.win, display:'inline-block' }}/>
-                      <span style={{ fontSize:'.72rem', color:S.text2 }}>Goles por partido (últimos {chartData.length})</span>
+                      <span style={{ width:'8px', height:'8px', borderRadius:'50%', background: esArquero ? S.loss : S.win, display:'inline-block' }}/>
+                      <span style={{ fontSize:'.72rem', color:S.text2 }}>{esArquero ? 'Goles que te hicieron' : 'Goles'} por partido (últimos {chartData.length})</span>
                     </div>
                     <div style={{ display:'flex', alignItems:'flex-end', gap:'4px', height:'90px' }}>
                       {chartData.map((s, i) => (
-                        <div key={i} title={`${s.goals_scored||0} gol(es)`} style={{ flex:1, height:`${((s.goals_scored||0)/maxGoles)*100}%`, minHeight:'3px', background: (s.goals_scored||0) > 0 ? S.win : S.card2, borderRadius:'3px 3px 0 0' }}/>
+                        <div key={i} title={`${valorBarra(s)} gol(es)`} style={{ flex:1, height:`${(valorBarra(s)/maxGoles)*100}%`, minHeight:'3px', background: valorBarra(s) > 0 ? (esArquero ? S.loss : S.win) : (esArquero ? S.win : S.card2), borderRadius:'3px 3px 0 0' }}/>
                       ))}
                     </div>
                     <div style={{ fontSize:'.62rem', color:S.muted, marginTop:'8px', textAlign:'center' }}>* Un partido por barra, del más antiguo al más reciente</div>
@@ -535,7 +549,13 @@ export default function PlayerHistorialPage() {
                   <div style={{ width:'56px', height:'56px', borderRadius:'50%', border:`2px solid ${S.loss}`, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 8px' }}>
                     <Flame size={24} color={S.loss}/>
                   </div>
-                  {(mejorActuacion.goals_scored || 0) > 0 && (
+                  {esArquero && (mejorActuacion.goals_conceded || 0) === 0 && (
+                    <span style={{ display:'inline-block', fontSize:'.68rem', fontWeight:'800', color:S.win, background:S.winDim, borderRadius:'20px', padding:'3px 12px', marginBottom:'10px' }}>🧤 ARCO EN CERO</span>
+                  )}
+                  {esArquero && (mejorActuacion.goals_conceded || 0) > 0 && (
+                    <span style={{ display:'inline-block', fontSize:'.68rem', fontWeight:'800', color:S.text2, background:S.card2, borderRadius:'20px', padding:'3px 12px', marginBottom:'10px' }}>🧤 {mejorActuacion.goals_conceded} RECIBIDO{mejorActuacion.goals_conceded > 1 ? 'S' : ''}</span>
+                  )}
+                  {!esArquero && (mejorActuacion.goals_scored || 0) > 0 && (
                     <span style={{ display:'inline-block', fontSize:'.68rem', fontWeight:'800', color:S.win, background:S.winDim, borderRadius:'20px', padding:'3px 12px', marginBottom:'10px' }}>
                       {mejorActuacion.goals_scored} GOL{mejorActuacion.goals_scored > 1 ? 'ES' : ''}
                     </span>

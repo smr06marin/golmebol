@@ -49,7 +49,7 @@ CREATE OR REPLACE FUNCTION public.verificar_logros(p_player_id uuid)
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
-AS $function$
+AS $$
 DECLARE
   v_cache     player_stats_cache%ROWTYPE;
   v_pos       text;
@@ -63,7 +63,7 @@ DECLARE
   v_desbloq   boolean;
   v_completa  boolean;
   v_sigue     boolean := true;   -- cadena principal: ¿la tarjeta anterior ya abre la siguiente?
-BEGIN
+begin
   -- Traer cache
   SELECT * INTO v_cache FROM player_stats_cache WHERE player_id = p_player_id;
   IF NOT FOUND THEN RETURN; END IF;
@@ -158,8 +158,27 @@ BEGIN
       );
     END IF;
   END LOOP;
-END;
-$function$;
+end;
+$$;
+
+-- 2b. El jugador pide recalcular SUS tarjetas (la app lo llama sola si ve que ya rompió los logros pero la
+--     tarjeta todavía no aparece desbloqueada, para no esperar al próximo partido)
+create or replace function public.recalcular_mis_tarjetas(p_player_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not (public.es_mi_jugador(p_player_id) or public.es_admin_plataforma()) then return; end if;
+  begin
+    perform public.recalcular_player_stats(p_player_id);
+  exception when undefined_function then null;
+  end;
+  perform public.verificar_logros(p_player_id);
+end $$;
+revoke all on function public.recalcular_mis_tarjetas(uuid) from public;
+grant execute on function public.recalcular_mis_tarjetas(uuid) to authenticated;
 
 -- 3. El jugador reclama su premio: solo con los 5 logros rotos y dentro de 3 días -------------------------
 create or replace function public.reclamar_premio_tarjeta(p_player_id uuid, p_card_level_id text)

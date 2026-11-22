@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { abrirChatAyuda } from '../../lib/abrirChat'
 import { celebrar } from '../../lib/celebracion'
 import { PLAZO_PREMIO_MS, tiempoParaReclamar } from '../../lib/desbloqueosTarjetas'
+import { CARD_DESIGNS } from './designs/cardDesigns'
 
 // ── Tarjetas del jugador ─────────────────────────────────────────────────────
 // REGLA (ver migracion_tarjetas_cadena.sql):
@@ -42,7 +43,13 @@ const CARD_ICONS = {
 }
 const colorDe = nivel => CARD_COLORS[nivel?.card_id] || nivel?.card?.color || '#00ee55'
 const iconoDe = nivel => CARD_ICONS[nivel?.card_id] || nivel?.card?.icono || '⭐'
-const nombreDe = nivel => `${nivel?.card?.nombre || ''} · ${nivel?.nombre || ''}`
+// "Iniciación II · El Hambre": el nombre del nivel y el del diseño de la tarjeta (el mismo que sale en la tarjeta)
+const tituloCaso = t => String(t || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase())
+const nombreDe = nivel => {
+  const diseno = CARD_DESIGNS.find(d => d.id === nivel?.card_design_id)
+  const base = nivel?.nombre || nivel?.card?.nombre || ''
+  return diseno ? `${base} · ${tituloCaso(diseno.nombre)}` : base
+}
 
 // ¿La tarjeta da premio? Lo decide el administrador (cards.da_premio, pestaña Desbloqueos). Si esa opción
 // todavía no existe en la base, ninguna da premio (para no prometer algo que no está activado).
@@ -71,6 +78,7 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
   const [celebrando, setCelebrando] = useState(null)           // { nivel, tipo: 'desbloqueo' | 'premio' }
   const [reclamando, setReclamando] = useState(null)
   const [ahora, setAhora] = useState(() => Date.now())
+  const yaRecalculo = useRef(false)
 
   // El reloj del plazo para reclamar se actualiza cada minuto
   useEffect(() => {
@@ -84,14 +92,14 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
     return () => clearTimeout(t)
   }, [playerId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ¿Desbloqueó una tarjeta o ganó un premio desde la última vez que entró (en este celular)? → confeti y aviso.
+  // ¿Ganó un premio desde la última vez que entró (en este celular)? → confeti y aviso.
+  // (El aviso de TARJETA NUEVA lo muestra la pantalla principal del jugador, con el botón para usarla.)
   // La primera vez en un celular solo se celebra lo de los últimos 7 días.
   useEffect(() => {
     if (!data || !playerId) return undefined
     const eventos = []
-    data.cadena.forEach((l, i) => {
+    data.cadena.forEach(l => {
       const pr = data.progresoMap[l.id]
-      if (i > 0 && pr?.desbloqueada) eventos.push({ clave: 'u:' + l.id, fecha: pr.fecha_desbloqueada, nivel: l, tipo: 'desbloqueo' })
       if (pr?.fecha_completa && conPremio(l, data.cards)) eventos.push({ clave: 'c:' + l.id, fecha: pr.fecha_completa, nivel: l, tipo: 'premio' })
     })
     const clave = `gm_tarjetas_vistas2_${playerId}`
@@ -146,6 +154,24 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
 
     setData({ cards: cards || [], cadena, progresoMap, achMap, logrosDe, cache: cache || {} })
     setLoading(false)
+
+    // ¿Ya rompió los logros pero la tarjeta siguiente (o el premio) todavía no aparece? Se le pide a la base que
+    // recalcule SUS tarjetas una vez y se vuelve a cargar (así no tiene que esperar al próximo partido).
+    if (!yaRecalculo.current) {
+      const ok = (l, i) => i === 0 || !!progresoMap[l.id]?.desbloqueada
+      let idx = 0
+      cadena.forEach((l, i) => { if (ok(l, i)) idx = i })
+      const act = cadena[idx]
+      const lg = logrosDe[act?.id] || []
+      const rotosAct = lg.filter(a => achMap[a.id]?.completado).length
+      const faltaDesbloquear = cadena[idx + 1] && rotosAct >= (act.logros_requeridos || 3)
+      const faltaPremio = lg.length > 0 && rotosAct >= lg.length && !progresoMap[act.id]?.fecha_completa
+      if (faltaDesbloquear || faltaPremio) {
+        yaRecalculo.current = true
+        const { error } = await supabase.rpc('recalcular_mis_tarjetas', { p_player_id: playerId })
+        if (!error) fetchProgreso()
+      }
+    }
   }
 
   function getValorActual(stat_key, cache) {
@@ -346,14 +372,14 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
 
         <div style={{ padding: '12px 16px 4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {siguiente && (
-            <Meta hecho={false} icono="🔓" color={colorDe(siguiente)}
-              titulo={`Rompe ${requeridos} de ${totalActual} logros → desbloqueas ${nombreDe(siguiente)}`}
-              detalle={faltanSig === 1 ? '🔥 ¡Te falta solo 1 logro!' : `Te faltan ${faltanSig} logros`}/>
+            <Meta hecho={faltanSig === 0} icono="🔓" color={colorDe(siguiente)}
+              titulo={faltanSig === 0 ? `Ya rompiste ${requeridos} logros: ${nombreDe(siguiente)} se está desbloqueando` : `Rompe ${requeridos} de ${totalActual} logros → desbloqueas ${nombreDe(siguiente)}`}
+              detalle={faltanSig === 0 ? 'En unos minutos aparece como tuya' : faltanSig === 1 ? '🔥 ¡Te falta solo 1 logro!' : `Te faltan ${faltanSig} logros`}/>
           )}
           {premioActual && (
-            <Meta hecho={completaActual} icono="🎁" color={S.gold}
-              titulo={completaActual ? 'Rompiste los 5 logros: ganaste el premio' : `Rompe los ${totalActual} logros → ganas el PREMIO de esta tarjeta`}
-              detalle={completaActual ? 'Reclámalo arriba antes de 3 días' : faltanPremio === 1 ? '🔥 ¡Te falta solo 1 logro para el premio!' : `Te faltan ${faltanPremio} logros`}/>
+            <Meta hecho={completaActual || faltanPremio === 0} icono="🎁" color={S.gold}
+              titulo={completaActual ? 'Rompiste los 5 logros: ganaste el premio' : faltanPremio === 0 ? 'Rompiste los 5 logros: tu premio se está activando' : `Rompe los ${totalActual} logros → ganas el PREMIO de esta tarjeta`}
+              detalle={completaActual ? 'Reclámalo arriba antes de 3 días' : faltanPremio === 0 ? 'En unos minutos te sale arriba para reclamarlo' : faltanPremio === 1 ? '🔥 ¡Te falta solo 1 logro para el premio!' : `Te faltan ${faltanPremio} logros`}/>
           )}
         </div>
 

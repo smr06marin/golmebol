@@ -69,8 +69,8 @@ export default function MisPuestos({ playerId, userId, pj, onAbrir, enInicio = f
   return (
     <div style={{ position:'relative', zIndex:1, maxWidth: enInicio ? 'none' : '440px', margin: enInicio ? '4px 0 0' : '22px auto 0' }}>
       <div style={{ padding:'0 4px 10px' }}>
-        <div style={{ fontSize:'1.05rem', fontWeight:900, color:G.text }}>Tus puestos en Golmebol</div>
-        <div style={{ fontSize:'.85rem', color:G.muted, marginTop:'2px', lineHeight:1.4 }}>{enInicio ? 'Toca una ficha para ver el top completo y quién va adelante.' : 'Toca una ficha o un número de tu tarjeta para ver el top completo.'}</div>
+        {!enInicio && <div style={{ fontSize:'1.05rem', fontWeight:900, color:G.text }}>Tus puestos en Golmebol</div>}
+        <div style={{ fontSize: enInicio ? '.95rem' : '.85rem', color: enInicio ? G.text2 : G.muted, marginTop:'2px', lineHeight:1.4 }}>{enInicio ? 'Toca una ficha para ver el top completo y quién va adelante.' : 'Toca una ficha o un número de tu tarjeta para ver el top completo.'}</div>
       </div>
       <div className="gm-fichas-fila" style={{ display:'flex', gap:'10px', overflowX:'auto', padding:'2px 4px 8px', margin:'0 -4px', scrollSnapType:'x proximity', scrollbarWidth:'none', WebkitOverflowScrolling:'touch' }}>
         {calc
