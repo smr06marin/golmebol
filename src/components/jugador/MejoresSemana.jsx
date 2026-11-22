@@ -97,9 +97,9 @@ function FilaPartidoTop({ i, m, frase, esMio }) {
 
 const EXPLICACION = {
   jugadores: 'Gol: 3 puntos · Victoria: 2 · Empate: 1 · MVP: 4 · Amarilla o azul: −1 · Roja: −3',
-  arqueros:  'Arco en cero: 5 puntos · Victoria: 2 · Empate: 1 · MVP: 4 · Recibir pocos goles: 0 goles +3, 1 gol +2, 2 goles +1',
+  arqueros:  'Arco en cero: 5 puntos · Victoria: 2 · Empate: 1 · MVP: 4 · Gol del arquero: 3 · Recibir pocos goles: 0 goles +3, 1 gol +2, 2 goles +1',
   equipos:   'Victoria: 3 puntos · Empate: 1 · Más la diferencia de gol de la semana',
-  partidos:  'Un punto por cada gol · +4 si se definió por 1 gol o menos · +1 si fue empate · +2 si era de eliminación',
+  partidos:  'Un punto por cada gol · +4 si se definió por 1 gol o menos · +1 si fue empate · +2 si era de eliminación · +4 si hubo remontada (solo cuando el partido se planilló con el cronómetro: si los goles no tienen minuto, no se puede saber)',
 }
 
 export default function MejoresSemana({ playerId, misEquipos = [] }) {
@@ -206,7 +206,7 @@ export default function MejoresSemana({ playerId, misEquipos = [] }) {
           ))}
           {pestana === 'arqueros' && lista.map((j, i) => (
             <FilaTop key={j.id} i={i} foto={j.foto} nombre={j.nombre} sub={j.equipo?.name || j.torneo}
-              datos={[`🧤 ${j.ceros} en cero`, `🥅 ${j.recibidos} ${j.recibidos === 1 ? 'recibido' : 'recibidos'}`, j.mvp > 0 && `⭐ ${j.mvp} MVP`].filter(Boolean)}
+              datos={[j.goles > 0 && `⚽ ${j.goles} ${j.goles === 1 ? 'gol' : 'goles'}`, `🧤 ${j.ceros} en cero`, `🥅 ${j.recibidos} ${j.recibidos === 1 ? 'recibido' : 'recibidos'}`, j.mvp > 0 && `⭐ ${j.mvp} MVP`].filter(Boolean)}
               pts={j.pts} frase={porQue('arqueros', j, lista, i)} soyYo={String(j.id) === yo} etiquetaYo="TÚ"/>
           ))}
           {pestana === 'equipos' && lista.map((e, i) => (
