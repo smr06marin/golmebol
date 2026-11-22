@@ -22,7 +22,7 @@ const STAT_KEYS = [
   { value: 'arcos_cero',               label: 'Arcos en cero (portero)' },
   { value: 'partidos_sin_tarjetas',     label: 'Partidos sin tarjetas' },
   { value: 'campeonatos',               label: 'Campeonatos' },
-  { value: 'mejor_arquero_count',       label: 'Premio Mejor Arquero' },
+  { value: 'mejor_arquero_count',       label: 'Mejor Arquero (MVP de un partido siendo arquero, o premio del torneo)' },
   { value: 'valla_menos_vencida_count', label: 'Premio Valla Menos Vencida' },
   { value: 'goleador_torneo_count',     label: 'Premio Goleador del torneo' },
 ]
