@@ -992,7 +992,7 @@ export default function PlayerHomePage() {
               playerId={player.id} campo="photo_url" url={player.photo_url || null}
               flagged={!!player.foto_cambiar_tarjeta}
               bloqueada={false}
-              titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
+              titulo="Foto para tu tarjeta de jugador 🃏" recomendacion="Es la foto que sale en tu tarjeta de jugador de Golmebol (la de los logros y niveles), no tu documento. Con el uniforme puesto o jugando, de las rodillas para arriba."
               ejemplo={<EjemploFotoTarjeta/>}
               onSubido={(nuevaUrl) => setPlayer(p => ({ ...p, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
             />

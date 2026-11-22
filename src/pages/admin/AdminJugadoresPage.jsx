@@ -68,7 +68,7 @@ function FotoUploadMini({ label, hint, preview, onChange, opcional = false }) {
 }
 
 const FOTOS_CONFIG = [
-  { key: 'tarjeta',         urlField: 'photo_url',           flagField: 'foto_cambiar_tarjeta',          etiqueta: 'Foto tarjeta',    tipo: 'foto', cara: null,     objectPosition: 'top' },
+  { key: 'tarjeta',         urlField: 'photo_url',           flagField: 'foto_cambiar_tarjeta',          etiqueta: 'Foto tarjeta de jugador (FIFA)',    tipo: 'foto', cara: null,     objectPosition: 'top' },
   { key: 'cara',            urlField: 'photo_face_url',      flagField: 'foto_cambiar_perfil',           etiqueta: 'Foto perfil',     tipo: 'foto', cara: null,     objectPosition: 'center' },
   { key: 'cedula_frontal',  urlField: 'cedula_frontal_url',  flagField: 'foto_cambiar_cedula_frontal',   etiqueta: 'Cédula frontal',  tipo: 'cedula', cara: 'frontal', objectPosition: 'center' },
   { key: 'cedula_trasera',  urlField: 'cedula_trasera_url',  flagField: 'foto_cambiar_cedula_trasera',   etiqueta: 'Cédula trasera',  tipo: 'cedula', cara: 'trasera', objectPosition: 'center' },

@@ -606,7 +606,7 @@ export default function AdminJugadorDetallePage() {
         )}
         <div style={{ marginTop: '14px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           {[
-            { tipo: 'tarjeta', label: 'Foto tarjeta', url: jugador.photo_url, campoFlag: 'foto_cambiar_tarjeta', uploadFn: (f) => handleFoto(f, 'tarjeta'), delFn: () => handleEliminarFoto('tarjeta'), objectPosition: 'top' },
+            { tipo: 'tarjeta', label: 'Foto tarjeta de jugador (FIFA)', url: jugador.photo_url, campoFlag: 'foto_cambiar_tarjeta', uploadFn: (f) => handleFoto(f, 'tarjeta'), delFn: () => handleEliminarFoto('tarjeta'), objectPosition: 'top' },
             { tipo: 'cara',    label: 'Foto perfil',  url: jugador.photo_face_url, campoFlag: 'foto_cambiar_perfil', uploadFn: (f) => handleFoto(f, 'cara'), delFn: () => handleEliminarFoto('cara'), objectPosition: 'center' },
             { tipo: 'frontal', label: 'Cédula frontal', url: jugador.cedula_frontal_url, campoFlag: 'foto_cambiar_cedula_frontal', uploadFn: (f) => handleCedula(f, 'frontal'), delFn: null, objectPosition: 'center' },
             { tipo: 'trasera', label: 'Cédula trasera', url: jugador.cedula_trasera_url, campoFlag: 'foto_cambiar_cedula_trasera', uploadFn: (f) => handleCedula(f, 'trasera'), delFn: null, objectPosition: 'center' },

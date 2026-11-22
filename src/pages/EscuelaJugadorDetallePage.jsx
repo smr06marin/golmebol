@@ -234,7 +234,7 @@ export default function EscuelaJugadorDetallePage() {
                     )}
                   </div>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, background:S.card2, borderRadius:8, padding:'8px 12px' }}>
-                    <span style={{ fontSize:'.76rem' }}>Foto de tarjeta {jugador.photo_url ? '✓' : '— sin subir'}</span>
+                    <span style={{ fontSize:'.76rem' }}>Foto de tarjeta de jugador (FIFA) {jugador.photo_url ? '✓' : '— sin subir'}</span>
                     {jugador.photo_url && (
                       <button onClick={() => handleEliminarFoto('photo_url')} style={{ background:'none', border:'1px solid #d93025', borderRadius:6, padding:'4px 8px', cursor:'pointer', color:'#d93025', fontSize:'.7rem' }}>🗑️ Eliminar</button>
                     )}

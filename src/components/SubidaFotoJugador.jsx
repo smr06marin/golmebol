@@ -76,7 +76,7 @@ export default function SubidaFotoJugador({
     <div style={{ ...caja, ...(flagged ? { background: 'rgba(229,67,61,.1)', border: '1px solid rgba(229,67,61,.45)' } : {}) }}>
       {flagged && (
         <div style={{ fontSize: '.9rem', color: '#ff8a80', fontWeight: 700, lineHeight: 1.4, marginBottom: '12px' }}>
-          Sube de nuevo tu {titulo.toLowerCase()}: la anterior no sirvió.
+          Sube de nuevo esta foto: la anterior no sirvió.
         </div>
       )}
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>

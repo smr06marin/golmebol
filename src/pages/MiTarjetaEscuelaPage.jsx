@@ -221,7 +221,7 @@ export default function MiTarjetaEscuelaPage() {
             playerId={jugador.id} campo="photo_url" url={jugador.photo_url || null}
             flagged={!!jugador.foto_cambiar_tarjeta}
             bloqueada={false}
-            titulo="Foto de tarjeta" recomendacion="Con el uniforme puesto o jugando, de las rodillas para arriba."
+            titulo="Foto para tu tarjeta de jugador 🃏" recomendacion="Es la foto que sale en tu tarjeta de jugador de Golmebol (la de los logros y niveles), no tu documento. Con el uniforme puesto o jugando, de las rodillas para arriba."
             ejemplo={<EjemploFotoTarjeta/>}
             onSubido={(nuevaUrl) => setJugador(j => ({ ...j, photo_url: nuevaUrl, foto_cambiar_tarjeta: false }))}
             colors={{ card: S.card, border: S.border, text: S.text, muted: S.muted, accent: S.cyan, accentBg: S.cyanDim }}
