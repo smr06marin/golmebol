@@ -35,8 +35,18 @@ function clasificar(p) {
 //    antes se leía una sola página y por eso el ranking salía incompleto y con puestos equivocados).
 async function traerAgregado() {
   try {
-    const { data, error } = await supabase.rpc('ranking_jugadores_stats')
-    if (!error && Array.isArray(data)) {
+    // OJO: Supabase entrega máximo 1000 filas por pedido, también cuando se llama una función. Antes se pedía una
+    // sola vez y por eso todos los rankings decían "de 1000" aunque hubiera más jugadores. Ahora se pide por páginas.
+    const PAG = 1000
+    const data = []
+    let error = null
+    for (let desde = 0; desde <= 200000; desde += PAG) {
+      const r = await supabase.rpc('ranking_jugadores_stats').order('player_id', { ascending: true }).range(desde, desde + PAG - 1)
+      if (r.error) { error = r.error; break }
+      data.push(...(r.data || []))
+      if (!r.data || r.data.length < PAG) break
+    }
+    if (!error && data.length > 0) {
       return data.map(r => ({
         id: String(r.player_id), nombre: r.nombre, foto: r.foto,
         players: { posicion_futbol5: r.pos5, posicion_futbol7: r.pos7, posicion_futbol11: r.pos11 },
