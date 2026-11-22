@@ -9,7 +9,7 @@ const colorMedia = m => (m >= 85 ? J.gold : m >= 75 ? J.green : m >= 60 ? J.azul
 function Barra({ p, color }) {
   return (
     <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,.08)', overflow: 'hidden' }} aria-hidden="true">
-      <div className="gj-anim" style={{ width: `${Math.max(3, Math.round(p * 100))}%`, height: '100%', borderRadius: 999, background: color, transformOrigin: 'left', animation: 'gjLlena .9s cubic-bezier(.2,.8,.2,1) .2s both' }}/>
+      <div className="gj-anim" style={{ width: `${p === 0 ? 0 : Math.max(3, Math.round(p * 100))}%`, height: '100%', borderRadius: 999, background: color, transformOrigin: 'left', animation: 'gjLlena .9s cubic-bezier(.2,.8,.2,1) .2s both' }}/>
     </div>
   )
 }
@@ -59,7 +59,9 @@ export default function MiMedia({ media }) {
                 </span>
               </div>
               <Barra p={p.p} color={color === J.text2 ? J.azul : color}/>
-              <div style={{ fontSize: '.82rem', color: J.muted, marginTop: 3 }}>Mejor que el {Math.round(p.p * 100)}% de los {quienes}</div>
+              <div style={{ fontSize: '.82rem', color: J.muted, marginTop: 3 }}>
+                {p.k === 'titulos' && p.p === 0 ? 'Todavía no suma: sal campeón, subcampeón o tercero de un torneo' : `Mejor que el ${Math.round(p.p * 100)}% de los ${quienes}`}
+              </div>
             </div>
           )
         })}

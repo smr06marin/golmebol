@@ -4,7 +4,8 @@
 -- Qué hace: suma las estadísticas de cada jugador pero dándole MÁS peso a lo reciente. Un partido de hoy vale 1,
 -- uno de hace 6 meses vale la mitad (0,5), uno de hace un año la cuarta parte (0,25), y así va bajando.
 -- Lo mismo con los MVP, los arcos en cero y los títulos (campeón 3, subcampeón 2, tercer puesto 1): un título de
--- hace dos años pesa muy poco. Así un jugador que jugaba muy bien antes pero ahora no tanto va bajando su media,
+-- hace dos años pesa muy poco. Los títulos salen de lo que guardó el organizador al cerrar el torneo y, si el torneo
+-- no tiene nada guardado, se deducen de la final y del partido por el tercer puesto (igual que en "Mis torneos"). Así un jugador que jugaba muy bien antes pero ahora no tanto va bajando su media,
 -- y uno que viene jugando bien sube rápido.
 --
 -- La app la usa sola apenas exista. Si no la corres, la media igual sale pero contando todo igual (sin el tiempo).
@@ -68,14 +69,37 @@ as $$
     where l.tipo = 'mvp'
     group by l.player_id
   ),
-  titulos_torneo as (
-    -- El mejor resultado de cada jugador en cada torneo (por si quedó guardado dos veces)
+  titulos_guardados as (
+    -- Lo que guardó el organizador al cerrar el torneo ("Guardar logros")
     select l.player_id, l.tournament_id,
-           max(case when l.tipo in ('campeon', 'campeonato') then 3 when l.tipo in ('subcampeon', 'final') then 2 when l.tipo = 'tercer_puesto' then 1 else 0 end) as valor,
-           max(l.created_at) as fecha
+           case when l.tipo in ('campeon', 'campeonato') then 3 when l.tipo in ('subcampeon', 'final') then 2 when l.tipo = 'tercer_puesto' then 1 else 0 end as valor
     from public.tournament_logros l
-    where l.tipo in ('campeon', 'campeonato', 'subcampeon', 'final', 'tercer_puesto')
-    group by l.player_id, l.tournament_id
+    where l.tipo in ('campeon', 'campeonato', 'subcampeon', 'final', 'tercer_puesto', 'semifinal', 'cuartos', 'octavos', 'fase_grupos')
+  ),
+  titulos_deducidos as (
+    -- Torneos SIN logros guardados para ese jugador: se deduce de sus partidos de eliminación
+    -- (perdió la final → subcampeón, la ganó → campeón, ganó el partido por el 3.º → tercero). Los cruces de ida y
+    -- vuelta no se deducen (un partido de ida no define nada).
+    select s.player_id, m.tournament_id,
+           max(case
+                 when m.fase = 'final' and coalesce(m.ronda, '') !~* 'tercer' and s.team_result = 'win'  then 3
+                 when m.fase = 'final' and coalesce(m.ronda, '') !~* 'tercer' and s.team_result = 'loss' then 2
+                 when coalesce(m.ronda, '') ~* 'tercer' and s.team_result = 'win' then 1
+                 else 0 end) as valor
+    from public.player_match_stats s
+    join public.matches m on m.id = s.match_id
+    where (m.fase = 'final' or coalesce(m.ronda, '') ~* 'tercer')
+      and coalesce(m.ronda, '') !~* '\((ida|vuelta)\)'
+      and m.tournament_id is not null
+      and not exists (select 1 from titulos_guardados g where g.player_id = s.player_id and g.tournament_id = m.tournament_id)
+    group by s.player_id, m.tournament_id
+  ),
+  titulos_torneo as (
+    -- El mejor resultado de cada jugador en cada torneo
+    select player_id, tournament_id, max(valor) as valor
+    from (select * from titulos_guardados union all select * from titulos_deducidos) x
+    where valor > 0
+    group by player_id, tournament_id
   ),
   titulos as (
     select t.player_id,
@@ -84,7 +108,7 @@ as $$
            (count(*) filter (where t.valor = 1))::int as tercero,
            -- El título pesa desde el último partido de ese torneo (cuando se jugó la final)
            sum(t.valor * power(0.5, greatest(0, extract(epoch from (now() - coalesce(
-             (select max(m.played_at) from public.matches m where m.tournament_id = t.tournament_id), t.fecha))) / 86400.0) / 180.0)) as w_titulos
+             (select max(m.played_at) from public.matches m where m.tournament_id = t.tournament_id), now()))) / 86400.0) / 180.0)) as w_titulos
     from titulos_torneo t
     group by t.player_id
   )

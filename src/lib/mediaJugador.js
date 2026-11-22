@@ -167,15 +167,18 @@ export function calcularMedia(agregado, extras, playerId, pesados = null) {
   const ref = { gpp: suma('goles') / sPj, efic: suma('pg') / sPj, mvp: suma('mvp') / sPj, rpp: suma('recibidos') / sPj, ceros: suma('ceros') / sPj }
   const comps = componentes(tipo, ref)
   const ordenadas = comps.map(c => otros.map(c.valor).sort((a, b) => a - b))
+  // Sin títulos (o arquero sin arcos en cero) = 0, no "mitad de la tabla" por empatar con todos los que tampoco tienen
+  const sinNada = (c, j) => (c.k === 'titulos' || (c.k === 'ceros' && tipo === 'arquero')) && !(c.valor(j) > 0)
+  const pDe = (c, i, j) => (sinNada(c, j) ? 0 : porcentaje(ordenadas[i], c.valor(j), c.mejorMayor))
   const evaluar = j => {
-    const partes = comps.map((c, i) => ({ ...c, p: porcentaje(ordenadas[i], c.valor(j), c.mejorMayor), texto: c.ver(c.valor(j), j) }))
+    const partes = comps.map((c, i) => ({ ...c, p: pDe(c, i, j), texto: c.ver(c.valor(j), j) }))
     return { partes, media: aMedia(partes.reduce((s, x) => s + x.peso * x.p, 0)) }
   }
   const mio = evaluar(yo)
 
   // "Mejor que el X% de los arqueros/jugadores": se compara su media con la de los demás
   const mediasOtros = otros.map(o => {
-    const s = comps.reduce((acc, c, i) => acc + c.peso * porcentaje(ordenadas[i], c.valor(o), c.mejorMayor), 0)
+    const s = comps.reduce((acc, c, i) => acc + c.peso * pDe(c, i, o), 0)
     return aMedia(s)   // (cada otro se compara contra todos los demás menos él mismo y contra mí; la diferencia es mínima)
   }).sort((a, b) => a - b)
   const superaA = Math.round(porcentaje(mediasOtros, mio.media, true) * 100)
