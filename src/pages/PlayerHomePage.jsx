@@ -154,7 +154,7 @@ export default function PlayerHomePage() {
     function pedirDependientes(pid, cedula) {
       return Promise.all([
       // Solo las columnas que usan las estadísticas (antes traía todas), de la más reciente a la más vieja (para la racha)
-      supabase.from('player_match_stats').select('goals_scored, goals_conceded, team_result, yellow_cards, red_cards, blue_cards, fue_arquero').eq('player_id', pid).order('created_at', { ascending: false }),
+      supabase.from('player_match_stats').select('goals_scored, goals_conceded, team_result, yellow_cards, red_cards, blue_cards, fue_arquero, team_id, created_at').eq('player_id', pid).order('created_at', { ascending: false }),
       supabase.from('tournament_logros').select('tipo').eq('player_id', pid).eq('tipo', 'campeon'),
       supabase.from('sponsors').select('*').eq('activo', true),
       supabase
@@ -166,7 +166,7 @@ export default function PlayerHomePage() {
         .from('tournament_player_registrations')
         .select('*, teams(id,name,logo_url), tournaments(id,name,modalidad,season,logo_url)')
         .eq('player_id', pid).eq('activo', true),
-      supabase.from('team_players').select('id').eq('player_id', pid).limit(1),
+      supabase.from('team_players').select('id, team_id, activo').eq('player_id', pid),
       // Predix apagado: no se pide nada de Predix (entra más rápido)
       PREDIX_ACTIVO ? supabase.from('predicciones').select('puntos_ganados, match_id').eq('player_id', pid).eq('resuelta', true).gt('puntos_ganados', 0) : Promise.resolve({ data: [] }),
       PREDIX_ACTIVO ? supabase.from('player_notifications').select('*').eq('player_id', pid).eq('tipo', 'predix_ronda').eq('leida', false) : Promise.resolve({ data: [] }),
@@ -304,25 +304,31 @@ export default function PlayerHomePage() {
     // Aviso del partido de las próximas 24 h: se busca DESPUÉS de mostrar la
     // pantalla (no bloquea la entrada) y se agrega arriba de la lista.
     const cargarProximoPartido = async () => {
-      const idsEquipos = [...new Set((regs || []).map(r => r.team_id).filter(Boolean))]
-      if (idsEquipos.length === 0) { setProximo(null); return }
+      // Todos los equipos en los que juega: inscripciones a torneos, plantillas y los equipos con los que
+      // jugó en los últimos 90 días (antes solo se miraban las inscripciones y se perdían partidos de su otro equipo)
+      const hace90 = Date.now() - 90 * 24 * 60 * 60 * 1000
+      const idsEquipos = [...new Set([
+        ...(regs || []).map(r => r.team_id),
+        ...(tps || []).filter(t => t.activo !== false).map(t => t.team_id),
+        ...raw.filter(r => r.created_at && new Date(r.created_at).getTime() > hace90).map(r => r.team_id),
+      ].filter(Boolean))]
+      if (idsEquipos.length === 0) { setProximo(null); setProximos([]); return }
       // Antes solo se buscaban los partidos donde el equipo era LOCAL: de visitante nunca avisaba.
       const lista = idsEquipos.join(',')
       const { data: proximosPartidos, error: errProx } = await supabase
         .from('matches')
         .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
         .or(`home_team_id.in.(${lista}),away_team_id.in.(${lista})`)
-        .gte('played_at', ahora.toISOString())
-        .eq('status', 'scheduled')
+        .gte('played_at', new Date(ahora.getTime() - 3 * 60 * 60 * 1000).toISOString()) // incluye el que está jugando ahora
+        .neq('status', 'finished')
         .order('played_at', { ascending: true })
         .limit(8)
       if (errProx) return
       setProximo(proximosPartidos?.[0] || null)
       setProximos(proximosPartidos || [])
-      if (!proximosPartidos || proximosPartidos.length === 0) return
-      // El aviso de arriba solo sale si el partido es en las próximas 24 horas
-      if (new Date(proximosPartidos[0].played_at) - ahora > 24 * 60 * 60 * 1000) return
-      const partido   = proximosPartidos[0]
+      // El aviso de arriba solo sale si el partido (uno que todavía no empieza) es en las próximas 24 horas
+      const partido   = (proximosPartidos || []).find(m => new Date(m.played_at) > ahora)
+      if (!partido || new Date(partido.played_at) - ahora > 24 * 60 * 60 * 1000) return
       const fecha     = new Date(partido.played_at)
       const horaStr   = fmtHoraDate(fecha)
       const diffMs    = fecha - ahora
