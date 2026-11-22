@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Children, useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { urlMini, alFallarMini } from '../../lib/imagenMini'
 import { J, FT, HEXAGONO, recorte, useContador, leerAbierto, guardarAbierto } from './juegoEstilo'
@@ -140,5 +140,44 @@ export function FormaReciente({ resultados = [] }) {
         return <span key={i} style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', clipPath: HEXAGONO, WebkitClipPath: HEXAGONO, background: c, color: '#0a0a0a', fontFamily: FT, fontWeight: 900, fontSize: '.78rem' }}>{l}</span>
       })}
     </span>
+  )
+}
+
+// ── Carrusel: tarjetas que se deslizan de lado; se asoma un pedacito de la siguiente y los puntitos
+// de abajo dicen en cuál va (también se pueden tocar). Con una sola tarjeta se ve normal, a todo lo ancho.
+export function Carrusel({ children, color = J.gold, nombres = [] }) {
+  const items = Children.toArray(children)
+  const ref = useRef(null)
+  const [actual, setActual] = useState(0)
+  const varios = items.length > 1
+  const alDeslizar = () => {
+    const el = ref.current
+    if (!el) return
+    const ancho = el.firstChild?.offsetWidth || el.clientWidth
+    const i = Math.max(0, Math.min(items.length - 1, Math.round(el.scrollLeft / (ancho + 12))))
+    if (i !== actual) setActual(i)
+  }
+  const irA = i => {
+    const el = ref.current
+    const hijo = el?.children?.[i]
+    if (el && hijo) el.scrollTo({ left: Math.max(0, hijo.offsetLeft - (el.clientWidth - hijo.offsetWidth) / 2), behavior: 'smooth' })
+  }
+  return (
+    <div>
+      <div ref={ref} onScroll={varios ? alDeslizar : undefined} className="gj-sin-barra"
+        style={{ position: 'relative', display: 'flex', gap: 12, overflowX: varios ? 'auto' : 'visible', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ flex: varios ? '0 0 86%' : '1 1 100%', minWidth: 0, scrollSnapAlign: 'center' }}>{it}</div>
+        ))}
+      </div>
+      {varios && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+          {items.map((_, i) => (
+            <button key={i} type="button" onClick={() => irA(i)} aria-label={`Ver ${nombres[i] || i + 1}`}
+              style={{ width: i === actual ? 22 : 8, height: 8, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer', background: i === actual ? color : 'rgba(255,255,255,.25)', transition: 'width .25s ease, background .25s ease' }}/>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

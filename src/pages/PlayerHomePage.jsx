@@ -122,6 +122,7 @@ export default function PlayerHomePage() {
   // tarjeta la lista de logros sale AL INSTANTE (antes eran 3 consultas por toque)
   const [logrosData,        setLogrosData]        = useState(null)
   const [proximo,           setProximo]           = useState(undefined) // próximo partido programado (null = no hay; undefined = aún buscando)
+  const [proximos,          setProximos]          = useState([])        // todos sus próximos partidos programados (carrusel del inicio)
   const [puestos,           setPuestos]           = useState(null)      // mis puestos en los rankings globales
   const [novedades,         setNovedades]         = useState([])        // qué cambió desde la última visita
   const datosFrescos = useRef(false)                                    // true cuando las estadísticas ya vienen de la base (no de la copia guardada)
@@ -309,14 +310,15 @@ export default function PlayerHomePage() {
       const lista = idsEquipos.join(',')
       const { data: proximosPartidos, error: errProx } = await supabase
         .from('matches')
-        .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url)')
+        .select('*, home:home_team_id(name,logo_url), away:away_team_id(name,logo_url), tournaments(name)')
         .or(`home_team_id.in.(${lista}),away_team_id.in.(${lista})`)
         .gte('played_at', ahora.toISOString())
         .eq('status', 'scheduled')
         .order('played_at', { ascending: true })
-        .limit(1)
+        .limit(8)
       if (errProx) return
       setProximo(proximosPartidos?.[0] || null)
+      setProximos(proximosPartidos || [])
       if (!proximosPartidos || proximosPartidos.length === 0) return
       // El aviso de arriba solo sale si el partido es en las próximas 24 horas
       if (new Date(proximosPartidos[0].played_at) - ahora > 24 * 60 * 60 * 1000) return
@@ -947,7 +949,7 @@ export default function PlayerHomePage() {
           <InicioJugador
             player={player} userId={user?.id} nombre={nombre} stats={stats} cardStats={cardStats} cardType={cardType}
             esPortero={esPortero} esDefensa={esDefensa} torneosData={torneosData} equiposData={equiposData}
-            novedades={novedades} proximo={proximo} historial={historial} logros={logrosTorneo} cargandoHistorial={!historialListo && historial.length === 0}
+            novedades={novedades} proximo={proximo} proximos={proximos} historial={historial} logros={logrosTorneo} cargandoHistorial={!historialListo && historial.length === 0}
             siguiente={siguienteTarjeta} desbloqueadas={totalMias} totalTarjetas={totalTarjetas}
             onVerTarjeta={() => setTab('tarjeta')}
             onVerColeccion={() => setShowSelector(true)}

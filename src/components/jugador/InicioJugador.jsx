@@ -9,13 +9,13 @@ import { arteDe, NOMBRE_NIVEL } from '../card/designs/cardArte'
 import { STAT_CONFIG, armarLista, rankingGlobal, obtenerAgregado, leerAgregadoGuardado } from '../../lib/rankingsJugadores'
 import { fmtHoraDate } from '../../lib/horaHelpers'
 import { J, FD, FT, CSS_JUEGO, abrirSeccion } from './juegoEstilo'
-import { Panel, Desplegable, BotonJuego, Escudo, IconoHex } from './juegoUI'
+import { Panel, Desplegable, BotonJuego, Escudo, IconoHex, Carrusel } from './juegoUI'
 
 // Inicio del jugador con estilo de videojuego, LIMPIO:
 //  · Arriba, siempre a la vista: su tarjeta (pequeña, flotando), su nivel y cuánto le falta para la siguiente.
 //  · Debajo, todo lo demás en secciones DESPLEGABLES: cerradas se ve solo el título y un resumen corto;
 //    el jugador toca la que quiera ver y se abre (y se recuerda en su celular cuáles dejó abiertas).
-//    Novedades · Próximo partido · Mi carrera · Últimos partidos · Mis torneos · Reto del día · Mis puestos · Mis fotos.
+//    Novedades · Próximos partidos (carrusel si tiene varios) · Mi carrera · Últimos partidos · Mis torneos · Reto del día · Mis puestos · Mis fotos.
 //  · Avisos importantes (de Golmebol o del organizador) y, si es DUEÑO de un equipo, el acceso a su equipo:
 //    siempre a la vista debajo de la tarjeta, porque son cosas que tiene que atender.
 //  · Mis fotos: el botón de cámara sobre la tarjeta abre esa sección. Si le falta una foto (o el admin pidió
@@ -126,70 +126,87 @@ function SeccionFotos({ player, onFotoSubida, pendiente, retraso }) {
 }
 
 // Equipos de los que es dueño: un recuadro por equipo con el escudo en grande y el botón para administrarlo.
-// Con varios equipos se deslizan de lado (carrusel) y los puntitos de abajo dicen en cuál va.
+// Con varios equipos se deslizan de lado (carrusel).
 function MisEquiposDueno({ equipos, onAbrir }) {
-  const [actual, setActual] = useState(0)
   const varios = equipos.length > 1
-  const alDeslizar = e => {
-    const el = e.currentTarget
-    const ancho = el.firstChild?.offsetWidth || el.offsetWidth
-    const i = Math.round(el.scrollLeft / (ancho + 12))
-    if (i !== actual) setActual(Math.max(0, Math.min(equipos.length - 1, i)))
-  }
-  const irA = i => {
-    const el = document.getElementById('gj-carrusel-equipos')
-    const hijo = el?.children?.[i]
-    if (el && hijo) el.scrollTo({ left: hijo.offsetLeft - el.offsetLeft, behavior: 'smooth' })
-  }
   return (
     <div className="gj-entra" style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 800, color: J.gold, margin: '2px 2px 8px' }}>
         <Crown size={18} color={J.gold} strokeWidth={2.6}/> {varios ? `Mis equipos (${equipos.length})` : 'Mi equipo'}
         {varios && <span style={{ marginLeft: 'auto', fontSize: '.88rem', fontWeight: 600, color: J.muted }}>Desliza 👉</span>}
       </div>
-      <div id="gj-carrusel-equipos" onScroll={varios ? alDeslizar : undefined} className="gj-sin-barra"
-        style={{ display: 'flex', gap: 12, overflowX: varios ? 'auto' : 'visible', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+      <Carrusel color={J.gold} nombres={equipos.map(e => e.name)}>
         {equipos.map(eq => (
-          <div key={eq.id || eq.name} style={{ flex: varios ? '0 0 86%' : '1 1 100%', minWidth: 0, scrollSnapAlign: 'center' }}>
-            <Panel style={{ marginBottom: 0 }} borde={`linear-gradient(150deg, ${J.goldLuz}, ${J.gold}33 40%, rgba(255,255,255,.07) 75%, ${J.gold}88)`}
-              fondo={`radial-gradient(70% 55% at 50% 30%, rgba(245,182,35,.22), transparent 70%), repeating-linear-gradient(135deg, rgba(255,255,255,.022) 0 2px, transparent 2px 14px), ${J.panel}`}>
-              <div style={{ padding: '16px 16px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.82rem', fontWeight: 900, letterSpacing: '.08em', color: '#2a1a00', background: `linear-gradient(180deg, ${J.goldLuz}, ${J.gold})`, padding: '3px 12px', borderRadius: 999 }}>
-                  <Crown size={14} color="#2a1a00" strokeWidth={2.8}/> DUEÑO
+          <Panel key={eq.id || eq.name} style={{ marginBottom: 0 }} borde={`linear-gradient(150deg, ${J.goldLuz}, ${J.gold}33 40%, rgba(255,255,255,.07) 75%, ${J.gold}88)`}
+            fondo={`radial-gradient(70% 55% at 50% 30%, rgba(245,182,35,.22), transparent 70%), repeating-linear-gradient(135deg, rgba(255,255,255,.022) 0 2px, transparent 2px 14px), ${J.panel}`}>
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.82rem', fontWeight: 900, letterSpacing: '.08em', color: '#2a1a00', background: `linear-gradient(180deg, ${J.goldLuz}, ${J.gold})`, padding: '3px 12px', borderRadius: 999 }}>
+                <Crown size={14} color="#2a1a00" strokeWidth={2.8}/> DUEÑO
+              </span>
+              <div style={{ position: 'relative', marginTop: 16 }}>
+                <span aria-hidden="true" style={{ position: 'absolute', inset: -18, borderRadius: '50%', background: `radial-gradient(closest-side, ${J.gold}55, transparent)` }}/>
+                <span className="gj-anim" style={{ position: 'relative', display: 'block', animation: 'gjFlota 5s ease-in-out infinite' }}>
+                  <Escudo url={eq.logo_url} nombre={eq.name} size={124}/>
                 </span>
-                <div style={{ position: 'relative', marginTop: 16 }}>
-                  <span aria-hidden="true" style={{ position: 'absolute', inset: -18, borderRadius: '50%', background: `radial-gradient(closest-side, ${J.gold}55, transparent)` }}/>
-                  <span className="gj-anim" style={{ position: 'relative', display: 'block', animation: 'gjFlota 5s ease-in-out infinite' }}>
-                    <Escudo url={eq.logo_url} nombre={eq.name} size={124}/>
-                  </span>
-                </div>
-                <div style={{ fontSize: '1.45rem', fontWeight: 900, lineHeight: 1.15, marginTop: 16, wordBreak: 'break-word' }}>{eq.name}</div>
-                {eq.id && (
-                  <div style={{ width: '100%', marginTop: 14 }}>
-                    <BotonJuego variante="oro" onClick={() => onAbrir?.(eq.id)}>Administrar mi equipo <ChevronRight size={20} strokeWidth={3}/></BotonJuego>
-                  </div>
-                )}
-                <div style={{ fontSize: '.9rem', color: J.text2, marginTop: 10, lineHeight: 1.35 }}>Inscribe a tus jugadores y mira los partidos de tu equipo.</div>
               </div>
-            </Panel>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, lineHeight: 1.15, marginTop: 16, wordBreak: 'break-word' }}>{eq.name}</div>
+              {eq.id && (
+                <div style={{ width: '100%', marginTop: 14 }}>
+                  <BotonJuego variante="oro" onClick={() => onAbrir?.(eq.id)}>Administrar mi equipo <ChevronRight size={20} strokeWidth={3}/></BotonJuego>
+                </div>
+              )}
+              <div style={{ fontSize: '.9rem', color: J.text2, marginTop: 10, lineHeight: 1.35 }}>Inscribe a tus jugadores y mira los partidos de tu equipo.</div>
+            </div>
+          </Panel>
+        ))}
+      </Carrusel>
+    </div>
+  )
+}
+
+// Un partido programado, en pantalla de "VS": escudos frente a frente, cuánto falta, día, hora y cancha
+function PartidoVS({ p, numero, total }) {
+  const f = new Date(p.played_at)
+  const mismoDia = f.toDateString() === new Date().toDateString()
+  return (
+    <div style={{ height: '100%', boxSizing: 'border-box', padding: '12px 12px 14px', borderRadius: 14, border: `1px solid ${numero === 1 ? J.green + '66' : J.linea}`,
+      background: `radial-gradient(80% 70% at 0% 40%, rgba(111,207,61,.10), transparent 60%), radial-gradient(80% 70% at 100% 40%, rgba(255,90,82,.08), transparent 60%), rgba(0,0,0,.28)` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: '.85rem', fontWeight: 700, color: J.muted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {total > 1 ? `Partido ${numero} de ${total}` : 'Tu próximo partido'}
+        </span>
+        <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '.85rem', fontWeight: 800, color: J.green, background: 'rgba(111,207,61,.12)', border: '1px solid rgba(111,207,61,.35)', borderRadius: 999, padding: '2px 9px' }}>
+          {numero === 1 && <span className="gj-anim" style={{ width: 7, height: 7, borderRadius: '50%', background: J.green, animation: 'gjPulso 1.4s ease-in-out infinite' }}/>}
+          {cuantoFalta(f)}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 6, marginTop: 12 }}>
+        {[p.home, null, p.away].map((eq, i) => i === 1 ? (
+          <span key="vs" style={{ fontFamily: FD, fontSize: '2.4rem', lineHeight: 1, letterSpacing: '.02em', background: `linear-gradient(180deg, #fff, ${J.gold})`, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', padding: '0 2px' }}>VS</span>
+        ) : (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, minWidth: 0 }}>
+            <Escudo url={eq?.logo_url} nombre={eq?.name} size={56}/>
+            <span style={{ fontWeight: 800, fontSize: '.95rem', lineHeight: 1.2, textAlign: 'center', wordBreak: 'break-word' }}>{eq?.name || 'Por definir'}</span>
           </div>
         ))}
       </div>
-      {varios && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 10 }}>
-          {equipos.map((eq, i) => (
-            <button key={eq.id || i} type="button" onClick={() => irA(i)} aria-label={`Ver ${eq.name}`}
-              style={{ width: i === actual ? 22 : 8, height: 8, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer', background: i === actual ? J.gold : 'rgba(255,255,255,.25)', transition: 'width .25s ease, background .25s ease' }}/>
-          ))}
-        </div>
-      )}
+      <div style={{ marginTop: 12, textAlign: 'center' }}>
+        <div style={{ fontSize: '1.02rem', fontWeight: 800 }}>{mismoDia ? 'Hoy' : `${mayus(DIAS[f.getDay()])} ${f.getDate()} de ${MESES[f.getMonth()]}`}</div>
+        <div style={{ fontFamily: FD, fontSize: '1.9rem', lineHeight: 1, color: J.green, marginTop: 3, letterSpacing: '.03em' }}>{fmtHoraDate(f)}</div>
+        {p.location && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '.95rem', fontWeight: 600, color: J.text2, marginTop: 3 }}>
+            <MapPin size={15} color={J.green}/> {p.location}
+          </div>
+        )}
+        {p.tournaments?.name && <div style={{ fontSize: '.88rem', fontWeight: 600, color: J.muted, marginTop: 4, lineHeight: 1.3 }}>🏆 {p.tournaments.name}</div>}
+      </div>
     </div>
   )
 }
 
 export default function InicioJugador({
   player, userId, nombre, stats, cardStats, cardType, esPortero, esDefensa, torneosData, equiposData,
-  novedades = [], proximo, historial = [], logros = [], cargandoHistorial = false, siguiente, desbloqueadas = 0, totalTarjetas = 0,
+  novedades = [], proximo, proximos, historial = [], logros = [], cargandoHistorial = false, siguiente, desbloqueadas = 0, totalTarjetas = 0,
   onVerTarjeta, onVerColeccion, onVerHistorial, onVerHistorialCompleto, onAbrirRanking, onFotoSubida,
   equiposDueno = [], onAbrirEquipo, avisos = [],
 }) {
@@ -197,7 +214,9 @@ export default function InicioJugador({
   const arte = arteDe(design)
   const luz = arte.clara ? '#e9c75e' : arte.a      // color de la tarjeta: tiñe los rayos y el brillo
   const pj = stats?.pj || 0
-  const fechaProx = proximo?.played_at ? new Date(proximo.played_at) : null
+  // Próximos partidos programados (el primero es el más cercano); si solo llega uno, se usa ese
+  const listaProx = (proximos?.length ? proximos : proximo ? [proximo] : []).filter(p => p?.played_at)
+  const fechaProx = listaProx[0] ? new Date(listaProx[0].played_at) : null
   const prog = siguiente?.prog
   const metaSeg = Math.max(1, Math.min(10, prog?.meta || 3))
   const listo = prog && prog.actual >= prog.meta
@@ -330,7 +349,8 @@ export default function InicioJugador({
       )}
 
       {proximo !== undefined && (
-        <Desplegable id="proximo" icono={<CalendarDays size={22} color={J.green} strokeWidth={2.5}/>} color={J.green} titulo="Mi próximo partido" retraso={.05}
+        <Desplegable id="proximo" icono={<CalendarDays size={22} color={J.green} strokeWidth={2.5}/>} color={J.green} retraso={.05}
+          titulo={listaProx.length > 1 ? `Próximos partidos (${listaProx.length})` : 'Mi próximo partido'}
           resumen={fechaProx ? (
             <span>
               <span className="gj-anim" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: J.green, boxShadow: `0 0 8px ${J.green}`, animation: 'gjPulso 1.4s ease-in-out infinite', marginRight: 6, verticalAlign: 'middle' }}/>
@@ -339,25 +359,10 @@ export default function InicioJugador({
           ) : 'Todavía no tienes partido programado'}>
           {fechaProx ? (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                {[proximo.home, null, proximo.away].map((eq, i) => i === 1 ? (
-                  <span key="vs" style={{ fontFamily: FD, fontSize: '2.6rem', lineHeight: 1, letterSpacing: '.02em', background: `linear-gradient(180deg, #fff, ${J.gold})`, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', padding: '0 4px' }}>VS</span>
-                ) : (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    <Escudo url={eq?.logo_url} nombre={eq?.name} size={60}/>
-                    <span style={{ fontWeight: 800, fontSize: '1rem', lineHeight: 1.2, textAlign: 'center', wordBreak: 'break-word' }}>{eq?.name || 'Por definir'}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 14, padding: '10px 12px', background: 'rgba(0,0,0,.3)', border: `1px solid ${J.linea}`, borderRadius: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{mayus(DIAS[fechaProx.getDay()])} {fechaProx.getDate()} de {MESES[fechaProx.getMonth()]}</div>
-                <div style={{ fontFamily: FD, fontSize: '2rem', lineHeight: 1, color: J.green, marginTop: 4, letterSpacing: '.03em' }}>{fmtHoraDate(fechaProx)}</div>
-                {proximo.location && (
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '1rem', fontWeight: 600, color: J.text2, marginTop: 4 }}>
-                    <MapPin size={16} color={J.green}/> {proximo.location}
-                  </div>
-                )}
-              </div>
+              {listaProx.length > 1 && <div style={{ fontSize: '.92rem', fontWeight: 600, color: J.muted, margin: '0 2px 8px' }}>Desliza para ver los siguientes 👉</div>}
+              <Carrusel color={J.green} nombres={listaProx.map(p => `${p.home?.name || ''} vs ${p.away?.name || ''}`)}>
+                {listaProx.map((p, i) => <PartidoVS key={p.id || i} p={p} numero={i + 1} total={listaProx.length}/>)}
+              </Carrusel>
             </>
           ) : (
             <div style={{ fontSize: '1.02rem', color: J.text2, lineHeight: 1.45 }}>Apenas lo programen aparece aquí con el día, la hora y la cancha.</div>
