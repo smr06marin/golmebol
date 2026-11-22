@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { cobraEnCancha, pesos, diaBogota, resumenCaja } from '../lib/cobrosCancha'
 import { CarruselFotos } from './CobrosCancha'
@@ -87,31 +87,68 @@ function Cuenta({ t, compartida }) {
   )
 }
 
-function LineaPartido({ l, compartida }) {
-  const p = l.partido
-  const nombre = `${p.home?.name || '?'} vs ${p.away?.name || '?'}`
-  let estado = ''
-  if (!l.cerrado) estado = 'Sin cerrar'
-  else if (l.tipo === 'w') estado = 'Por W'
-  else if (l.tipo === 'desierto') estado = 'Desierto'
-  else estado = `${p.home_score ?? 0} - ${p.away_score ?? 0}`
+// Partido por partido en un CUADRO: una fila por partido y columnas iguales (arbitraje, tarjetas, pago), con el total
+// abajo — así se revisa de un vistazo y se compara con lo que hay en la mano.
+const celdaNum = { padding: '9px 4px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', verticalAlign: 'top' }
+const miles = n => { const v = Math.round(Number(n) || 0); return v === 0 ? '—' : '$' + v.toLocaleString('es-CO') }
+
+function TablaPartidos({ detalle, compartida }) {
+  const cerrados = detalle.filter(l => l.cerrado)
+  const tot = cerrados.reduce((t, l) => ({ a: t.a + l.arbitraje, t: t.t + l.tarjetas, p: t.p + l.pago }), { a: 0, t: 0, p: 0 })
+  const th = { padding: '8px 4px', fontSize: '.68rem', fontWeight: 800, color: TENUE, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `2px solid ${BORDE}` }
   return (
-    <div style={{ padding: '12px 0', borderTop: `1px solid ${BORDE}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'baseline' }}>
-        <div style={{ fontSize: '1rem', fontWeight: 800 }}>{nombre}</div>
-        <div style={{ fontSize: '.85rem', color: l.cerrado ? TENUE : ORO, fontWeight: 700, whiteSpace: 'nowrap' }}>{hora(p.played_at)} · {estado}</div>
-      </div>
-      {!l.cerrado ? (
-        <div style={{ fontSize: '.9rem', color: ORO, marginTop: '4px' }}>⏳ Cierra la planilla para que cuente.</div>
-      ) : l.tipo === 'desierto' ? (
-        <div style={{ fontSize: '.9rem', color: TENUE, marginTop: '4px' }}>Nadie paga arbitraje en un partido desierto.</div>
-      ) : (
-        <div style={{ fontSize: '.92rem', color: TENUE, marginTop: '4px', lineHeight: 1.55 }}>
-          Arbitraje: <b style={{ color: TEXTO }}>{pesos(l.arbitraje)}</b> {l.tipo === 'w' ? '(en un W paga un solo equipo)' : `(${plural(l.equipos, 'equipo', 'equipos')})`}
-          {l.tarjetas > 0 && <> · Tarjetas: <b style={{ color: TEXTO }}>{pesos(l.tarjetas)}</b></>}
-          <br/>{compartida ? 'Pago árbitro' : 'Tu pago'}: <b style={{ color: ORO }}>{pesos(l.pago)}</b>{compartida && (p.arbitro1 || '').trim() ? <> · Planilló: <b style={{ color: TEXTO }}>{p.arbitro1}</b></> : null}
-        </div>
-      )}
+    <div style={{ background: '#0b1220', border: `1px solid ${BORDE}`, borderRadius: '14px', padding: '4px 8px 2px', overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.84rem', color: TEXTO }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: 'left' }}>Hora</th>
+            <th style={{ ...th, textAlign: 'right' }}>Arbitraje</th>
+            <th style={{ ...th, textAlign: 'right' }}>Tarjetas</th>
+            <th style={{ ...th, textAlign: 'right', color: ORO }}>Pago</th>
+          </tr>
+        </thead>
+        <tbody>
+          {detalle.map((l, k) => {
+            const p = l.partido
+            const estado = !l.cerrado ? 'Sin cerrar' : l.tipo === 'w' ? 'Por W' : l.tipo === 'desierto' ? 'Desierto' : `${p.home_score ?? 0} - ${p.away_score ?? 0}`
+            const quien = compartida && (p.arbitro1 || '').trim() ? p.arbitro1.trim().split(/\s+/).slice(0, 2).join(' ') : ''
+            const fondo = k % 2 ? 'rgba(255,255,255,.035)' : 'transparent'
+            return (
+              <Fragment key={p.id}>
+                {/* Fila 1: el partido, a lo ancho */}
+                <tr style={{ background: fondo }}>
+                  <td colSpan={4} style={{ padding: '10px 4px 2px', fontWeight: 800, lineHeight: 1.25 }}>
+                    {p.home?.name || '?'} <span style={{ color: TENUE, fontWeight: 600 }}>vs</span> {p.away?.name || '?'}
+                  </td>
+                </tr>
+                {/* Fila 2: hora y resultado + los números en columnas */}
+                <tr style={{ background: fondo, borderBottom: `1px solid ${BORDE}` }}>
+                  <td style={{ padding: '2px 4px 10px', verticalAlign: 'top', fontSize: '.74rem', color: l.cerrado ? TENUE : ORO, lineHeight: 1.35 }}>
+                    <span style={{ whiteSpace: 'nowrap' }}>{hora(p.played_at)}</span><br/><b style={{ color: l.cerrado ? TEXTO : ORO, whiteSpace: 'nowrap' }}>{estado}</b>{quien ? <><br/>{quien}</> : null}
+                  </td>
+                  {l.cerrado ? (
+                    <>
+                      <td style={{ ...celdaNum, padding: '2px 4px 10px' }}>{miles(l.arbitraje)}{l.tipo === 'w' && <div style={{ fontSize: '.64rem', color: TENUE }}>1 equipo</div>}</td>
+                      <td style={{ ...celdaNum, padding: '2px 4px 10px' }}>{miles(l.tarjetas)}</td>
+                      <td style={{ ...celdaNum, padding: '2px 4px 10px', color: ORO, fontWeight: 700 }}>{miles(l.pago)}</td>
+                    </>
+                  ) : (
+                    <td colSpan={3} style={{ ...celdaNum, padding: '2px 4px 10px', color: ORO, fontSize: '.76rem', whiteSpace: 'normal' }}>⏳ Cierra la planilla para que cuente</td>
+                  )}
+                </tr>
+              </Fragment>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td style={{ padding: '10px 4px', fontWeight: 900, fontSize: '.8rem', textTransform: 'uppercase', letterSpacing: '.04em' }}>Total</td>
+            <td style={{ ...celdaNum, fontWeight: 900, padding: '10px 4px' }}>{miles(tot.a)}</td>
+            <td style={{ ...celdaNum, fontWeight: 900, padding: '10px 4px' }}>{miles(tot.t)}</td>
+            <td style={{ ...celdaNum, fontWeight: 900, padding: '10px 4px', color: ORO }}>{miles(tot.p)}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   )
 }
@@ -133,8 +170,8 @@ function TarjetaCancha({ g, abiertaInicial, compartida }) {
 
       {abierta && (
         <div style={{ padding: '0 16px 16px' }}>
-          <div style={{ fontSize: '.8rem', fontWeight: 800, color: TENUE, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: '2px' }}>Partido por partido</div>
-          {g.detalle.map(l => <LineaPartido key={l.partido.id} l={l} compartida={compartida}/>)}
+          <div style={{ fontSize: '.8rem', fontWeight: 800, color: TENUE, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: '8px' }}>Partido por partido</div>
+          <TablaPartidos detalle={g.detalle} compartida={compartida}/>
 
           <div style={{ marginTop: '12px', background: '#0b1220', borderRadius: '14px', padding: '12px 14px' }}>
             <FilaSimple a="Recogido en esta cancha" b={pesos(g.recogido)}/>
