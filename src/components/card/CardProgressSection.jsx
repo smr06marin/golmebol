@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { abrirChatAyuda } from '../../lib/abrirChat'
+import { celebrar } from '../../lib/celebracion'
 
 const S = {
   navy:    '#0a0a0a',
@@ -33,7 +34,28 @@ const CARD_ICONS = {
 export default function CardProgressSection({ playerId, esPortero, posicionDetallada }) {
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
-  const [verSiguiente, setVerSiguiente] = useState(false)
+  const [verRotos, setVerRotos] = useState(false)
+  const [celebrando, setCelebrando] = useState(null) // tarjeta recién desbloqueada que se está celebrando
+
+  // ¿Desbloqueó una tarjeta nueva desde la última vez que entró (en este celular)? → confeti, fuegos y aviso.
+  // La primera vez que se abre en un celular solo se celebra lo desbloqueado en los últimos 7 días.
+  useEffect(() => {
+    if (!data || !playerId) return undefined
+    const desbloq = (data.levels || []).filter(l => data.progresoMap[l.id]?.desbloqueada)
+    const clave = `gm_tarjetas_vistas_${playerId}`
+    let vistas = null
+    try { vistas = JSON.parse(window.localStorage.getItem(clave) || 'null') } catch { vistas = null }
+    try { window.localStorage.setItem(clave, JSON.stringify(desbloq.map(l => l.id))) } catch { /* modo privado */ }
+    const hace7dias = Date.now() - 7 * 864e5
+    const nuevas = desbloq.filter(l => Array.isArray(vistas)
+      ? !vistas.includes(l.id)
+      : (Date.parse(data.progresoMap[l.id]?.fecha_desbloqueada) || 0) > hace7dias)
+    if (!nuevas.length) return undefined
+    const ultima = nuevas[nuevas.length - 1]
+    const nivel = { ...ultima, card: (data.cards || []).find(c => c.id === ultima.card_id) }
+    const t = setTimeout(() => { setCelebrando(nivel); celebrar('ambos') }, 500)
+    return () => clearTimeout(t)
+  }, [data, playerId])
 
   useEffect(() => { if (playerId) fetchProgreso() }, [playerId])
 
@@ -177,30 +199,122 @@ export default function CardProgressSection({ playerId, esPortero, posicionDetal
   const { subnivel_activo, subnivel_siguiente, logrosActivo, logrosSiguiente, achMap, cache, progresoMap } = data
   if (!subnivel_activo) return null
 
-  const cardColor     = CARD_COLORS[subnivel_activo.card?.id] || '#00ee55'
-  const cardIcon      = CARD_ICONS[subnivel_activo.card?.id]  || '🟢'
-  const logrosCompletos = logrosActivo.filter(a => achMap[a.id]?.completado).length
-  const totalLogros   = logrosActivo.length
-  const requeridos    = subnivel_activo.logros_requeridos || 3
-  const desbloqueada      = subnivel_activo.prog?.desbloqueada || logrosCompletos >= requeridos
-const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','nivel1_azul','nivel1_bronce','nivel1_plata','nivel1_oro'].includes(subnivel_activo.card_design_id)
-  const pct           = totalLogros > 0 ? Math.round((logrosCompletos / requeridos) * 100) : 0
+  const cuantosRotos = lista => lista.filter(a => achMap[a.id]?.completado).length
+  const activoCompleto = !!subnivel_activo.prog?.desbloqueada || cuantosRotos(logrosActivo) >= (subnivel_activo.logros_requeridos || 3)
+  // Si ya tiene la tarjeta actual, lo importante es la SIGUIENTE: esa sale grande con sus logros, para que se vea
+  // qué le falta. La que ya tiene queda arriba en una franja ("✓ Ya es tuya"), con sus logros rotos para mirarlos.
+  const objetivo = activoCompleto && subnivel_siguiente ? subnivel_siguiente : subnivel_activo
+  const logrosObjetivo = objetivo === subnivel_activo ? logrosActivo : logrosSiguiente
+  const hayYaTiene = objetivo !== subnivel_activo
 
-  // Subnivel siguiente logros
-  const logrosSigCompletos = logrosSiguiente.filter(a => achMap[a.id]?.completado).length
+  const colorDe = nivel => CARD_COLORS[nivel.card?.id] || '#00ee55'
+  const iconoDe = nivel => CARD_ICONS[nivel.card?.id] || '🟢'
+  const cardColor       = colorDe(objetivo)
+  const cardIcon        = iconoDe(objetivo)
+  const logrosCompletos = cuantosRotos(logrosObjetivo)
+  const totalLogros     = logrosObjetivo.length
+  const requeridos      = objetivo.logros_requeridos || 3
+  const desbloqueada    = !hayYaTiene && activoCompleto
+  const pct             = totalLogros > 0 ? Math.round((logrosCompletos / requeridos) * 100) : 0
+  // Premio por el chat: solo tarjetas que no son de Iniciación
+  const conPremio = nivel => !['nivel1_verde','nivel1_azul','nivel1_bronce','nivel1_plata','nivel1_oro'].includes(nivel.card_design_id)
+  const premioActivo = activoCompleto && conPremio(subnivel_activo)
+
+  const filaLogro = (a, color) => {
+    const completado  = achMap[a.id]?.completado || false
+    const valorActual = getValorActual(a.stat_key, cache)
+    const pctLogro    = Math.min(100, Math.round((valorActual / Number(a.meta)) * 100))
+    const falta       = Math.max(0, Number(a.meta) - valorActual)
+    const casi        = !completado && valorActual > 0 && (falta === 1 || pctLogro >= 75)
+    return (
+      <div key={a.id} className={`gm-logro${casi ? ' gm-casi' : ''}`} style={{
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '9px 12px', borderRadius: '10px',
+        background: completado ? S.winDim : casi ? 'rgba(249,168,37,.08)' : 'rgba(255,255,255,.03)',
+        border: `1.5px solid ${completado ? S.win + '44' : casi ? S.gold : 'rgba(255,255,255,.06)'}`,
+      }}>
+        <div style={{ width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: completado ? S.win : casi ? 'rgba(249,168,37,.2)' : 'rgba(255,255,255,.08)', border: `1.5px solid ${completado ? S.win : casi ? S.gold : 'rgba(255,255,255,.15)'}` }}>
+          {completado
+            ? <span style={{ fontSize: '.75rem', color: '#fff' }}>✓</span>
+            : <span style={{ fontSize: '.6rem', color: casi ? S.gold : S.muted }}>{a.tipo === 'universal' ? '★' : a.tipo === 'campo' ? '⚽' : a.tipo === 'defensa' ? '🛡' : '🧤'}</span>}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '.78rem', fontWeight: completado || casi ? '700' : '500', color: completado ? '#fff' : casi ? '#ffe9c4' : S.text2, lineHeight: 1.2 }}>
+            {a.nombre}
+          </div>
+          {!completado && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+              <div style={{ flex: 1, background: 'rgba(255,255,255,.06)', borderRadius: '4px', height: '5px', overflow: 'hidden' }}>
+                <div className={pctLogro > 0 ? 'gm-barra-shimmer' : ''} style={{ height: '100%', width: `${pctLogro}%`, background: casi ? `linear-gradient(90deg, ${S.gold}, #ff6f00)` : color, borderRadius: '4px', transition: 'width .5s ease' }}/>
+              </div>
+              <span style={{ fontSize: '.62rem', color: casi ? S.gold : S.muted, fontWeight: casi ? '800' : '400', flexShrink: 0 }}>{valorActual}/{Number(a.meta)}</span>
+            </div>
+          )}
+          {casi && <div style={{ fontSize: '.62rem', color: S.gold, fontWeight: '800', marginTop: '3px' }}>🔥 ¡Te falta{falta === 1 ? '' : 'n'} {falta} para romperlo!</div>}
+        </div>
+        {completado && (
+          <span style={{ fontSize: '.62rem', color: S.win, fontWeight: '800', flexShrink: 0 }}>¡ROTO! 💥</span>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div style={{ padding: '0 16px 24px' }}>
+      {celebrando && (
+        <div onClick={() => setCelebrando(null)} role="dialog" aria-modal="true"
+          style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '360px', textAlign: 'center', background: 'radial-gradient(120% 80% at 50% 0%, rgba(245,200,75,.28), rgba(245,200,75,0) 60%), linear-gradient(165deg,#15120a,#0a0a12)', border: `1px solid ${CARD_COLORS[celebrando.card?.id] || S.gold}88`, borderRadius: '20px', padding: '26px 20px 20px', boxShadow: '0 20px 60px rgba(0,0,0,.6)' }}>
+            <div style={{ fontSize: '2.6rem', lineHeight: 1 }}>{CARD_ICONS[celebrando.card?.id] || '🎉'}</div>
+            <div style={{ fontSize: '.7rem', fontWeight: 900, letterSpacing: '.24em', color: S.gold, marginTop: '12px' }}>¡NUEVA TARJETA!</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#fff', marginTop: '6px', lineHeight: 1.2 }}>{celebrando.card?.nombre} · {celebrando.nombre}</div>
+            <div style={{ fontSize: '.85rem', color: S.text2, marginTop: '8px', lineHeight: 1.45 }}>Rompiste los logros y la desbloqueaste. ¡Ya es tuya! 🔥</div>
+            <button type="button" onClick={() => setCelebrando(null)}
+              style={{ marginTop: '18px', width: '100%', minHeight: '50px', border: 'none', borderRadius: '14px', background: S.cyan, color: '#0a1a05', fontWeight: 900, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+              ¡Vamos! 💪
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* Header tarjeta actual */}
+      {/* Tarjeta que ya tiene (cuando ya va por la siguiente) */}
+      {hayYaTiene && (
+        <div style={{ background: '#07070e', borderRadius: '14px', border: `1px solid ${colorDe(subnivel_activo)}33`, marginBottom: '10px', overflow: 'hidden' }}>
+          <button type="button" onClick={() => setVerRotos(v => !v)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+            <span style={{ fontSize: '1.1rem' }}>{iconoDe(subnivel_activo)}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '.62rem', fontWeight: 800, color: S.win, letterSpacing: '.08em' }}>✓ YA ES TUYA</div>
+              <div style={{ fontSize: '.84rem', fontWeight: 800, color: colorDe(subnivel_activo) }}>{subnivel_activo.card?.nombre} · {subnivel_activo.nombre}</div>
+            </div>
+            <span style={{ fontSize: '.68rem', color: S.muted, flexShrink: 0 }}>{verRotos ? 'Ocultar ▲' : 'Ver logros ▼'}</span>
+          </button>
+          {verRotos && (
+            <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {logrosActivo.map(a => filaLogro(a, colorDe(subnivel_activo)))}
+            </div>
+          )}
+          {premioActivo && (
+            <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, rgba(30,142,62,.15), rgba(249,168,37,.1))', border: `1px solid ${S.win}44`, borderRadius: '12px', padding: '14px 16px' }}>
+              <div style={{ fontSize: '.82rem', fontWeight: '800', color: S.gold, marginBottom: '6px' }}>🎉 ¡Tarjeta desbloqueada!</div>
+              <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', lineHeight: 1.5, marginBottom: '12px' }}>Cuéntanos por el chat que la desbloqueaste y reclama tu premio 👇</div>
+              <button type="button" onClick={() => abrirChatAyuda(`¡Desbloqueé la tarjeta ${subnivel_activo.card?.nombre} · ${subnivel_activo.nombre} en Golmebol! 🎉 Vengo a reclamar mi premio.`)}
+                style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: S.win, borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem' }}>
+                💬 Reclamar premio por el chat
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tarjeta por la que va */}
       <div style={{ background: '#07070e', borderRadius: '14px', overflow: 'hidden', border: `1px solid ${cardColor}33` }}>
-
-        {/* Título */}
         <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${cardColor}22`, display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '1.3rem' }}>{cardIcon}</span>
           <div style={{ flex: 1 }}>
+            {hayYaTiene && <div style={{ fontSize: '.6rem', fontWeight: 900, color: S.muted, letterSpacing: '.12em', marginBottom: '2px' }}>AHORA VAS POR</div>}
             <div style={{ fontWeight: '800', color: cardColor, fontSize: '.9rem', letterSpacing: '.06em' }}>
-              {subnivel_activo.card?.nombre} · {subnivel_activo.nombre}
+              {objetivo.card?.nombre} · {objetivo.nombre}
             </div>
             <div style={{ fontSize: '.68rem', color: desbloqueada ? S.muted : (requeridos - logrosCompletos) <= 1 ? S.gold : S.muted, fontWeight: (requeridos - logrosCompletos) <= 1 && !desbloqueada ? '800' : '400', marginTop: '2px' }}>
               {desbloqueada ? '✓ Desbloqueada'
@@ -214,19 +328,14 @@ const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','niv
             </span>
           )}
         </div>
-{/* Premio desbloqueado */}
-{desbloquedaLogros && (
-          <div style={{ margin: '0 16px 12px', background: 'linear-gradient(135deg, rgba(30,142,62,.15), rgba(249,168,37,.1))', border: `1px solid ${S.win}44`, borderRadius: '12px', padding: '14px 16px' }}>
-            <div style={{ fontSize: '.82rem', fontWeight: '800', color: S.gold, marginBottom: '6px' }}>
-              🎉 ¡Tarjeta desbloqueada!
-            </div>
-            <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', lineHeight: 1.5, marginBottom: '12px' }}>
-              Cuéntanos por el chat que la desbloqueaste y reclama tu premio 👇
-            </div>
+        {!hayYaTiene && premioActivo && (
+          <div style={{ margin: '12px 16px 0', background: 'linear-gradient(135deg, rgba(30,142,62,.15), rgba(249,168,37,.1))', border: `1px solid ${S.win}44`, borderRadius: '12px', padding: '14px 16px' }}>
+            <div style={{ fontSize: '.82rem', fontWeight: '800', color: S.gold, marginBottom: '6px' }}>🎉 ¡Tarjeta desbloqueada!</div>
+            <div style={{ fontSize: '.75rem', color: 'rgba(255,255,255,.7)', lineHeight: 1.5, marginBottom: '12px' }}>Cuéntanos por el chat que la desbloqueaste y reclama tu premio 👇</div>
             <button type="button" onClick={() => abrirChatAyuda(`¡Desbloqueé la tarjeta ${subnivel_activo.card?.nombre} · ${subnivel_activo.nombre} en Golmebol! 🎉 Vengo a reclamar mi premio.`)}
-          style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: '#25d366', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem', textDecoration: 'none' }}>
-          💬 Reclamar premio por el chat
-        </button>
+              style={{ border:'none', cursor:'pointer', fontFamily:'inherit', boxSizing:'border-box', width:'100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', background: S.win, borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '.82rem' }}>
+              💬 Reclamar premio por el chat
+            </button>
           </div>
         )}
         {/* Barra de progreso */}
@@ -240,97 +349,19 @@ const desbloquedaLogros = logrosCompletos >= requeridos && !['nivel1_verde','niv
           <div style={{ background: 'rgba(255,255,255,.06)', borderRadius: '8px', height: '10px', overflow: 'hidden' }}>
             <div className="gm-barra-shimmer" style={{ height: '100%', width: `${Math.min(100, pct)}%`, background: `linear-gradient(90deg, ${cardColor}, ${cardColor}aa)`, borderRadius: '8px', transition: 'width .5s ease' }}/>
           </div>
-          {/* Marcador del mínimo requerido */}
-          <div style={{ position: 'relative', height: '12px' }}>
-            <div style={{ position: 'absolute', left: `${(requeridos / totalLogros) * 100}%`, top: 0, transform: 'translateX(-50%)', fontSize: '.55rem', color: cardColor, fontWeight: '700' }}>
-              ▲ {requeridos}
+          {totalLogros > 0 && (
+            <div style={{ position: 'relative', height: '12px' }}>
+              <div style={{ position: 'absolute', left: `${Math.min(100, (requeridos / totalLogros) * 100)}%`, top: 0, transform: 'translateX(-50%)', fontSize: '.55rem', color: cardColor, fontWeight: '700' }}>
+                ▲ {requeridos}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Lista de logros */}
         <div style={{ padding: '4px 16px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {logrosActivo.map(a => {
-            const completado  = achMap[a.id]?.completado || false
-            const valorActual = getValorActual(a.stat_key, cache)
-            const pctLogro    = Math.min(100, Math.round((valorActual / Number(a.meta)) * 100))
-            const falta       = Math.max(0, Number(a.meta) - valorActual)
-            const casi        = !completado && valorActual > 0 && (falta === 1 || pctLogro >= 75)
-            return (
-              <div key={a.id} className={`gm-logro${casi ? ' gm-casi' : ''}`} style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '9px 12px', borderRadius: '10px',
-                background: completado ? S.winDim : casi ? 'rgba(249,168,37,.08)' : 'rgba(255,255,255,.03)',
-                border: `1.5px solid ${completado ? S.win + '44' : casi ? S.gold : 'rgba(255,255,255,.06)'}`,
-              }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: completado ? S.win : casi ? 'rgba(249,168,37,.2)' : 'rgba(255,255,255,.08)', border: `1.5px solid ${completado ? S.win : casi ? S.gold : 'rgba(255,255,255,.15)'}` }}>
-                  {completado
-                    ? <span style={{ fontSize: '.75rem', color: '#fff' }}>✓</span>
-                    : <span style={{ fontSize: '.6rem', color: casi ? S.gold : S.muted }}>{a.tipo === 'universal' ? '★' : a.tipo === 'campo' ? '⚽' : a.tipo === 'defensa' ? '🛡' : '🧤'}</span>}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '.78rem', fontWeight: completado || casi ? '700' : '500', color: completado ? '#fff' : casi ? '#ffe9c4' : S.text2, lineHeight: 1.2 }}>
-                    {a.nombre}
-                  </div>
-                  {!completado && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                      <div style={{ flex: 1, background: 'rgba(255,255,255,.06)', borderRadius: '4px', height: '5px', overflow: 'hidden' }}>
-                        <div className={pctLogro > 0 ? 'gm-barra-shimmer' : ''} style={{ height: '100%', width: `${pctLogro}%`, background: casi ? `linear-gradient(90deg, ${S.gold}, #ff6f00)` : cardColor, borderRadius: '4px', transition: 'width .5s ease' }}/>
-                      </div>
-                      <span style={{ fontSize: '.62rem', color: casi ? S.gold : S.muted, fontWeight: casi ? '800' : '400', flexShrink: 0 }}>{valorActual}/{Number(a.meta)}</span>
-                    </div>
-                  )}
-                  {casi && <div style={{ fontSize: '.62rem', color: S.gold, fontWeight: '800', marginTop: '3px' }}>🔥 ¡Te falta{falta === 1 ? '' : 'n'} {falta} para romperlo!</div>}
-                </div>
-                {completado && (
-                  <span style={{ fontSize: '.62rem', color: S.win, fontWeight: '800', flexShrink: 0 }}>¡ROTO! 💥</span>
-                )}
-              </div>
-            )
-          })}
+          {logrosObjetivo.map(a => filaLogro(a, cardColor))}
         </div>
-
-        {/* Siguiente subnivel */}
-        {subnivel_siguiente && (
-          <div style={{ borderTop: `1px solid ${cardColor}22` }}>
-            <button onClick={() => setVerSiguiente(v => !v)}
-              style={{ width: '100%', padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '.72rem', color: S.muted }}>Siguiente:</span>
-                <span style={{ fontSize: '.78rem', fontWeight: '700', color: CARD_COLORS[subnivel_siguiente.card?.id] || cardColor }}>
-                  {subnivel_siguiente.card?.nombre} · {subnivel_siguiente.nombre}
-                </span>
-              </div>
-              <span style={{ fontSize: '.7rem', color: S.muted }}>{verSiguiente ? '▲' : '▼'}</span>
-            </button>
-
-            {verSiguiente && (
-              <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                {logrosSiguiente.map(a => {
-                  const completado  = achMap[a.id]?.completado || false
-                  const valorActual = getValorActual(a.stat_key, cache)
-                  const pctLogro    = Math.min(100, Math.round((valorActual / Number(a.meta)) * 100))
-                  return (
-                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', borderRadius: '8px', background: completado ? S.winDim : 'rgba(255,255,255,.02)', border: `1px solid ${completado ? S.win + '33' : 'rgba(255,255,255,.05)'}` }}>
-                      <span style={{ fontSize: '.7rem', flexShrink: 0 }}>{completado ? '✓' : '○'}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '.75rem', color: completado ? '#fff' : S.muted }}>{a.nombre}</div>
-                        {!completado && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}>
-                            <div style={{ flex: 1, background: 'rgba(255,255,255,.05)', borderRadius: '3px', height: '2px', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${pctLogro}%`, background: CARD_COLORS[subnivel_siguiente.card?.id] || cardColor }}/>
-                            </div>
-                            <span style={{ fontSize: '.58rem', color: S.muted }}>{valorActual}/{Number(a.meta)}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Mapa de todas las tarjetas */}
