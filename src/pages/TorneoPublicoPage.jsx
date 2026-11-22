@@ -1016,6 +1016,20 @@ export default function TorneoPublicoPage({ tournamentId } = {}) {
       const gfG = gano ? ll.golesA : ll.golesB
       ;(perdedoresPorFase[f] = perdedoresPorFase[f] || []).push({ id: perdedor.id, dif: Math.max(0, gfG - gfP), gf: gfP })
     }))
+    // 2b) Segunda oportunidad dentro de la MISMA fase: si un equipo perdió su llave pero DESPUÉS ganó otra llave
+    //     (ej. el organizador creó el partido de los perdedores como "Octavos" en vez de "Mejor perdedor"), ese
+    //     equipo sigue en el torneo como MEJOR PERDEDOR. Manda el último resultado de cada equipo.
+    const ultimaVictoria = {}
+    FASE_ORDEN_ELIM.forEach(f => (porFase[f] || []).forEach(ll => {
+      if (esTercer(ll) || !ll.terminada || !ll.ganador) return
+      ultimaVictoria[ll.ganador.id] = Math.max(ultimaVictoria[ll.ganador.id] || 0, cuandoLlave(ll))
+    }))
+    ;[...elim].forEach(teamId => {
+      if (ultimaDerrota[teamId] && (ultimaVictoria[teamId] || 0) > ultimaDerrota[teamId]) {
+        elim.delete(teamId)
+        marcarRescatado(teamId, perdioEn[teamId])
+      }
+    })
     // 3) Partido de mejor perdedor: el que pierde queda eliminado; el que gana sigue
     //    en el torneo (salvo que después haya perdido otra llave).
     const llavesMejorPerdedor = armarLlaves(bracket.filter(esPartidoMejorPerdedor))
