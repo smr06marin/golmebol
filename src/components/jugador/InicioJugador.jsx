@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Trophy, ChevronRight, LayoutGrid, MapPin, Cal
 import PlayerCard from '../card/PlayerCard'
 import MisPuestos from '../card/MisPuestos'
 import MiCarrera from './MiCarrera'
+import MejoresSemana from './MejoresSemana'
 import SubidaFotoJugador, { EjemploFotoPerfil, EjemploFotoTarjeta } from '../SubidaFotoJugador'
 import { CARD_DESIGNS } from '../card/designs/cardDesigns'
 import { arteDe, NOMBRE_NIVEL } from '../card/designs/cardArte'
@@ -15,7 +16,7 @@ import { Panel, Desplegable, BotonJuego, Escudo, IconoHex, Carrusel } from './ju
 //  · Arriba, siempre a la vista: su tarjeta (pequeña, flotando), su nivel y cuánto le falta para la siguiente.
 //  · Debajo, todo lo demás en secciones DESPLEGABLES: cerradas se ve solo el título y un resumen corto;
 //    el jugador toca la que quiera ver y se abre; al salir y volver, todo aparece cerrado otra vez.
-//    Novedades · Próximos partidos (carrusel si tiene varios) · Mi carrera · Últimos partidos · Mis torneos · Reto del día · Mis puestos · Mis fotos.
+//    Novedades · Próximos partidos (carrusel si tiene varios) · Lo mejor de la semana (Top 5) · Mi carrera · Últimos partidos · Mis torneos · Reto del día · Mis puestos · Mis fotos.
 //  · Avisos importantes (de Golmebol o del organizador) y, si es DUEÑO de un equipo, el acceso a su equipo:
 //    siempre a la vista debajo de la tarjeta, porque son cosas que tiene que atender.
 //  · Mis fotos: el botón de cámara sobre la tarjeta abre esa sección. Si le falta una foto (o el admin pidió
@@ -392,6 +393,9 @@ export default function InicioJugador({
           )}
         </Desplegable>
       )}
+
+      {/* Lo mejor de la semana: Top 5 de jugadores, arqueros, equipos y partidos */}
+      <MejoresSemana playerId={player.id} misEquipos={[...new Set([...historial.map(h => h.team_id), ...equiposDueno.map(e => e.id)].filter(Boolean))]}/>
 
       {/* Mi carrera · Últimos partidos · Mis torneos */}
       <MiCarrera historial={historial} logros={logros} esPortero={esPortero} onVerTodos={onVerHistorialCompleto || onVerHistorial} cargando={cargandoHistorial}/>
