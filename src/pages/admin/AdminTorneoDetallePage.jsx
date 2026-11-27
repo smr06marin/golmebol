@@ -1757,6 +1757,43 @@ export default function AdminTorneoDetallePage() {
   const [jugadorAbiertoId, setJugadorAbiertoId] = useState(null)
   const [pestanaJugador, setPestanaJugador] = useState('marcas')
   const alternarJugador = id => { setJugadorAbiertoId(prev => prev === id ? null : id); setPestanaJugador('marcas') }
+
+  // ── SACAR JUGADORES RÁPIDO ─────────────────────────────────────────────────────────────────────
+  // Antes había que abrir al jugador → pestaña 🚪 Salida → "Sacar del equipo" → confirmar (4 pasos).
+  // Ahora: botón "Sacar" en la misma fila → "Sí, sacar" (2 toques, sin ventanas). Y "Sacar varios" para marcar
+  // a varios y sacarlos de una. Después sale "Deshacer" unos segundos por si fue un error.
+  // Es lo mismo de siempre: el jugador queda desactivado en este torneo y se conserva todo lo que jugó.
+  const [sacarConfirmId, setSacarConfirmId] = useState(null)        // fila que está preguntando "¿Sí, sacar?"
+  const [sacarVariosEquipoId, setSacarVariosEquipoId] = useState(null) // equipo en modo "Sacar varios"
+  const [seleccionSacar, setSeleccionSacar] = useState(() => new Set())
+  const [sacando, setSacando] = useState(false)
+  const [deshacerSacar, setDeshacerSacar] = useState(null)           // { ids, texto }
+  const timerDeshacer = useRef(null)
+  async function sacarJugadores(regs) {
+    const ids = regs.map(r => r.id).filter(Boolean)
+    if (!ids.length || sacando) return
+    setSacando(true)
+    const { error } = await supabase.from('tournament_player_registrations').update({ activo: false }).in('id', ids)
+    setSacando(false)
+    if (error) return showMsg('No se pudo sacar. Revisa tu internet e intenta de nuevo.', 'error')
+    setSacarConfirmId(null); setSacarVariosEquipoId(null); setSeleccionSacar(new Set()); setJugadorAbiertoId(null)
+    const texto = ids.length === 1 ? `${regs[0].players?.name || 'El jugador'} salió del equipo` : `${ids.length} jugadores salieron del equipo`
+    clearTimeout(timerDeshacer.current)
+    setDeshacerSacar({ ids, texto })
+    timerDeshacer.current = setTimeout(() => setDeshacerSacar(null), 8000)
+    fetchJugadores()
+  }
+  async function deshacerSacada() {
+    const d = deshacerSacar
+    if (!d) return
+    clearTimeout(timerDeshacer.current)
+    setDeshacerSacar(null)
+    const { error } = await supabase.from('tournament_player_registrations').update({ activo: true }).in('id', d.ids)
+    if (error) return showMsg('No se pudo deshacer. Búscalo en "Desactivados" y toca Reactivar.', 'error')
+    showMsg(d.ids.length === 1 ? 'Listo, volvió al equipo ✓' : 'Listo, volvieron al equipo ✓')
+    fetchJugadores()
+  }
+  const alternarSeleccionSacar = id => setSeleccionSacar(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   // Otras marcas (Élite, Mayor de 35 y etiqueta propia): se guardan al instante, con la misma
   // revisión de siempre (si la base no guarda, se devuelve a como estaba y se avisa).
   const [marcaGuardandoId, setMarcaGuardandoId] = useState(null)
@@ -7116,11 +7153,24 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               sin necesidad de generar/enviar el link de registro — abre la
                               pestaña "Jugadores" del equipo con ESTE torneo ya elegido, así
                               queda en el equipo y inscrito en este torneo. */}
-                          <button onClick={() => navigate(`/admin/equipos/${e.id}?tab=jugadores&torneo=${id}`)}
-                            style={{ background:'#e8f0fe', border:'none', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.7rem', fontWeight:'700', display:'flex', alignItems:'center', gap:'4px' }}>
-                            <Plus size={11}/> Agregar jugador
-                          </button>
+                          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                            {jugsActivos.length > 1 && (
+                              <button onClick={() => { setSacarVariosEquipoId(sacarVariosEquipoId === e.id ? null : e.id); setSeleccionSacar(new Set()); setSacarConfirmId(null); setJugadorAbiertoId(null) }}
+                                style={{ background: sacarVariosEquipoId === e.id ? '#c5221f' : '#fce8e6', border:'none', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', color: sacarVariosEquipoId === e.id ? '#fff' : '#c5221f', fontSize:'.7rem', fontWeight:'700' }}>
+                                {sacarVariosEquipoId === e.id ? 'Cancelar' : '🚪 Sacar varios'}
+                              </button>
+                            )}
+                            <button onClick={() => navigate(`/admin/equipos/${e.id}?tab=jugadores&torneo=${id}`)}
+                              style={{ background:'#e8f0fe', border:'none', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', color:'#1a73e8', fontSize:'.7rem', fontWeight:'700', display:'flex', alignItems:'center', gap:'4px' }}>
+                              <Plus size={11}/> Agregar jugador
+                            </button>
+                          </div>
                         </div>
+                        {sacarVariosEquipoId === e.id && (
+                          <div style={{ background:'#fff4f3', border:'1px solid #fad2cf', borderRadius:'10px', padding:'10px 12px', marginBottom:'8px', fontSize:'.8rem', color:'#3c4043', lineHeight:1.4 }}>
+                            Toca a los jugadores que quieres sacar y después el botón rojo de abajo. Se conserva todo lo que jugaron.
+                          </div>
+                        )}
                         {jugsActivos.length === 0 ? (
                           <div style={{ fontSize:'.78rem', color:'#9aa0a6', marginBottom:'8px' }}>Sin jugadores activos</div>
                         ) : (
@@ -7129,14 +7179,20 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                               const p = j.players || {}
                               const sancion = sancionDeJugador(j.player_id)
                               const abierto = jugadorAbiertoId === j.id
+                              const modoVarios = sacarVariosEquipoId === e.id
+                              const marcado = seleccionSacar.has(j.id)
+                              const preguntando = sacarConfirmId === j.id
                               return (
                                 <div key={j.id} style={{ display:'flex', flexDirection:'column', gap:'0', background:'#fff', borderRadius:'10px', padding:'0', border: sancion ? '1px solid #fad2cf' : (abierto ? '1px solid #aecbfa' : '1px solid #e8eaed'), overflow:'hidden' }}>
                                   {/* Fila compacta: solo foto pequeña + nombre + marcas. Al tocarla se abren
                                       los botones (uno solo abierto a la vez). */}
-                                  <div role="button" tabIndex={0} aria-expanded={abierto}
-                                    onClick={() => alternarJugador(j.id)}
-                                    onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternarJugador(j.id) } }}
-                                    style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', minHeight:'48px', cursor:'pointer', background: abierto ? '#f4f8ff' : '#fff', WebkitTapHighlightColor:'transparent', touchAction:'manipulation' }}>
+                                  <div role="button" tabIndex={0} aria-expanded={modoVarios ? undefined : abierto} aria-pressed={modoVarios ? marcado : undefined}
+                                    onClick={() => (modoVarios ? alternarSeleccionSacar(j.id) : preguntando ? null : alternarJugador(j.id))}
+                                    onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); if (modoVarios) alternarSeleccionSacar(j.id); else alternarJugador(j.id) } }}
+                                    style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 12px', minHeight:'48px', cursor:'pointer', background: marcado ? '#fce8e6' : preguntando ? '#fff4f3' : abierto ? '#f4f8ff' : '#fff', WebkitTapHighlightColor:'transparent', touchAction:'manipulation' }}>
+                                    {modoVarios && (
+                                      <span aria-hidden="true" style={{ width:'26px', height:'26px', borderRadius:'7px', flexShrink:0, border:`2px solid ${marcado ? '#c5221f' : '#bdc1c6'}`, background: marcado ? '#c5221f' : '#fff', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'900', fontSize:'.9rem' }}>{marcado ? '✓' : ''}</span>
+                                    )}
                                     <span style={{ width:'32px', height:'32px', borderRadius:'50%', overflow:'hidden', background:'#f1f3f4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                                       {p.photo_face_url || p.photo_url
                                         ? <img src={urlMini(p.photo_face_url||p.photo_url, 40)} onError={alFallarMini} loading="lazy" decoding="async" alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
@@ -7155,9 +7211,32 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                                         </div>
                                       )}
                                     </div>
-                                    <span aria-hidden="true" style={{ color:'#5f6368', fontSize:'.8rem', flexShrink:0, transform: abierto ? 'rotate(180deg)' : 'none', transition:'transform .15s' }}>▼</span>
+                                    {!modoVarios && (preguntando ? (
+                                      <span style={{ display:'flex', gap:'6px', flexShrink:0 }} onClick={ev => ev.stopPropagation()}>
+                                        <button type="button" disabled={sacando} onClick={() => sacarJugadores([j])}
+                                          style={{ minHeight:'38px', padding:'0 12px', borderRadius:'8px', border:'none', background:'#c5221f', color:'#fff', fontSize:'.8rem', fontWeight:'800', cursor:'pointer', opacity: sacando ? .6 : 1 }}>
+                                          {sacando ? 'Sacando…' : 'Sí, sacar'}
+                                        </button>
+                                        <button type="button" onClick={() => setSacarConfirmId(null)}
+                                          style={{ minHeight:'38px', padding:'0 10px', borderRadius:'8px', border:'1px solid #dadce0', background:'#fff', color:'#5f6368', fontSize:'.8rem', fontWeight:'700', cursor:'pointer' }}>
+                                          No
+                                        </button>
+                                      </span>
+                                    ) : (
+                                      <button type="button" aria-label={`Sacar a ${p.name || 'jugador'} del equipo`}
+                                        onClick={ev => { ev.stopPropagation(); setSacarConfirmId(j.id); setJugadorAbiertoId(null) }}
+                                        style={{ minHeight:'36px', padding:'0 10px', borderRadius:'8px', border:'1px solid #fad2cf', background:'#fff', color:'#c5221f', fontSize:'.76rem', fontWeight:'800', cursor:'pointer', flexShrink:0, touchAction:'manipulation' }}>
+                                        🚪 Sacar
+                                      </button>
+                                    ))}
+                                    {!modoVarios && !preguntando && <span aria-hidden="true" style={{ color:'#5f6368', fontSize:'.8rem', flexShrink:0, transform: abierto ? 'rotate(180deg)' : 'none', transition:'transform .15s' }}>▼</span>}
                                   </div>
-                                  {abierto && (
+                                  {preguntando && (
+                                    <div style={{ padding:'0 12px 10px', fontSize:'.78rem', color:'#c5221f', fontWeight:'700', background:'#fff4f3' }}>
+                                      ¿Sacar a {p.name || 'este jugador'} del equipo? Se conserva todo lo que jugó.
+                                    </div>
+                                  )}
+                                  {abierto && !modoVarios && (
                                   <div style={{ display:'flex', flexDirection:'column', gap:'8px', padding:'4px 12px 12px', borderTop:'1px solid #eef1f6' }}>
                                   {sancion && (
                                     <div style={{ fontSize:'.72rem', color:'#d93025', fontWeight:'600', marginTop:'6px' }}>
@@ -7364,6 +7443,19 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                             })}
                           </div>
                         )}
+                        {sacarVariosEquipoId === e.id && (
+                          <div style={{ position:'sticky', bottom:'10px', zIndex:5, display:'flex', gap:'8px', marginBottom:'12px' }}>
+                            <button type="button" disabled={sacando || seleccionSacar.size === 0}
+                              onClick={() => sacarJugadores(jugsActivos.filter(j => seleccionSacar.has(j.id)))}
+                              style={{ flex:1, minHeight:'50px', borderRadius:'12px', border:'none', background: seleccionSacar.size ? '#c5221f' : '#e8a29c', color:'#fff', fontSize:'.95rem', fontWeight:'800', cursor: seleccionSacar.size ? 'pointer' : 'default', boxShadow:'0 6px 18px rgba(197,34,31,.3)' }}>
+                              {sacando ? 'Sacando…' : seleccionSacar.size === 0 ? 'Toca a los que vas a sacar' : `🚪 Sacar ${seleccionSacar.size} ${seleccionSacar.size === 1 ? 'jugador' : 'jugadores'}`}
+                            </button>
+                            <button type="button" onClick={() => { setSacarVariosEquipoId(null); setSeleccionSacar(new Set()) }}
+                              style={{ minHeight:'50px', padding:'0 16px', borderRadius:'12px', border:'1px solid #dadce0', background:'#fff', color:'#5f6368', fontSize:'.9rem', fontWeight:'700', cursor:'pointer' }}>
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
                         {jugsDesact.length > 0 && (
                           <div>
                             <div style={{ fontSize:'.68rem', fontWeight:'700', color:'#9aa0a6', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.05em' }}>🚫 Desactivados</div>
@@ -7409,6 +7501,17 @@ Tu respuesta COMPLETA debe ser ÚNICAMENTE este bloque, sin nada antes ni despu�
                 🚫 Equipos desactivados
               </div>
               <EquiposDesactivadosTorneo torneoId={id} onReactivar={fetchEquipos} showMsg={showMsg}/>
+            </div>
+          )}
+
+          {/* Recién se sacó a alguien: "Deshacer" por unos segundos por si fue un error */}
+          {deshacerSacar && (
+            <div role="status" style={{ position:'fixed', left:'50%', bottom:'18px', transform:'translateX(-50%)', zIndex:1200, width:'calc(100% - 32px)', maxWidth:'460px', display:'flex', alignItems:'center', gap:'10px', background:'#202124', color:'#fff', borderRadius:'14px', padding:'12px 14px', boxShadow:'0 10px 30px rgba(0,0,0,.35)' }}>
+              <span style={{ flex:1, fontSize:'.9rem', fontWeight:'600', lineHeight:1.35 }}>✓ {deshacerSacar.texto}</span>
+              <button type="button" onClick={deshacerSacada}
+                style={{ minHeight:'40px', padding:'0 14px', borderRadius:'10px', border:'none', background:'#8ab4f8', color:'#202124', fontSize:'.88rem', fontWeight:'800', cursor:'pointer', flexShrink:0 }}>
+                Deshacer
+              </button>
             </div>
           )}
 
